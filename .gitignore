@@ -1,0 +1,63 @@
+# Build results
+[Bb]in/
+[Oo]bj/
+artifacts/
+publish/
+out/
+
+# Visual Studio / Rider / IDE state
+.vs/
+.idea/
+*.user
+*.rsuser
+*.suo
+*.userosscache
+*.sln.docstates
+*.DotSettings.user
+
+# VS Code local settings
+.vscode/
+
+# ASP.NET / .NET local configuration and secrets
+appsettings.Local.json
+appsettings.*.Local.json
+appsettings.Development.local.json
+secrets.json
+*.db
+*.db-shm
+*.db-wal
+
+# NuGet
+*.nupkg
+*.snupkg
+packages/
+!packages/build/
+project.lock.json
+project.assets.json
+
+# Test results and coverage
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+coverage/
+coverage-*/
+coverage.cobertura.xml
+coverage.opencover.xml
+lcov.info
+
+# Logs
+*.log
+logs/
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+.DS_Store
+
+# Local dot-prefixed folders
+.*/
+!.git/
+!.github/
+!.devcontainer/

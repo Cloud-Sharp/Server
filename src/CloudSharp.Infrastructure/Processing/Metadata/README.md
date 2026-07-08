@@ -1,0 +1,3 @@
+# Metadata
+
+Metadata extraction adapter.

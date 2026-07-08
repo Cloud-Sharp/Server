@@ -1,0 +1,3 @@
+# Thumbnails
+
+Thumbnail generation adapter.

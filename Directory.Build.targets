@@ -1,0 +1,8 @@
+<Project>
+
+  <PropertyGroup>
+    <IsPackable>false</IsPackable>
+    <IsTestProject Condition="$(MSBuildProjectName.EndsWith('.Tests')) OR $(MSBuildProjectName.EndsWith('.IntegrationTests')) OR $(MSBuildProjectName.EndsWith('.Architecture.Tests'))">true</IsTestProject>
+  </PropertyGroup>
+
+</Project>
