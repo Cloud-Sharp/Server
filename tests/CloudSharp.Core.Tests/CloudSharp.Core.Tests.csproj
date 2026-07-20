@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.Cryptography.KeyDerivation" />
     <PackageReference Include="NUnit" />
     <PackageReference Include="NUnit3TestAdapter" />
     <PackageReference Include="NUnit.Analyzers" />
@@ -12,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\CloudSharp.Core\CloudSharp.Core.csproj" />
+    <ProjectReference Include="..\TestSupport\CloudSharp.TestSupport.csproj" />
   </ItemGroup>
 
 </Project>

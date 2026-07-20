@@ -11,4 +11,8 @@
     <PackageReference Include="Testcontainers.Redis" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\CloudSharp.Core\CloudSharp.Core.csproj" />
+  </ItemGroup>
+
 </Project>
