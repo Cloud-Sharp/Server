@@ -2,6 +2,8 @@
 
 Production v1 backend rebuild. Authoritative design lives in [`.llm/`](.llm/index.md) — read the relevant doc before writing non-trivial code.
 
+전체 제품 목표, 범위, 현재 구현 상태와 목표 아키텍처는 [`docs/project-overview.md`](docs/project-overview.md)에서 확인할 수 있습니다.
+
 ## Build & run
 
 ```bash
