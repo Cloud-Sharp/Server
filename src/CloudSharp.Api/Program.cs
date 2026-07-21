@@ -1,3 +1,4 @@
+using CloudSharp.Api.Middleware;
 using CloudSharp.Core.Common.Time;
 using CloudSharp.Infrastructure.Auth.Tokens;
 
@@ -11,5 +12,6 @@ if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseHttpsRedirection();
 app.Run();
