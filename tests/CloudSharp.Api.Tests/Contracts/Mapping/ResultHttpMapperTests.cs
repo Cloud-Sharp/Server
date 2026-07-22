@@ -118,7 +118,7 @@ public class ResultHttpMapperTests
     [Test]
     public async Task ToHttpResult_WithSingleBusinessError_ShouldMapStatusAndCodeAndEmptyDetails()
     {
-        var definition = new ErrorDefinition("FILE_NAME_CONFLICT", HttpStatusCode.Conflict);
+        var definition = new ErrorDefinition("REQUEST_CONFLICT");
         var error = new TestCloudSharpError(definition, "A file or folder with the same name already exists.");
         var result = Result.Fail<SamplePayload>(error);
 
@@ -129,22 +129,51 @@ public class ResultHttpMapperTests
         status.Should().Be((int)HttpStatusCode.Conflict);
         body.Should().NotBeNull();
         body!.RequestId.Should().Be("req-1");
-        body.Error.Code.Should().Be("FILE_NAME_CONFLICT");
+        body.Error.Code.Should().Be("REQUEST_CONFLICT");
         body.Error.Message.Should().Be("A file or folder with the same name already exists.");
         body.Error.Details.Should().BeEmpty();
         rawJson.Should().Contain("\"requestId\":\"req-1\"");
-        rawJson.Should().Contain("\"code\":\"FILE_NAME_CONFLICT\"");
+        rawJson.Should().Contain("\"code\":\"REQUEST_CONFLICT\"");
         rawJson.Should().Contain("\"details\":[]");
+    }
+
+    [TestCase("REQUEST_VALIDATION_FAILED", HttpStatusCode.BadRequest)]
+    [TestCase("AUTH_TOKEN_REQUIRED", HttpStatusCode.Unauthorized)]
+    [TestCase("AUTH_TOKEN_INVALID", HttpStatusCode.Unauthorized)]
+    [TestCase("AUTH_TOKEN_TYPE_NOT_ALLOWED", HttpStatusCode.Unauthorized)]
+    [TestCase("PERMISSION_DENIED", HttpStatusCode.Forbidden)]
+    [TestCase("RESOURCE_NOT_FOUND", HttpStatusCode.NotFound)]
+    [TestCase("METHOD_NOT_ALLOWED", HttpStatusCode.MethodNotAllowed)]
+    [TestCase("REQUEST_CONFLICT", HttpStatusCode.Conflict)]
+    [TestCase("IDEMPOTENCY_KEY_REUSED", HttpStatusCode.Conflict)]
+    [TestCase("SECRET_RESPONSE_NOT_REPLAYABLE", HttpStatusCode.Conflict)]
+    [TestCase("PRECONDITION_FAILED", HttpStatusCode.PreconditionFailed)]
+    [TestCase("PRECONDITION_REQUIRED", (HttpStatusCode)428)]
+    [TestCase("RATE_LIMITED", HttpStatusCode.TooManyRequests)]
+    [TestCase("DEPENDENCY_UNAVAILABLE", HttpStatusCode.ServiceUnavailable)]
+    public async Task ToHttpResult_WithCatalogErrorCode_ShouldUseMappedStatus(
+        string errorCode,
+        HttpStatusCode expectedStatus)
+    {
+        var error = new TestCloudSharpError(new ErrorDefinition(errorCode), "mapped message");
+        var result = Result.Fail<SamplePayload>(error);
+
+        var httpResult = result.ToHttpResult(_ => Results.Ok());
+        var (status, body, _) = await ExecuteAsync(httpResult, "catalog-request");
+
+        status.Should().Be((int)expectedStatus);
+        body!.Error.Code.Should().Be(errorCode);
+        body.Error.Message.Should().Be("mapped message");
     }
 
     [Test]
     public async Task ToHttpResult_WithMultipleBusinessErrors_ShouldUseFirstErrorAsRepresentative()
     {
         var first = new TestCloudSharpError(
-            new ErrorDefinition("REQUEST_CONFLICT", HttpStatusCode.Conflict),
+            new ErrorDefinition("REQUEST_CONFLICT"),
             "first message");
         var second = new TestCloudSharpError(
-            new ErrorDefinition("RESOURCE_NOT_FOUND", HttpStatusCode.NotFound),
+            new ErrorDefinition("RESOURCE_NOT_FOUND"),
             "second message");
         var result = Result.Fail<SamplePayload>(new[] { first, second });
 
@@ -207,11 +236,10 @@ public class ResultHttpMapperTests
     }
 
     [Test]
-    public async Task ToHttpResult_WithInvalidStatusMetadata_ShouldReturnSafe500AndLogStructuredError()
+    public async Task ToHttpResult_WithUnmappedErrorCode_ShouldReturnSafe500AndLogStructuredError()
     {
         var error = new Error("bad")
-            .WithMetadata("StatusCode", HttpStatusCode.OK)
-            .WithMetadata("ErrorCode", "BAD");
+            .WithMetadata("ErrorCode", "UNMAPPED_ERROR");
         var result = Result.Fail<SamplePayload>(error);
 
         var loggerProvider = new CapturingLoggerProvider();
@@ -224,7 +252,7 @@ public class ResultHttpMapperTests
         status.Should().Be((int)HttpStatusCode.InternalServerError);
         body!.Error.Code.Should().Be("INTERNAL_SERVER_ERROR");
         body.Error.Message.Should().Be("An unexpected error occurred.");
-        rawJson.Should().NotContain("BAD");
+        rawJson.Should().NotContain("UNMAPPED_ERROR");
         rawJson.Should().NotContain("bad");
 
         loggerProvider.Entries.Should().Contain(e =>
@@ -232,7 +260,7 @@ public class ResultHttpMapperTests
             e.Message.Contains("ErrorCount=1") &&
             e.Message.Contains("TraceId=req-5"));
         loggerProvider.Entries.Should().NotContain(e =>
-            e.Message.Contains("BAD") || e.Message.Contains("bad"));
+            e.Message.Contains("UNMAPPED_ERROR") || e.Message.Contains("bad"));
     }
 
     private sealed record SamplePayload(string Name);

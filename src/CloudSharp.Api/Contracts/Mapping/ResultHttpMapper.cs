@@ -52,8 +52,7 @@ public static class ResultHttpMapper
         }
 
         var validationErrors = errors
-            .Where(e => !e.Metadata.ContainsKey(CloudSharpError.StatusCodeMetadataKey)
-                        && e.Metadata.ContainsKey(PropertyNameMetadataKey))
+            .Where(e => e.Metadata.ContainsKey(PropertyNameMetadataKey))
             .ToList();
 
         if (validationErrors.Count > 0)
@@ -71,29 +70,20 @@ public static class ResultHttpMapper
             return ((int)HttpStatusCode.BadRequest, body);
         }
 
-        var businessError = errors.FirstOrDefault(
-            e => e.Metadata.ContainsKey(CloudSharpError.StatusCodeMetadataKey));
-        if (businessError is null)
+        var businessError = errors.FirstOrDefault(e =>
+            e.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var value)
+            && value is string { Length: > 0 });
+        if (businessError is null
+            || businessError.Metadata[CloudSharpError.ErrorCodeMetadataKey] is not string code
+            || !ErrorHttpStatusCodeCatalog.TryGetStatusCode(code, out var status))
         {
             return Safe500(requestId);
         }
 
-        if (businessError.Metadata[CloudSharpError.StatusCodeMetadataKey] is not HttpStatusCode status
-            || !IsValidClientErrorStatus(status))
-        {
-            return Safe500(requestId);
-        }
-
-        if (businessError.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var codeObj)
-            && codeObj is string code && !string.IsNullOrEmpty(code))
-        {
-            var body = new ErrorResponse(
-                requestId,
-                new ErrorBody(code, businessError.Message, []));
-            return ((int)status, body);
-        }
-
-        return Safe500(requestId);
+        var businessBody = new ErrorResponse(
+            requestId,
+            new ErrorBody(code, businessError.Message, []));
+        return ((int)status, businessBody);
     }
 
     private static (int StatusCode, ErrorResponse Body) Safe500(string requestId)
@@ -103,9 +93,6 @@ public static class ResultHttpMapper
             new ErrorBody(InternalServerErrorCode, InternalMessage, []));
         return ((int)HttpStatusCode.InternalServerError, body);
     }
-
-    private static bool IsValidClientErrorStatus(HttpStatusCode status)
-        => (int)status is >= 400 and <= 599;
 
     internal static string ToCamelCase(string propertyName)
     {

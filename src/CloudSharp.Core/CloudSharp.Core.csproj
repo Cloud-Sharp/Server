@@ -9,7 +9,6 @@
     <ItemGroup>
       <PackageReference Include="FluentResults" />
       <PackageReference Include="FluentValidation" />
-      <PackageReference Include="Microsoft.AspNetCore.Cryptography.KeyDerivation" />
     </ItemGroup>
 
 </Project>
