@@ -1,4 +1,5 @@
-﻿using FluentResults;
+using FluentResults;
+using FluentValidation;
 using FluentValidation.Results;
 
 namespace CloudSharp.Core.Common.Results;
@@ -10,8 +11,26 @@ namespace CloudSharp.Core.Common.Results;
 public static class FluentValidationResultMapper
 {
     /// <summary>
-    /// <see cref="ValidationResult"/>를 <see cref="Result"/>로 변환한다.
-    /// 각 ValidationFailure는 ErrorCode, PropertyName, AttemptedValue 메타데이터를 포함하는 Error로 변환된다.
+    /// <see cref="ValidationResult"/>를 비제네릭 <see cref="Result"/>로 변환한다.
+    /// 각 ValidationFailure는 ErrorCode, PropertyName 메타데이터를 포함하는 Error로 변환된다.
+    /// AttemptedValue는 비밀번호 해시, token hash 등 민감값이 로그나 응답으로 전파되는 것을 막기 위해 포함하지 않는다.
+    /// </summary>
+    public static Result ToFailureResult(this ValidationResult validationResult)
+    {
+        if (validationResult.IsValid)
+        {
+            throw new InvalidOperationException(
+                "A valid ValidationResult cannot be converted to a failure Result.");
+        }
+
+        var errors = validationResult.Errors.Select(ToError);
+        return Result.Fail(errors);
+    }
+
+    /// <summary>
+    /// <see cref="ValidationResult"/>를 <see cref="Result{T}"/>로 변환한다.
+    /// 각 ValidationFailure는 ErrorCode, PropertyName 메타데이터를 포함하는 Error로 변환된다.
+    /// AttemptedValue는 비밀번호 해시, token hash 등 민감값이 로그나 응답으로 전파되는 것을 막기 위해 포함하지 않는다.
     /// </summary>
     public static Result<T> ToFailureResult<T>(this ValidationResult validationResult)
     {
@@ -21,13 +40,12 @@ public static class FluentValidationResultMapper
                 "A valid ValidationResult cannot be converted to a failure Result.");
         }
 
-        var errors = validationResult.Errors.Select(failure =>
-            new Error(failure.ErrorMessage)
-                .WithMetadata("ErrorCode", failure.ErrorCode)
-                .WithMetadata("PropertyName", failure.PropertyName)
-                .WithMetadata("AttemptedValue", failure.AttemptedValue));
-
+        var errors = validationResult.Errors.Select(ToError);
         return Result.Fail<T>(errors);
     }
-    
+
+    private static Error ToError(ValidationFailure failure) =>
+        new Error(failure.ErrorMessage)
+            .WithMetadata("ErrorCode", failure.ErrorCode)
+            .WithMetadata("PropertyName", failure.PropertyName);
 }
