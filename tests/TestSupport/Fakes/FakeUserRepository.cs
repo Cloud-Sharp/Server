@@ -47,6 +47,9 @@ public sealed class FakeUserRepository : IUserRepository
     /// <summary>Id 조회가 반환할 오류. null이면 정상 동작한다.</summary>
     public Error? FindByIdFailure { get; set; }
 
+    /// <summary>Id 조회가 던질 예외. null이면 정상 동작한다.</summary>
+    public Exception? FindByIdException { get; set; }
+
     /// <summary>
     /// Id 조회로 반환할 사용자. 설정한 사용자는 저장 상태에 seed되고, null을 설정하면 저장 상태를 비운다.
     /// </summary>
@@ -141,6 +144,11 @@ public sealed class FakeUserRepository : IUserRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
         _searchedIds.Add(id);
+
+        if (FindByIdException is not null)
+        {
+            throw FindByIdException;
+        }
 
         if (FindByIdFailure is not null)
         {
