@@ -36,6 +36,16 @@ public interface IUserRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 내부 Id로 계정을 변경 추적 대상으로 조회한다.
+    /// 계정이 없으면 실패 없이 <c>null</c>을 값으로 반환하며,
+    /// 알려진 의존성 가용성 장애는 실패 결과로 반환한다.
+    /// 조회만 수행하고 트랜잭션을 커밋하지 않는다.
+    /// </summary>
+    Task<Result<User?>> FindByIdAsync(
+        long id,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 새 사용자를 변경 추적 대상에 추가한다. 아직 저장소에는 반영하지 않는다.
     /// </summary>
     Task<Result> AddAsync(User user, CancellationToken cancellationToken = default);
@@ -45,6 +55,8 @@ public interface IUserRepository
     /// 호출부의 트랜잭션은 커밋하지 않는다. 구현체는 <see cref="IUnitOfWork"/>로 저장하고
     /// <see cref="User.Reconstitute"/>로 저장된 상태를 복원하며, 이메일·사용자명 unique constraint
     /// 위반은 각각 <c>USER_EMAIL_CONFLICT</c>, <c>USER_NAME_CONFLICT</c> 오류로 변환한다.
+    /// 조회 시점의 <see cref="User.Version"/>과 저장 시점의 저장소 버전이 다르면
+    /// optimistic concurrency 충돌로 <c>PRECONDITION_FAILED</c> 오류를 반환하고 저장소는 반영하지 않는다.
     /// </summary>
     Task<Result<User>> SaveAsync(CancellationToken cancellationToken = default);
 }

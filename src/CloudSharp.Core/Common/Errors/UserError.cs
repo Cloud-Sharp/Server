@@ -21,6 +21,9 @@ public sealed class UserError : CloudSharpError
     public static UserError PasswordInvalid(string message) =>
         new(new ErrorDefinition(ErrorCodes.User.PasswordInvalid), message);
 
+    public static UserError PasswordMismatch() =>
+        new(new ErrorDefinition(ErrorCodes.User.PasswordMismatch), "Current password does not match.");
+
     public static UserError InvalidRole(string message) =>
         new(new ErrorDefinition(ErrorCodes.User.InvalidRole), message);
 

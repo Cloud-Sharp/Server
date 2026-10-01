@@ -9,6 +9,7 @@ public static class ErrorCodes
     public static class Common
     {
         public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
+        public const string PreconditionFailed = "PRECONDITION_FAILED";
     }
 
     public static class User
@@ -17,6 +18,7 @@ public static class ErrorCodes
         public const string NameInvalid = "USER_NAME_INVALID";
         public const string DisplayNameInvalid = "USER_DISPLAY_NAME_INVALID";
         public const string PasswordInvalid = "USER_PASSWORD_INVALID";
+        public const string PasswordMismatch = "USER_PASSWORD_MISMATCH";
         public const string InvalidRole = "USER_INVALID_ROLE";
         public const string InvalidStatus = "USER_INVALID_STATUS";
         public const string Deleted = "USER_DELETED";
