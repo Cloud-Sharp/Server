@@ -32,4 +32,10 @@ public sealed class UserError : CloudSharpError
 
     public static UserError InvalidState(string message) =>
         new(new ErrorDefinition(ErrorCodes.User.InvalidState), message);
+
+    public static UserError EmailConflict() =>
+        new(new ErrorDefinition(ErrorCodes.User.EmailConflict), "An account with this email already exists.");
+
+    public static UserError NameConflict() =>
+        new(new ErrorDefinition(ErrorCodes.User.NameConflict), "An account with this user name already exists.");
 }

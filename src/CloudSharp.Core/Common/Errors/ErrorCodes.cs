@@ -6,6 +6,11 @@ namespace CloudSharp.Core.Common.Errors;
 /// </summary>
 public static class ErrorCodes
 {
+    public static class Common
+    {
+        public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
+    }
+
     public static class User
     {
         public const string InvalidEmail = "USER_INVALID_EMAIL";
@@ -16,6 +21,8 @@ public static class ErrorCodes
         public const string InvalidStatus = "USER_INVALID_STATUS";
         public const string Deleted = "USER_DELETED";
         public const string InvalidState = "USER_INVALID_STATE";
+        public const string EmailConflict = "USER_EMAIL_CONFLICT";
+        public const string NameConflict = "USER_NAME_CONFLICT";
     }
 
     public static class Session
