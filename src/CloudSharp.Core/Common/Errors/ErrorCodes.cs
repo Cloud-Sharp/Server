@@ -28,6 +28,7 @@ public static class ErrorCodes
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
+        public const string AuthInvalidCredentials = "AUTH_INVALID_CREDENTIALS";
         public const string AuthSessionInvalid = "AUTH_SESSION_INVALID";
         public const string AuthSessionExpired = "AUTH_SESSION_EXPIRED";
         public const string AuthUserInactive = "AUTH_USER_INACTIVE";

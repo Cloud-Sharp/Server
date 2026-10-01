@@ -26,6 +26,16 @@ public interface IUserRepository
         CancellationToken cancellationToken = default);
 
     /// <summary>
+    /// 정규화된 이메일(trim·uppercased 비교값)로 계정을 조회한다.
+    /// 계정이 없으면 실패 없이 <c>null</c>을 값으로 반환하며,
+    /// 알려진 의존성 가용성 장애는 실패 결과로 반환한다.
+    /// 조회만 수행하고 트랜잭션을 커밋하지 않는다.
+    /// </summary>
+    Task<Result<User?>> FindByNormalizedEmailAsync(
+        string normalizedEmail,
+        CancellationToken cancellationToken = default);
+
+    /// <summary>
     /// 새 사용자를 변경 추적 대상에 추가한다. 아직 저장소에는 반영하지 않는다.
     /// </summary>
     Task<Result> AddAsync(User user, CancellationToken cancellationToken = default);

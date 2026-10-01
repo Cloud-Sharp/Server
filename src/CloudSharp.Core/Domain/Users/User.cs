@@ -264,6 +264,12 @@ public sealed class User
     }
 
     /// <summary>
+    /// 로그인 가능 여부. <see cref="UserStatus.Active"/> 계정만 로그인할 수 있다.
+    /// 정지·삭제된 계정은 로그인 시도에서 일반 자격 증명 오류와 구분되지 않게 거부된다.
+    /// </summary>
+    public bool CanLogin() => Status == UserStatus.Active;
+
+    /// <summary>
     /// 표시명을 변경한다. 동일한 값은 no-op으로 처리하고 버전을 올리지 않는다.
     /// <c>null</c>을 전달해 표시명을 지울 수 있다. <see cref="UserStatus.Deleted"/> 상태에서는 거부한다.
     /// </summary>

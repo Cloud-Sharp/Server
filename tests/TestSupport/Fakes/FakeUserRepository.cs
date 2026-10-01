@@ -5,8 +5,8 @@ using FluentResults;
 namespace CloudSharp.TestSupport.Fakes;
 
 /// <summary>
-/// 테스트용 <see cref="IUserRepository"/>. uniqueness 사전 확인 결과, 저장 실패, 저장 결과
-/// override를 구성할 수 있고 확인·추가 호출을 기록해 use case와의 계약을 검증한다.
+/// 테스트용 <see cref="IUserRepository"/>. uniqueness 사전 확인 결과, 저장 실패, 저장 결과,
+/// 이메일 조회 결과 override를 구성할 수 있고 확인·추가·조회 호출을 기록해 use case와의 계약을 검증한다.
 /// 기본 동작은 AddAsync로 추적된 사용자를 <see cref="User.Reconstitute"/>로
 /// <see cref="AssignedId"/>와 함께 복원해 반환한다.
 /// </summary>
@@ -14,6 +14,7 @@ public sealed class FakeUserRepository : IUserRepository
 {
     private readonly List<string> _checkedNormalizedEmails = new();
     private readonly List<string> _checkedNormalizedUserNames = new();
+    private readonly List<string> _searchedNormalizedEmails = new();
     private readonly List<User> _addedUsers = new();
 
     public bool EmailExists { get; set; }
@@ -22,6 +23,15 @@ public sealed class FakeUserRepository : IUserRepository
 
     /// <summary>사전 uniqueness 확인 단계가 반환할 오류. null이면 정상 동작한다.</summary>
     public Error? ExistenceCheckFailure { get; set; }
+
+    /// <summary>이메일 조회가 반환할 오류. null이면 정상 동작한다.</summary>
+    public Error? FindByEmailFailure { get; set; }
+
+    /// <summary>이메일 조회가 던질 예외. null이면 정상 동작한다.</summary>
+    public Exception? FindByEmailException { get; set; }
+
+    /// <summary>이메일 조회가 반환할 사용자. null이면 계정이 없는 것으로 처리한다.</summary>
+    public User? FoundUser { get; set; }
 
     /// <summary>AddAsync가 반환할 결과. 기본값은 성공.</summary>
     public Result AddResult { get; set; } = Result.Ok();
@@ -39,6 +49,8 @@ public sealed class FakeUserRepository : IUserRepository
 
     public IReadOnlyList<string> CheckedNormalizedUserNames => _checkedNormalizedUserNames;
 
+    public IReadOnlyList<string> SearchedNormalizedEmails => _searchedNormalizedEmails;
+
     public IReadOnlyList<User> AddedUsers => _addedUsers;
 
     public Task<Result<bool>> ExistsByNormalizedEmailAsync(
@@ -55,6 +67,19 @@ public sealed class FakeUserRepository : IUserRepository
     {
         _checkedNormalizedUserNames.Add(normalizedUserName);
         return Task.FromResult(Check(UserNameExists));
+    }
+
+    public Task<Result<User?>> FindByNormalizedEmailAsync(
+        string normalizedEmail,
+        CancellationToken cancellationToken = default)
+    {
+        _searchedNormalizedEmails.Add(normalizedEmail);
+        if (FindByEmailException is not null)
+        {
+            throw FindByEmailException;
+        }
+
+        return Task.FromResult(Find());
     }
 
     public Task<Result> AddAsync(User user, CancellationToken cancellationToken = default)
@@ -93,4 +118,9 @@ public sealed class FakeUserRepository : IUserRepository
         ExistenceCheckFailure is null
             ? Result.Ok(exists)
             : Result.Fail<bool>(ExistenceCheckFailure);
+
+    private Result<User?> Find() =>
+        FindByEmailFailure is null
+            ? Result.Ok<User?>(FoundUser)
+            : Result.Fail<User?>(FindByEmailFailure);
 }
