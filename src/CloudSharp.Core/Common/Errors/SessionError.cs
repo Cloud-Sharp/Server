@@ -12,6 +12,9 @@ public sealed class SessionError : CloudSharpError
     public static SessionError TokenHashInvalid(string message) =>
         new(new ErrorDefinition(ErrorCodes.Session.TokenHashInvalid), message);
 
+    public static SessionError AuthInvalidCredentials() =>
+        new(new ErrorDefinition(ErrorCodes.Session.AuthInvalidCredentials), "Invalid login id or password.");
+
     public static SessionError AuthSessionInvalid() =>
         new(new ErrorDefinition(ErrorCodes.Session.AuthSessionInvalid), "Session is invalid or revoked.");
 

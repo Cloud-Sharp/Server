@@ -6,21 +6,31 @@ namespace CloudSharp.Core.Common.Errors;
 /// </summary>
 public static class ErrorCodes
 {
+    public static class Common
+    {
+        public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
+        public const string PreconditionFailed = "PRECONDITION_FAILED";
+    }
+
     public static class User
     {
         public const string InvalidEmail = "USER_INVALID_EMAIL";
         public const string NameInvalid = "USER_NAME_INVALID";
         public const string DisplayNameInvalid = "USER_DISPLAY_NAME_INVALID";
         public const string PasswordInvalid = "USER_PASSWORD_INVALID";
+        public const string PasswordMismatch = "USER_PASSWORD_MISMATCH";
         public const string InvalidRole = "USER_INVALID_ROLE";
         public const string InvalidStatus = "USER_INVALID_STATUS";
         public const string Deleted = "USER_DELETED";
         public const string InvalidState = "USER_INVALID_STATE";
+        public const string EmailConflict = "USER_EMAIL_CONFLICT";
+        public const string NameConflict = "USER_NAME_CONFLICT";
     }
 
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
+        public const string AuthInvalidCredentials = "AUTH_INVALID_CREDENTIALS";
         public const string AuthSessionInvalid = "AUTH_SESSION_INVALID";
         public const string AuthSessionExpired = "AUTH_SESSION_EXPIRED";
         public const string AuthUserInactive = "AUTH_USER_INACTIVE";

@@ -282,6 +282,38 @@ public class UserTests
     }
 
     [Test]
+    public void CanLogin_WithActiveUser_ShouldReturnTrue()
+    {
+        var user = CreateUser();
+
+        var canLogin = user.CanLogin();
+
+        Assert.That(canLogin, Is.True);
+    }
+
+    [Test]
+    public void CanLogin_WithSuspendedUser_ShouldReturnFalse()
+    {
+        var user = CreateUser();
+        user.Suspend(Now.AddMinutes(1));
+
+        var canLogin = user.CanLogin();
+
+        Assert.That(canLogin, Is.False);
+    }
+
+    [Test]
+    public void CanLogin_WithDeletedUser_ShouldReturnFalse()
+    {
+        var user = CreateUser();
+        user.Delete(Now.AddMinutes(1));
+
+        var canLogin = user.CanLogin();
+
+        Assert.That(canLogin, Is.False);
+    }
+
+    [Test]
     public void ChangeProfile_WithNewDisplayName_ShouldUpdateAndBumpVersion()
     {
         var user = CreateUser();
