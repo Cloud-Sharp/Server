@@ -3,6 +3,7 @@ using CloudSharp.Core.Domain.Sessions;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Logins;
+using CloudSharp.Core.UseCases.Auth.Sessions;
 using CloudSharp.Core.Tests.TestSupport.Builders;
 using CloudSharp.TestSupport.Fakes;
 using FluentResults;
@@ -40,7 +41,8 @@ public class LoginUseCaseTests
         public FakeTransactionExecutor TransactionExecutor { get; } = new();
 
         public LoginUseCase UseCase =>
-            new(UserRepository, SessionStore, PasswordHasher, TokenIssuer, TransactionExecutor, Clock);
+            new(UserRepository, PasswordHasher,
+                new SessionIssuanceService(TokenIssuer, SessionStore, Clock), TransactionExecutor);
     }
 
     [Test]

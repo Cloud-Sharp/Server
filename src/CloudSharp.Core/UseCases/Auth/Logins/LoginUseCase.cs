@@ -2,11 +2,9 @@ using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
-using CloudSharp.Core.Common.Time;
-using CloudSharp.Core.Common.Tokens;
-using CloudSharp.Core.Domain.Sessions;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
+using CloudSharp.Core.UseCases.Auth.Sessions;
 using FluentResults;
 
 namespace CloudSharp.Core.UseCases.Auth.Logins;
@@ -19,11 +17,9 @@ namespace CloudSharp.Core.UseCases.Auth.Logins;
 /// </summary>
 public sealed class LoginUseCase(
     IUserRepository userRepository,
-    ISessionStore sessionStore,
     IPasswordHasher passwordHasher,
-    ITokenIssuer tokenIssuer,
-    ITransactionExecutor transactionExecutor,
-    IClock clock)
+    SessionIssuanceService sessionIssuanceService,
+    ITransactionExecutor transactionExecutor)
 {
     private const string BearerTokenType = "Bearer";
 
@@ -59,44 +55,15 @@ public sealed class LoginUseCase(
             return InvalidCredentials();
         }
 
-        return await IssueSessionAsync(user, cancellationToken);
-    }
-
-    private async Task<Result<LoginResultDto>> IssueSessionAsync(
-        User user,
-        CancellationToken cancellationToken)
-    {
-        if (user.Id <= 0)
+        var sessionResult = await sessionIssuanceService.IssueAsync(user, cancellationToken);
+        if (sessionResult.IsFailed)
         {
-            throw new InvalidOperationException(
-                "UserRepository returned a user without a positive internal id.");
+            return Result.Fail<LoginResultDto>(sessionResult.Errors);
         }
 
-        cancellationToken.ThrowIfCancellationRequested();
-
-        var issuedToken = tokenIssuer.Issue(TokenKind.Session);
-
-        var tokenHashResult = TokenHash.Create(issuedToken.HashedToken);
-        if (tokenHashResult.IsFailed)
-        {
-            return Result.Fail<LoginResultDto>(tokenHashResult.Errors);
-        }
-
-        var session = UserSession.Issue(
-            user.Id,
-            user.PublicId,
-            tokenHashResult.Value,
-            user.SecurityVersion,
-            clock.UtcNow);
-
-        var storeResult = await sessionStore.StoreAsync(session, cancellationToken);
-        if (storeResult.IsFailed)
-        {
-            return Result.Fail<LoginResultDto>(storeResult.Errors);
-        }
-
+        var session = sessionResult.Value;
         return Result.Ok(new LoginResultDto(
-            issuedToken.PlainToken,
+            session.AccessToken,
             BearerTokenType,
             session.IdleExpiresAt,
             session.AbsoluteExpiresAt,

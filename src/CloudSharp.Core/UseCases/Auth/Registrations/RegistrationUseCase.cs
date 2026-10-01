@@ -4,10 +4,9 @@ using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
-using CloudSharp.Core.Common.Tokens;
-using CloudSharp.Core.Domain.Sessions;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
+using CloudSharp.Core.UseCases.Auth.Sessions;
 using FluentResults;
 
 namespace CloudSharp.Core.UseCases.Auth.Registrations;
@@ -19,9 +18,8 @@ namespace CloudSharp.Core.UseCases.Auth.Registrations;
 /// </summary>
 public sealed class RegistrationUseCase(
     IUserRepository userRepository,
-    ISessionStore sessionStore,
     IPasswordHasher passwordHasher,
-    ITokenIssuer tokenIssuer,
+    SessionIssuanceService sessionIssuanceService,
     ITransactionExecutor transactionExecutor,
     IClock clock)
 {
@@ -58,13 +56,20 @@ public sealed class RegistrationUseCase(
             return Result.Fail<RegistrationResultDto>(persistResult.Errors);
         }
 
-        var sessionResult = await IssueSessionAsync(persistResult.Value, cancellationToken);
+        var user = persistResult.Value;
+        var sessionResult = await sessionIssuanceService.IssueAsync(user, cancellationToken);
         if (sessionResult.IsFailed)
         {
             return Result.Fail<RegistrationResultDto>(sessionResult.Errors);
         }
 
-        return sessionResult;
+        var session = sessionResult.Value;
+        return Result.Ok(new RegistrationResultDto(
+            session.AccessToken,
+            BearerTokenType,
+            session.IdleExpiresAt,
+            session.AbsoluteExpiresAt,
+            ToUserDto(user)));
     }
 
     private async Task<Result<User>> PersistUserAsync(User user, CancellationToken cancellationToken)
@@ -118,39 +123,6 @@ public sealed class RegistrationUseCase(
         }
 
         return Result.Ok(savedUser);
-    }
-
-    private async Task<Result<RegistrationResultDto>> IssueSessionAsync(
-        User user,
-        CancellationToken cancellationToken)
-    {
-        var issuedToken = tokenIssuer.Issue(TokenKind.Session);
-
-        var tokenHashResult = TokenHash.Create(issuedToken.HashedToken);
-        if (tokenHashResult.IsFailed)
-        {
-            return Result.Fail<RegistrationResultDto>(tokenHashResult.Errors);
-        }
-
-        var session = UserSession.Issue(
-            user.Id,
-            user.PublicId,
-            tokenHashResult.Value,
-            user.SecurityVersion,
-            clock.UtcNow);
-
-        var storeResult = await sessionStore.StoreAsync(session, cancellationToken);
-        if (storeResult.IsFailed)
-        {
-            return Result.Fail<RegistrationResultDto>(storeResult.Errors);
-        }
-
-        return Result.Ok(new RegistrationResultDto(
-            issuedToken.PlainToken,
-            BearerTokenType,
-            session.IdleExpiresAt,
-            session.AbsoluteExpiresAt,
-            ToUserDto(user)));
     }
 
     private static UserDto ToUserDto(User user) =>

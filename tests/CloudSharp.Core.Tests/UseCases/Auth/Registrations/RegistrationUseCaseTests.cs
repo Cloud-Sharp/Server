@@ -2,6 +2,7 @@ using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Registrations;
+using CloudSharp.Core.UseCases.Auth.Sessions;
 using CloudSharp.Core.Tests.TestSupport.Builders;
 using CloudSharp.TestSupport.Fakes;
 using FluentResults;
@@ -34,7 +35,8 @@ public class RegistrationUseCaseTests
         public FakeTransactionExecutor TransactionExecutor { get; } = new();
 
         public RegistrationUseCase UseCase =>
-            new(UserRepository, SessionStore, PasswordHasher, TokenIssuer, TransactionExecutor, Clock);
+            new(UserRepository, PasswordHasher,
+                new SessionIssuanceService(TokenIssuer, SessionStore, Clock), TransactionExecutor, Clock);
     }
 
     [Test]
@@ -470,6 +472,28 @@ public class RegistrationUseCaseTests
                 TestRegistrationCommands.Valid(), cancellationSource.Token));
         Assert.Multiple(() =>
         {
+            Assert.That(harness.TokenIssuer.IssuedTokens, Is.Empty);
+            Assert.That(harness.SessionStore.StoredSessions, Is.Empty);
+        });
+    }
+
+    [Test]
+    public void ExecuteAsync_WithCancellationAfterCommit_ShouldNotIssueTokenAndKeepCommittedAccount()
+    {
+        // Arrange
+        var harness = new Harness();
+        using var cancellationSource = new CancellationTokenSource();
+        harness.TransactionExecutor.OnCommitted = cancellationSource.Cancel;
+
+        // Act & Assert
+        Assert.ThrowsAsync<OperationCanceledException>(
+            () => harness.UseCase.ExecuteAsync(
+                TestRegistrationCommands.Valid(), cancellationSource.Token));
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
+            Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(0));
+            Assert.That(harness.UserRepository.AddedUsers, Has.Count.EqualTo(1));
             Assert.That(harness.TokenIssuer.IssuedTokens, Is.Empty);
             Assert.That(harness.SessionStore.StoredSessions, Is.Empty);
         });
