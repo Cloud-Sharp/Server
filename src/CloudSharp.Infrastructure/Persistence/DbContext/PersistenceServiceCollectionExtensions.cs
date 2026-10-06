@@ -1,4 +1,5 @@
 using CloudSharp.Core.Abstractions.Transactions;
+using CloudSharp.Core.Domain.Users;
 using CloudSharp.Infrastructure.Persistence.Transactions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -11,6 +12,10 @@ namespace CloudSharp.Infrastructure.Persistence.DbContext;
 /// </summary>
 public static class PersistenceServiceCollectionExtensions
 {
+    // Stateless translator shared as a singleton so equal connection strings produce
+    // equal DbContextOptions and EF reuses its cached internal service provider.
+    private static readonly PostgresEnumNameTranslator EnumNameTranslator = new();
+
     /// <summary>
     /// <c>ConnectionStrings:PostgreSql</c> 연결 문자열을 사용해
     /// <see cref="AppDbContext"/>를 요청 범위로 등록한다.
@@ -32,7 +37,10 @@ public static class PersistenceServiceCollectionExtensions
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(
                 connectionString,
-                npgsql => npgsql.MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)));
+                npgsql => npgsql
+                    .MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)
+                    .MapEnum<SystemRole>(SystemRoleEnumName, nameTranslator: EnumNameTranslator)
+                    .MapEnum<UserStatus>(UserStatusEnumName, nameTranslator: EnumNameTranslator)));
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
         services.AddScoped<DapperDbSession>();
@@ -41,4 +49,7 @@ public static class PersistenceServiceCollectionExtensions
     }
 
     internal const string ConnectionStringName = "PostgreSql";
+
+    internal const string SystemRoleEnumName = "system_role_t";
+    internal const string UserStatusEnumName = "user_status_t";
 }

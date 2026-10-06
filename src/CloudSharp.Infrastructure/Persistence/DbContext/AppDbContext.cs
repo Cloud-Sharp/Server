@@ -1,3 +1,4 @@
+using CloudSharp.Infrastructure.Persistence.Entities;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.DbContext;
@@ -8,6 +9,8 @@ namespace CloudSharp.Infrastructure.Persistence.DbContext;
 public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     : Microsoft.EntityFrameworkCore.DbContext(options)
 {
+    public DbSet<UserEntity> Users => Set<UserEntity>();
+
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
