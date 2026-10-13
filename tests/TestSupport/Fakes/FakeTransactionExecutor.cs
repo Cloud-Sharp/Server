@@ -9,7 +9,7 @@ namespace CloudSharp.TestSupport.Fakes;
 /// 성공 결과는 커밋, 실패 결과와 예외는 롤백으로 간주해 횟수를 기록한다.
 /// 진입 시 토큰이 이미 취소되었으면 실제 adapter처럼 <see cref="OperationCanceledException"/>을 던진다.
 /// </summary>
-public sealed class FakeTransactionExecutor : ITransactionExecutor
+public sealed class FakeTransactionExecutor(FakePersistenceSession? session = null) : ITransactionExecutor
 {
     private int _commitCount;
     private int _rollbackCount;
@@ -28,15 +28,22 @@ public sealed class FakeTransactionExecutor : ITransactionExecutor
     {
         ArgumentNullException.ThrowIfNull(operation);
         cancellationToken.ThrowIfCancellationRequested();
+        session?.Begin();
 
         try
         {
             var result = await operation(cancellationToken);
+            if (result.IsSuccess)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             Record(result.IsFailed);
             return result;
         }
         catch
         {
+            session?.Rollback();
             _rollbackCount++;
             throw;
         }
@@ -49,15 +56,22 @@ public sealed class FakeTransactionExecutor : ITransactionExecutor
     {
         ArgumentNullException.ThrowIfNull(operation);
         cancellationToken.ThrowIfCancellationRequested();
+        session?.Begin();
 
         try
         {
             var result = await operation(cancellationToken);
+            if (result.IsSuccess)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             Record(result.IsFailed);
             return result;
         }
         catch
         {
+            session?.Rollback();
             _rollbackCount++;
             throw;
         }
@@ -67,10 +81,12 @@ public sealed class FakeTransactionExecutor : ITransactionExecutor
     {
         if (failed)
         {
+            session?.Rollback();
             _rollbackCount++;
             return;
         }
 
+        session?.Commit();
         _commitCount++;
         OnCommitted?.Invoke();
     }

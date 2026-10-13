@@ -27,7 +27,9 @@ public class PasswordChangeUseCaseTests
         public Harness()
         {
             Clock = new FakeClock(InitialNow);
-            UserRepository = new FakeUserRepository();
+            UserRepository = new FakeUserRepository(PersistenceSession);
+            UnitOfWork = new FakeUnitOfWork(PersistenceSession);
+            TransactionExecutor = new FakeTransactionExecutor(PersistenceSession);
             Account = ActiveAccount();
             UserRepository.FoundByIdUser = Account;
             CurrentSession = Session(Account, CurrentSessionTokenHash, Account.SecurityVersion);
@@ -42,11 +44,15 @@ public class PasswordChangeUseCaseTests
 
         public FakePasswordHasher PasswordHasher { get; } = new();
 
+        public FakePersistenceSession PersistenceSession { get; } = new();
+
         public FakeUserRepository UserRepository { get; }
+
+        public FakeUnitOfWork UnitOfWork { get; }
 
         public FakeSessionStore SessionStore { get; }
 
-        public FakeTransactionExecutor TransactionExecutor { get; } = new();
+        public FakeTransactionExecutor TransactionExecutor { get; }
 
         public User Account { get; set; }
 
@@ -55,7 +61,7 @@ public class PasswordChangeUseCaseTests
         public UserSession OtherSession { get; }
 
         public PasswordChangeUseCase UseCase =>
-            new(UserRepository, SessionStore, PasswordHasher, TransactionExecutor, Clock);
+            new(UserRepository, UnitOfWork, SessionStore, PasswordHasher, TransactionExecutor, Clock);
 
         public PasswordChangeCommand ValidCommand(
             string? currentPassword = null,
@@ -79,6 +85,9 @@ public class PasswordChangeUseCaseTests
         // Assert
         Assert.That(result.IsSuccess, Is.True);
         Assert.That(result.Value.Version, Is.EqualTo(2L));
+        Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+        Assert.That(harness.UserRepository.UpdateCalls.Single().OriginalVersion, Is.EqualTo(1L));
+        Assert.That(harness.UserRepository.UpdateCalls.Single().User.Version, Is.EqualTo(2L));
         var persisted = harness.UserRepository.PersistedUsersById[UserId];
         Assert.Multiple(() =>
         {
@@ -428,7 +437,8 @@ public class PasswordChangeUseCaseTests
         Assert.Multiple(() =>
         {
             Assert.That(harness.PasswordHasher.VerifiedInputs, Is.Empty);
-            Assert.That(harness.UserRepository.SavedByIdUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.Zero);
             Assert.That(harness.SessionStore.FinalizePasswordChangeCalls, Is.Empty);
         });
     }
@@ -500,7 +510,8 @@ public class PasswordChangeUseCaseTests
         {
             Assert.That(harness.UserRepository.SearchedIds, Is.EqualTo(new[] { UserId }));
             Assert.That(harness.PasswordHasher.VerifiedInputs, Is.Empty);
-            Assert.That(harness.UserRepository.SavedByIdUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.Zero);
             Assert.That(harness.SessionStore.FinalizePasswordChangeCalls, Is.Empty);
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
         });
@@ -527,7 +538,8 @@ public class PasswordChangeUseCaseTests
             Assert.That(persisted.PasswordHash, Is.EqualTo(originalHash));
             Assert.That(persisted.SecurityVersion, Is.EqualTo(1L));
             Assert.That(persisted.Version, Is.EqualTo(1L));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.Zero);
             Assert.That(harness.SessionStore.FinalizePasswordChangeCalls, Is.Empty);
             Assert.That(harness.SessionStore.PersistedSessions[CurrentSessionTokenHash].SecurityVersion,
                 Is.EqualTo(1L));
@@ -563,8 +575,8 @@ public class PasswordChangeUseCaseTests
         // Arrange
         var harness = new Harness();
         var originalHash = harness.Account.PasswordHash;
-        harness.UserRepository.BeforeSaveById = user =>
-            harness.UserRepository.BumpStoredVersion(user.Id);
+        harness.UnitOfWork.BeforeSaveChanges = _ =>
+            harness.UserRepository.BumpStoredVersion(UserId);
         var command = harness.ValidCommand();
 
         // Act
@@ -577,7 +589,7 @@ public class PasswordChangeUseCaseTests
         {
             Assert.That(persisted.PasswordHash, Is.EqualTo(originalHash));
             Assert.That(persisted.SecurityVersion, Is.EqualTo(1L));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Has.Count.EqualTo(1));
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(1));
             Assert.That(harness.SessionStore.FinalizePasswordChangeCalls, Is.Empty);
             Assert.That(harness.SessionStore.RemovedSessions, Is.Empty);
             Assert.That(harness.SessionStore.PersistedSessions[CurrentSessionTokenHash].SecurityVersion,
@@ -588,12 +600,38 @@ public class PasswordChangeUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_ShouldKeepAccountWithoutFlushingRejectedUpdate()
+    {
+        // Arrange
+        var harness = new Harness();
+        var originalHash = harness.Account.PasswordHash;
+        harness.UserRepository.UpdateResult = Result.Fail(CommonError.DependencyUnavailable());
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(harness.ValidCommand());
+
+        // Assert
+        AssertSingleError(result, ErrorCodes.Common.DependencyUnavailable);
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(1));
+            Assert.That(harness.UserRepository.UpdateCalls[0].OriginalVersion, Is.EqualTo(1L));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.Zero);
+            Assert.That(harness.UserRepository.PersistedUsersById[UserId].PasswordHash, Is.EqualTo(originalHash));
+            Assert.That(harness.UserRepository.PersistedUsersById[UserId].SecurityVersion, Is.EqualTo(1L));
+            Assert.That(harness.TransactionExecutor.CommitCount, Is.Zero);
+            Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
+            Assert.That(harness.SessionStore.FinalizePasswordChangeCalls, Is.Empty);
+        });
+    }
+
+    [Test]
     public async Task ExecuteAsync_WithPersistenceFailure_ShouldReturnDependencyUnavailableWithoutFinalizingSessions()
     {
         // Arrange
         var harness = new Harness();
         var originalHash = harness.Account.PasswordHash;
-        harness.UserRepository.SaveByIdErrorFactory = (_, call) =>
+        harness.UnitOfWork.SaveChangesFailureFactory = call =>
             call == 1 ? CommonError.DependencyUnavailable() : null;
         var command = harness.ValidCommand();
 
@@ -639,7 +677,7 @@ public class PasswordChangeUseCaseTests
             Assert.That(harness.SessionStore.PersistedSessions.ContainsKey(CurrentSessionTokenHash), Is.False);
             Assert.That(harness.SessionStore.PersistedSessions.ContainsKey(OtherSessionTokenHash), Is.True);
             Assert.That(harness.UserRepository.SearchedIds, Is.EqualTo(new[] { UserId }));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Has.Count.EqualTo(1));
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(1));
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(0));
         });
@@ -666,7 +704,10 @@ public class PasswordChangeUseCaseTests
             Assert.That(persisted.SecurityVersion, Is.EqualTo(3L));
             Assert.That(persisted.Version, Is.EqualTo(3L));
             Assert.That(harness.UserRepository.SearchedIds, Is.EqualTo(new[] { UserId, UserId }));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Has.Count.EqualTo(2));
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(2));
+            Assert.That(harness.UserRepository.UpdateCalls.Select(call => call.OriginalVersion),
+                Is.EqualTo(new[] { 1L, 2L }));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(2));
             Assert.That(harness.SessionStore.RemovedSessions, Has.Count.EqualTo(1));
             Assert.That(harness.SessionStore.PersistedSessions.ContainsKey(CurrentSessionTokenHash), Is.True);
             Assert.That(harness.SessionStore.PersistedSessions[CurrentSessionTokenHash].SecurityVersion,
@@ -684,7 +725,7 @@ public class PasswordChangeUseCaseTests
         harness.SessionStore.FinalizePasswordChangeFailure =
             Result.Fail(CommonError.DependencyUnavailable());
         harness.SessionStore.RemoveFailure = Result.Fail(CommonError.DependencyUnavailable());
-        harness.UserRepository.SaveByIdErrorFactory = (_, call) =>
+        harness.UnitOfWork.SaveChangesFailureFactory = call =>
             call >= 2 ? CommonError.DependencyUnavailable() : null;
         var command = harness.ValidCommand();
 
@@ -699,7 +740,35 @@ public class PasswordChangeUseCaseTests
             Assert.That(persisted.SecurityVersion, Is.EqualTo(2L));
             Assert.That(persisted.Version, Is.EqualTo(2L));
             Assert.That(harness.UserRepository.SearchedIds, Is.EqualTo(new[] { UserId, UserId }));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Has.Count.EqualTo(2));
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(2));
+            Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
+            Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldKeepPasswordAfterUnclassifiedCompensationFailure()
+    {
+        // Arrange
+        var harness = new Harness();
+        harness.SessionStore.FinalizePasswordChangeFailure = Result.Fail(CommonError.DependencyUnavailable());
+        harness.SessionStore.RemoveFailure = Result.Fail(CommonError.DependencyUnavailable());
+        harness.UnitOfWork.SaveChangesFailureFactory = call => call == 2 ? new Error("Unclassified save failure") : null;
+        var command = harness.ValidCommand();
+        var changedHash = new FakePasswordHasher().Hash(command.NewPassword);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(command);
+
+        // Assert
+        AssertSingleError(result, ErrorCodes.Common.DependencyUnavailable);
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(2));
+            Assert.That(harness.UserRepository.SearchedIds, Is.EqualTo(new[] { UserId, UserId }));
+            Assert.That(harness.UserRepository.PersistedUsersById[UserId].PasswordHash, Is.EqualTo(changedHash));
+            Assert.That(harness.UserRepository.PersistedUsersById[UserId].SecurityVersion, Is.EqualTo(2L));
+            Assert.That(harness.UserRepository.PersistedUsersById[UserId].Version, Is.EqualTo(2L));
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
         });
@@ -713,11 +782,11 @@ public class PasswordChangeUseCaseTests
         harness.SessionStore.FinalizePasswordChangeFailure =
             Result.Fail(CommonError.DependencyUnavailable());
         harness.SessionStore.RemoveFailure = Result.Fail(CommonError.DependencyUnavailable());
-        harness.UserRepository.BeforeSaveById = user =>
+        harness.UnitOfWork.BeforeSaveChanges = call =>
         {
-            if (harness.UserRepository.SavedByIdUsers.Count == 2)
+            if (call == 2)
             {
-                harness.UserRepository.BumpStoredVersion(user.Id);
+                harness.UserRepository.BumpStoredVersion(UserId);
             }
         };
         var command = harness.ValidCommand();
@@ -734,7 +803,10 @@ public class PasswordChangeUseCaseTests
             Assert.That(persisted.Version, Is.EqualTo(4L));
             Assert.That(harness.UserRepository.SearchedIds,
                 Is.EqualTo(new[] { UserId, UserId, UserId }));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Has.Count.EqualTo(3));
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(3));
+            Assert.That(harness.UserRepository.UpdateCalls.Select(call => call.OriginalVersion),
+                Is.EqualTo(new[] { 1L, 2L, 3L }));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(3));
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(2));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
         });
@@ -771,7 +843,7 @@ public class PasswordChangeUseCaseTests
         {
             Assert.That(persisted.SecurityVersion, Is.EqualTo(3L));
             Assert.That(persisted.Version, Is.EqualTo(3L));
-            Assert.That(harness.UserRepository.SavedByIdUsers, Has.Count.EqualTo(1));
+            Assert.That(harness.UserRepository.UpdateCalls, Has.Count.EqualTo(1));
             Assert.That(harness.UserRepository.SearchedIds, Is.EqualTo(new[] { UserId, UserId }));
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(2));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(0));
@@ -794,7 +866,8 @@ public class PasswordChangeUseCaseTests
         {
             Assert.That(harness.SessionStore.SearchedTokenHashes, Is.Empty);
             Assert.That(harness.UserRepository.SearchedIds, Is.Empty);
-            Assert.That(harness.UserRepository.SavedByIdUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.Zero);
             Assert.That(harness.SessionStore.FinalizePasswordChangeCalls, Is.Empty);
             Assert.That(harness.SessionStore.PersistedSessions, Has.Count.EqualTo(2));
         });

@@ -32,10 +32,20 @@ public sealed class RenameFileUseCase(
                     command.FileId,
                     transactionCancellationToken);
 
+                var expectedVersion = file.Version;
                 var renameResult = file.Rename(command.Name);
                 if (renameResult.IsFailed)
                 {
                     return renameResult;
+                }
+
+                var updateResult = await fileRepository.UpdateAsync(
+                    file,
+                    expectedVersion,
+                    transactionCancellationToken);
+                if (updateResult.IsFailed)
+                {
+                    return updateResult;
                 }
 
                 var saveResult = await unitOfWork.SaveChangesAsync(
@@ -48,8 +58,13 @@ public sealed class RenameFileUseCase(
 }
 ```
 
-리포지토리는 엔티티를 조회하거나 변경 추적에 추가할 뿐 독자적으로 commit하지 않는다.
+리포지토리는 독립적인 도메인 snapshot을 조회하거나 지정된 변경을 등록할 뿐 저장·commit하지 않는다.
 유즈케이스가 관련 리포지토리 호출을 모두 마친 뒤 한 번 저장한다.
+
+Core 도메인과 EF entity는 별개 모델이다. 도메인 객체만 수정한 뒤 UnitOfWork를 호출하면
+그 변경은 등록되지 않으므로 `UpdateAsync`로 변경 내용과 수정 전 버전을 명시적으로 전달한다.
+신규 User는 `AddAsync` → UnitOfWork 저장 → 같은 트랜잭션의 `FindByPublicIdAsync` 조회로
+DB가 생성한 내부 Id를 얻는다.
 
 ## Dapper와 EF Core 혼합
 
@@ -97,6 +112,13 @@ Infrastructure의 Dapper 리포지토리는 현재 `AppDbContext`의 connection�
 트랜잭션 콜백 안에서 다른 `ITransactionExecutor.ExecuteAsync`를 호출하는 중첩
 트랜잭션은 지원하지 않는다. 여러 작업이 같은 원자성 경계를 가져야 한다면 바깥
 유즈케이스의 콜백 안에서 각각의 작업을 직접 호출한다.
+
+변경은 트랜잭션 콜백 안에서 등록한다. Infrastructure executor는 각 실행 전략 시도의
+트랜잭션 종료·dispose 후 EF 추적 상태를 정리한다. 성공·실패·예외·취소 이후 다음
+트랜잭션이나 재시도로 이전 변경이 넘어가지 않으며, 콜백 진행 중에는 추적을 유지한다.
+
+UnitOfWork는 알려진 unique·concurrency·가용성 실패를 Core 오류로 변환한다.
+`SaveChangesAsync`의 성공은 commit을 의미하지 않는다. 취소와 예상 밖 예외는 전파한다.
 
 ## 격리 수준
 

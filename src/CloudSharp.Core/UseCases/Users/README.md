@@ -15,7 +15,8 @@ Serves the current-user profile query behind `GET /api/v2/me`.
   access → load the user with `IUserRepository.FindByIdAsync` inside `ITransactionExecutor`
   (repository methods are transaction-scoped by contract) → recheck active state → map
   profile fields and `Version` from the same aggregate. Read-only: no `AddAsync`,
-  `SaveAsync`, or domain mutation.
+  `UpdateAsync`, UnitOfWork saving, or domain mutation. Queries return independent snapshots;
+  this read-only use case has no UnitOfWork dependency.
 - **Failure policy**: missing, suspended, and deleted accounts all return
   `AUTH_SESSION_INVALID` without distinguishing existence or state. Repository and
   transaction failures (e.g. `DEPENDENCY_UNAVAILABLE`) are preserved, and cancellation

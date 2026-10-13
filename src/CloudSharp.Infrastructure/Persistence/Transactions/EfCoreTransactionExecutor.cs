@@ -19,19 +19,28 @@ internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITrans
         var strategy = dbContext.Database.CreateExecutionStrategy();
         return strategy.ExecuteAsync(async strategyCancellationToken =>
         {
-            await using var transaction = await dbContext.Database.BeginTransactionAsync(
-                isolationLevel,
-                strategyCancellationToken);
-
-            var result = await operation(strategyCancellationToken);
-            if (result.IsFailed)
+            try
             {
-                await transaction.RollbackAsync(CancellationToken.None);
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                    isolationLevel,
+                    strategyCancellationToken);
+
+                var result = await operation(strategyCancellationToken);
+                if (result.IsFailed)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return result;
+                }
+
+                await transaction.CommitAsync(strategyCancellationToken);
                 return result;
             }
-
-            await transaction.CommitAsync(strategyCancellationToken);
-            return result;
+            finally
+            {
+                // transaction이 dispose된 뒤 정리해야 다음 시도나 같은 scope의 후속
+                // transaction이 이전 EF 상태를 재사용하지 않는다.
+                dbContext.ChangeTracker.Clear();
+            }
         }, cancellationToken);
     }
 
@@ -46,19 +55,26 @@ internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITrans
         var strategy = dbContext.Database.CreateExecutionStrategy();
         return strategy.ExecuteAsync(async strategyCancellationToken =>
         {
-            await using var transaction = await dbContext.Database.BeginTransactionAsync(
-                isolationLevel,
-                strategyCancellationToken);
-
-            var result = await operation(strategyCancellationToken);
-            if (result.IsFailed)
+            try
             {
-                await transaction.RollbackAsync(CancellationToken.None);
+                await using var transaction = await dbContext.Database.BeginTransactionAsync(
+                    isolationLevel,
+                    strategyCancellationToken);
+
+                var result = await operation(strategyCancellationToken);
+                if (result.IsFailed)
+                {
+                    await transaction.RollbackAsync(CancellationToken.None);
+                    return result;
+                }
+
+                await transaction.CommitAsync(strategyCancellationToken);
                 return result;
             }
-
-            await transaction.CommitAsync(strategyCancellationToken);
-            return result;
+            finally
+            {
+                dbContext.ChangeTracker.Clear();
+            }
         }, cancellationToken);
     }
 

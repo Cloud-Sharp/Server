@@ -8,7 +8,7 @@ transaction에 참여시키는 규칙을 정의한다.
 | 구현 | 수명 | 역할 |
 |---|---|---|
 | `EfCoreTransactionExecutor` | Scoped | execution strategy 안에서 transaction을 시작하고 결과에 따라 commit/rollback한다. |
-| `EfCoreUnitOfWork` | Scoped | `AppDbContext.TrySaveChangesAsync`를 호출한다. |
+| `EfCoreUnitOfWork` | Scoped | UseCase가 요청한 저장을 수행하고 알려진 저장 실패를 Core 오류로 변환한다. |
 | `DapperDbSession` | Scoped | `AppDbContext`의 connection과 현재 transaction으로 `CommandDefinition`을 만든다. |
 
 세 구성 요소와 모든 EF Core 리포지토리는 동일한 요청 scope의 `AppDbContext`를
@@ -82,6 +82,31 @@ return await transactionExecutor.ExecuteAsync(
 
 콜백이 실패 Result를 반환하거나 예외·취소로 종료되면 Dapper 명령과 EF Core 저장을
 모두 rollback한다. `SaveChangesAsync` 성공은 transaction commit을 의미하지 않는다.
+
+EF repository는 호출 사이에 저장 대상·도메인 객체·트랜잭션을 기억하지 않는다.
+조회로 얻은 Core snapshot을 변경한 UseCase는 `UpdateAsync(user, expectedVersion)`로
+EF 변경을 등록하고 UnitOfWork를 직접 호출한다. `expectedVersion`은 도메인 수정 전
+조회한 버전이다. 여러 repository가 등록한 변경도 같은 저장 단위에서 반영된다.
+
+각 execution-strategy 시도가 종료되고 transaction이 dispose되면 executor가
+`ChangeTracker.Clear()`를 호출한다. callback 안의 조회·변경 등록·여러 저장 사이에는
+추적을 유지하며, 중첩 호출을 거부할 때 외부 transaction의 추적을 지우지 않는다.
+
+## 저장 오류 변환
+
+저수준 `TrySaveChangesAsync`는 기존 PostgreSQL class 23 제약 오류 분류를 유지한다.
+그 결과와 저장 예외를 UnitOfWork에서 다음처럼 변환한다.
+
+| 조건 | 결과 |
+|---|---|
+| unique `ux_users_normalized_email` | `USER_EMAIL_CONFLICT` |
+| unique `ux_users_normalized_user_name` | `USER_NAME_CONFLICT` |
+| 다른 무결성 제약 | 내부 제약 실패 결과 보존 |
+| EF optimistic concurrency | `PRECONDITION_FAILED` |
+| SQLSTATE class 08/53, 57P01–57P04 또는 알려진 Npgsql transport/timeout | `DEPENDENCY_UNAVAILABLE` |
+| 취소·예상 밖 예외 | 그대로 전파 |
+
+이 변환은 저장 단계에 적용된다. 트랜잭션 시작·commit·rollback 예외 처리 계약은 유지한다.
 
 ## 조회 기준
 

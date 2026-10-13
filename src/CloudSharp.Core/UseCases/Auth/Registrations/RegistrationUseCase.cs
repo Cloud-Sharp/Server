@@ -18,6 +18,7 @@ namespace CloudSharp.Core.UseCases.Auth.Registrations;
 /// </summary>
 public sealed class RegistrationUseCase(
     IUserRepository userRepository,
+    IUnitOfWork unitOfWork,
     IPasswordHasher passwordHasher,
     SessionIssuanceService sessionIssuanceService,
     ITransactionExecutor transactionExecutor,
@@ -109,14 +110,20 @@ public sealed class RegistrationUseCase(
             return Result.Fail<User>(addResult.Errors);
         }
 
-        var saveResult = await userRepository.SaveAsync(cancellationToken);
+        var saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
         if (saveResult.IsFailed)
         {
             return Result.Fail<User>(saveResult.Errors);
         }
 
-        var savedUser = saveResult.Value;
-        if (savedUser.Id <= 0 || savedUser.PublicId != user.PublicId)
+        var reloadResult = await userRepository.FindByPublicIdAsync(user.PublicId, cancellationToken);
+        if (reloadResult.IsFailed)
+        {
+            return Result.Fail<User>(reloadResult.Errors);
+        }
+
+        var savedUser = reloadResult.Value;
+        if (savedUser is null || savedUser.Id <= 0 || savedUser.PublicId != user.PublicId)
         {
             throw new InvalidOperationException(
                 "UserRepository returned a user without a generated id or with a mismatched identity.");

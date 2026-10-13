@@ -257,7 +257,7 @@ public class GetProfileUseCaseTests
             Assert.That(account.SuspendedAt, Is.Null);
             Assert.That(account.DeletedAt, Is.Null);
             Assert.That(harness.UserRepository.AddedUsers, Is.Empty);
-            Assert.That(harness.UserRepository.SavedByIdUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
             Assert.That(
                 harness.UserRepository.PersistedUsersById[account.Id].Version,
                 Is.EqualTo(account.Version));
