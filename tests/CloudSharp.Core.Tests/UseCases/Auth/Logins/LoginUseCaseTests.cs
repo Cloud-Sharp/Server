@@ -93,6 +93,7 @@ public class LoginUseCaseTests
             Assert.That(harness.UserRepository.SearchedNormalizedEmails,
                 Is.EqualTo(new[] { "USER@EXAMPLE.COM" }));
             Assert.That(harness.UserRepository.AddedUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
             Assert.That(harness.PasswordHasher.HashedInputs, Is.Empty);
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(0));
@@ -452,6 +453,7 @@ public class LoginUseCaseTests
             Assert.That(account.SuspendedAt, Is.Null);
             Assert.That(account.DeletedAt, Is.Null);
             Assert.That(harness.UserRepository.AddedUsers, Is.Empty);
+            Assert.That(harness.UserRepository.UpdateCalls, Is.Empty);
         });
     }
 

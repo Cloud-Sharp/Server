@@ -20,6 +20,9 @@ public class RegistrationUseCaseTests
         public Harness()
         {
             Clock = new FakeClock(InitialNow);
+            UserRepository = new FakeUserRepository(PersistenceSession);
+            UnitOfWork = new FakeUnitOfWork(PersistenceSession);
+            TransactionExecutor = new FakeTransactionExecutor(PersistenceSession);
         }
 
         public FakeClock Clock { get; }
@@ -28,14 +31,18 @@ public class RegistrationUseCaseTests
 
         public FakeTokenIssuer TokenIssuer { get; } = new();
 
-        public FakeUserRepository UserRepository { get; } = new();
+        public FakePersistenceSession PersistenceSession { get; } = new();
+
+        public FakeUserRepository UserRepository { get; }
+
+        public FakeUnitOfWork UnitOfWork { get; }
 
         public FakeSessionStore SessionStore { get; } = new();
 
-        public FakeTransactionExecutor TransactionExecutor { get; } = new();
+        public FakeTransactionExecutor TransactionExecutor { get; }
 
         public RegistrationUseCase UseCase =>
-            new(UserRepository, PasswordHasher,
+            new(UserRepository, UnitOfWork, PasswordHasher,
                 new SessionIssuanceService(TokenIssuer, SessionStore, Clock), TransactionExecutor, Clock);
     }
 
@@ -92,6 +99,11 @@ public class RegistrationUseCaseTests
             Assert.That(harness.UserRepository.AddedUsers[0].PasswordHash,
                 Is.Not.EqualTo("example-password"));
             Assert.That(harness.UserRepository.AddedUsers[0].Version, Is.EqualTo(1L));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+            Assert.That(harness.UserRepository.SearchedPublicIds,
+                Is.EqualTo(new[] { user.UserPublicId }));
+            Assert.That(harness.UserRepository.PersistedUsersById[session.UserId].PublicId,
+                Is.EqualTo(user.UserPublicId));
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(0));
         });
@@ -335,8 +347,7 @@ public class RegistrationUseCaseTests
     {
         // Arrange
         var harness = new Harness();
-        harness.UserRepository.SaveResultFactory =
-            _ => Result.Fail<User>(conflictError);
+        harness.UnitOfWork.SaveChangesFailureFactory = _ => conflictError;
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(TestRegistrationCommands.Valid());
@@ -348,6 +359,9 @@ public class RegistrationUseCaseTests
         Assert.Multiple(() =>
         {
             Assert.That(harness.UserRepository.AddedUsers, Has.Count.EqualTo(1));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+            Assert.That(harness.UserRepository.SearchedPublicIds, Is.Empty);
+            Assert.That(harness.UserRepository.PersistedUsersById, Is.Empty);
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
             Assert.That(harness.TokenIssuer.IssuedTokens, Is.Empty);
             Assert.That(harness.SessionStore.StoredSessions, Is.Empty);
@@ -357,27 +371,27 @@ public class RegistrationUseCaseTests
     private static IEnumerable<TestCaseData> DependencyFailureModes()
     {
         yield return new TestCaseData(
-                new Action<FakeUserRepository>(
-                    repository => repository.ExistenceCheckFailure = CommonError.DependencyUnavailable()))
+                new Action<FakeUserRepository, FakeUnitOfWork>(
+                    (repository, _) => repository.ExistenceCheckFailure = CommonError.DependencyUnavailable()))
             .SetName("Existence check fails");
         yield return new TestCaseData(
-                new Action<FakeUserRepository>(
-                    repository => repository.AddResult = Result.Fail(CommonError.DependencyUnavailable())))
+                new Action<FakeUserRepository, FakeUnitOfWork>(
+                    (repository, _) => repository.AddResult = Result.Fail(CommonError.DependencyUnavailable())))
             .SetName("Add fails");
         yield return new TestCaseData(
-                new Action<FakeUserRepository>(
-                    repository => repository.SaveResultFactory =
-                        _ => Result.Fail<User>(CommonError.DependencyUnavailable())))
+                new Action<FakeUserRepository, FakeUnitOfWork>(
+                    (_, unitOfWork) => unitOfWork.SaveChangesFailureFactory =
+                        _ => CommonError.DependencyUnavailable()))
             .SetName("Save fails");
     }
 
     [TestCaseSource(nameof(DependencyFailureModes))]
     public async Task ExecuteAsync_ShouldReturnDependencyUnavailable(
-        Action<FakeUserRepository> arrangeFailure)
+        Action<FakeUserRepository, FakeUnitOfWork> arrangeFailure)
     {
         // Arrange
         var harness = new Harness();
-        arrangeFailure(harness.UserRepository);
+        arrangeFailure(harness.UserRepository, harness.UnitOfWork);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(TestRegistrationCommands.Valid());
@@ -395,20 +409,23 @@ public class RegistrationUseCaseTests
     private static IEnumerable<TestCaseData> SavedUserContractViolations()
     {
         yield return new TestCaseData(
-                new Func<User, Result<User>>(added => ReconstituteUser(added, 0L, added.PublicId)))
-            .SetName("Save returns user without generated id");
+                new Func<User, User?>(added => ReconstituteUser(added, 0L, added.PublicId)))
+            .SetName("Reload returns user without generated id");
         yield return new TestCaseData(
-                new Func<User, Result<User>>(added => ReconstituteUser(added, 42L, Guid.NewGuid())))
-            .SetName("Save returns user with mismatched identity");
+                new Func<User, User?>(added => ReconstituteUser(added, 42L, Guid.Parse("01920000-0000-7000-8000-000000000099"))))
+            .SetName("Reload returns user with mismatched identity");
+        yield return new TestCaseData(new Func<User, User?>(_ => null))
+            .SetName("Reload returns no user after successful flush");
     }
 
     [TestCaseSource(nameof(SavedUserContractViolations))]
     public async Task ExecuteAsync_ShouldThrowForSavedUserContractViolation(
-        Func<User, Result<User>> saveResult)
+        Func<User, User?> savedUser)
     {
         // Arrange
         var harness = new Harness();
-        harness.UserRepository.SaveResultFactory = saveResult;
+        harness.UserRepository.FindByPublicIdResultFactory =
+            _ => Result.Ok(savedUser(harness.UserRepository.AddedUsers.Single()));
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(
@@ -418,6 +435,33 @@ public class RegistrationUseCaseTests
             Assert.That(harness.TokenIssuer.IssuedTokens, Is.Empty);
             Assert.That(harness.SessionStore.StoredSessions, Is.Empty);
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+            Assert.That(harness.UserRepository.PersistedUsersById, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldRollbackAccountAfterReloadFailure()
+    {
+        // Arrange
+        var harness = new Harness();
+        harness.UserRepository.FindByPublicIdFailure = CommonError.DependencyUnavailable();
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(TestRegistrationCommands.Valid());
+
+        // Assert
+        Assert.That(result.IsFailed, Is.True);
+        Assert.That(FirstErrorCode(result), Is.EqualTo(ErrorCodes.Common.DependencyUnavailable));
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+            Assert.That(harness.UserRepository.SearchedPublicIds, Has.Count.EqualTo(1));
+            Assert.That(harness.UserRepository.PersistedUsersById, Is.Empty);
+            Assert.That(harness.TransactionExecutor.CommitCount, Is.Zero);
+            Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(1));
+            Assert.That(harness.SessionStore.StoredSessions, Is.Empty);
+            Assert.That(harness.TokenIssuer.IssuedTokens, Is.Empty);
         });
     }
 
@@ -439,9 +483,25 @@ public class RegistrationUseCaseTests
             Assert.That(harness.TransactionExecutor.CommitCount, Is.EqualTo(1));
             Assert.That(harness.TransactionExecutor.RollbackCount, Is.EqualTo(0));
             Assert.That(harness.UserRepository.AddedUsers, Has.Count.EqualTo(1));
+            Assert.That(harness.UserRepository.PersistedUsersById, Has.Count.EqualTo(1));
             Assert.That(harness.SessionStore.StoredSessions, Is.Empty);
             Assert.That(harness.TokenIssuer.IssuedTokens, Has.Count.EqualTo(1));
         });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldForwardTransactionTokenToUnitOfWork()
+    {
+        // Arrange
+        var harness = new Harness();
+        using var cancellation = new CancellationTokenSource();
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(TestRegistrationCommands.Valid(), cancellation.Token);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(harness.UnitOfWork.CapturedTokens, Is.EqualTo(new[] { cancellation.Token }));
     }
 
     [Test]
@@ -449,8 +509,7 @@ public class RegistrationUseCaseTests
     {
         // Arrange
         var harness = new Harness();
-        harness.UserRepository.SaveResultFactory =
-            _ => throw new InvalidOperationException("unexpected port failure");
+        harness.UnitOfWork.ExceptionToThrow = new InvalidOperationException("unexpected port failure");
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(

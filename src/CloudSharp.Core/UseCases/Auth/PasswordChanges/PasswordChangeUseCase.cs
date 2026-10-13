@@ -21,6 +21,7 @@ namespace CloudSharp.Core.UseCases.Auth.PasswordChanges;
 /// </summary>
 public sealed class PasswordChangeUseCase(
     IUserRepository userRepository,
+    IUnitOfWork unitOfWork,
     ISessionStore sessionStore,
     IPasswordHasher passwordHasher,
     ITransactionExecutor transactionExecutor,
@@ -130,6 +131,7 @@ public sealed class PasswordChangeUseCase(
             return Result.Fail<User>(UserError.PasswordMismatch());
         }
 
+        var expectedVersion = user.Version;
         var change = user.ChangePasswordHash(
             passwordHasher.Hash(command.NewPassword), clock.UtcNow);
         if (change.IsFailed)
@@ -137,13 +139,19 @@ public sealed class PasswordChangeUseCase(
             return Result.Fail<User>(change.Errors);
         }
 
-        var saveResult = await userRepository.SaveAsync(cancellationToken);
+        var updateResult = await userRepository.UpdateAsync(user, expectedVersion, cancellationToken);
+        if (updateResult.IsFailed)
+        {
+            return Result.Fail<User>(updateResult.Errors);
+        }
+
+        var saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
         if (saveResult.IsFailed)
         {
             return Result.Fail<User>(saveResult.Errors);
         }
 
-        return saveResult;
+        return Result.Ok(user);
     }
 
     /// <summary>
@@ -204,13 +212,20 @@ public sealed class PasswordChangeUseCase(
             return Result.Ok();
         }
 
+        var expectedVersion = current.Version;
         var revoke = current.RevokeAllSessions(clock.UtcNow);
         if (revoke.IsFailed)
         {
             return Result.Fail(revoke.Errors);
         }
 
-        var saveResult = await userRepository.SaveAsync(cancellationToken);
+        var updateResult = await userRepository.UpdateAsync(current, expectedVersion, cancellationToken);
+        if (updateResult.IsFailed)
+        {
+            return Result.Fail(updateResult.Errors);
+        }
+
+        var saveResult = await unitOfWork.SaveChangesAsync(cancellationToken);
         if (saveResult.IsFailed)
         {
             return Result.Fail(saveResult.Errors);
@@ -222,8 +237,9 @@ public sealed class PasswordChangeUseCase(
     private static bool IsPreconditionFailed(Result result) =>
         result.Errors.Any(error =>
             error.Metadata is not null
+            && error.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var code)
             && string.Equals(
-                (string?)error.Metadata[CloudSharpError.ErrorCodeMetadataKey],
+                code as string,
                 ErrorCodes.Common.PreconditionFailed,
                 StringComparison.Ordinal));
 }

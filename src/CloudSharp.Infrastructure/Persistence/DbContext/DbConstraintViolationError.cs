@@ -8,7 +8,7 @@ namespace CloudSharp.Infrastructure.Persistence.DbContext;
 /// <summary>
 /// EF Core 저장 중 PostgreSQL 무결성 제약 위반(SQLSTATE class 23)이 발생했음을 나타내는
 /// Infrastructure 내부 전용 에러. API 응답용 <c>CloudSharpError</c>가 아니며,
-/// Repository가 constraint 이름 기준으로 도메인 에러로 번역한다.
+/// Unit of Work가 알려진 constraint 이름 기준으로 도메인 에러로 번역한다.
 /// 번역되지 않은 채 API까지 전달되면 기존 안전한 500 처리에 맡긴다(409로 노출하지 않음).
 /// </summary>
 internal sealed class DbConstraintViolationError : Error
