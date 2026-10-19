@@ -3,6 +3,8 @@
 Repository implementations of Core persistence ports.
 
 - Queries return independent Core domain snapshots, not EF entities.
+- Use `dbContext.ExecuteReadAsync((context, ct) => ..., cancellationToken)` from `DbContextReadExtensions` for shared read error handling. Known PostgreSQL outages become `DEPENDENCY_UNAVAILABLE`; cancellation and unexpected exceptions propagate. Materialize with `AsNoTracking` before calling the entity's `ToDomain()` method.
+- Keep field-by-field domain mapping in the persistence entity's `ToDomain`, `FromDomain`, and `UpdateFrom` methods.
 - `AddAsync` and `UpdateAsync(user, expectedVersion)` stage changes only. Update copies the domain state into an EF entity and retains the supplied original version for the save-time concurrency check, even for unchanged updates.
 - Do not keep mutable current-user, save-target, or transaction fields. Use the shared scoped DbContext for EF tracking.
 - UseCases call `IUnitOfWork.SaveChangesAsync`; repositories never save or commit. Saving errors are translated by the UnitOfWork.

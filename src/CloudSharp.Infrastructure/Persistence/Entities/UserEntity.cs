@@ -4,7 +4,7 @@ namespace CloudSharp.Infrastructure.Persistence.Entities;
 
 /// <summary>
 /// <c>users</c> 테이블 영속성 모델. Core <see cref="CloudSharp.Core.Domain.Users.User"/> Aggregate와 별개의
-/// Infrastructure 전용 모델이며 도메인 변환은 repository에서 수행한다.
+/// Infrastructure 전용 모델이며 도메인과 영속성 모델 사이의 변환을 담당한다.
 /// </summary>
 public sealed class UserEntity
 {
@@ -87,4 +87,63 @@ public sealed class UserEntity
     /// 삭제 시각. <see cref="UserStatus.Deleted"/> 상태에서 필수.
     /// </summary>
     public DateTimeOffset? DeletedAt { get; set; }
+
+    /// <summary>
+    /// 저장된 값으로 독립적인 도메인 snapshot을 복원한다.
+    /// </summary>
+    public User ToDomain() =>
+        User.Reconstitute(
+            id: Id,
+            publicId: PublicId,
+            email: EmailAddress.Reconstitute(Email, NormalizedEmail),
+            userName: NormalizedUserName is null
+                ? null
+                : NormalizedName.Reconstitute(UserName!, NormalizedUserName),
+            displayName: DisplayName,
+            passwordHash: PasswordHash,
+            systemRole: SystemRole,
+            status: Status,
+            securityVersion: SecurityVersion,
+            version: Version,
+            createdAt: CreatedAt,
+            updatedAt: UpdatedAt,
+            suspendedAt: SuspendedAt,
+            deletedAt: DeletedAt);
+
+    /// <summary>
+    /// 도메인 객체의 ID와 상태를 복사한 새 영속성 모델을 생성한다. 입력 객체는 변경하지 않는다.
+    /// </summary>
+    public static UserEntity FromDomain(User user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        var entity = new UserEntity { Id = user.Id };
+        entity.UpdateFrom(user);
+        return entity;
+    }
+
+    /// <summary>
+    /// 기존 영속성 모델의 PK를 유지하면서 도메인 상태를 복사한다.
+    /// 버전과 시각은 도메인 값을 그대로 사용하며 EF 추적과 동시성 설정은 repository가 담당한다.
+    /// </summary>
+    public void UpdateFrom(User user)
+    {
+        ArgumentNullException.ThrowIfNull(user);
+
+        PublicId = user.PublicId;
+        Email = user.Email.Value;
+        NormalizedEmail = user.Email.Normalized;
+        UserName = user.UserName?.Value;
+        NormalizedUserName = user.UserName?.Normalized;
+        DisplayName = user.DisplayName;
+        PasswordHash = user.PasswordHash;
+        SystemRole = user.SystemRole;
+        Status = user.Status;
+        SecurityVersion = user.SecurityVersion;
+        Version = user.Version;
+        CreatedAt = user.CreatedAt;
+        UpdatedAt = user.UpdatedAt;
+        SuspendedAt = user.SuspendedAt;
+        DeletedAt = user.DeletedAt;
+    }
 }

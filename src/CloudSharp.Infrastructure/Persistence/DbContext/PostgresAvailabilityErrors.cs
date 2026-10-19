@@ -5,7 +5,7 @@ using Npgsql;
 namespace CloudSharp.Infrastructure.Persistence.DbContext;
 
 /// <summary>
-/// PostgreSQL 저장 중 확인 가능한 연결·서버 가용성 장애만 분류한다.
+/// PostgreSQL 조회·저장 중 확인 가능한 연결·서버 가용성 장애만 분류한다.
 /// 취소, 동시성 충돌, 인증·SQL·무결성 오류와 예상하지 못한 예외는 포함하지 않는다.
 /// </summary>
 internal static class PostgresAvailabilityErrors
