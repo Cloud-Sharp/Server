@@ -48,6 +48,7 @@ public static class SessionServiceCollectionExtensions
         // 호스트 시작이 Redis 가용성에 묶이지 않게 한다. 단절 중 명령은 RedisConnectionException으로
         // 실패하고 RedisSessionStore가 DEPENDENCY_UNAVAILABLE로 fail closed 처리한다.
         options.AbortOnConnectFail = false;
+        options.BacklogPolicy = BacklogPolicy.FailFast;
 
         services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(options));
         services.AddSingleton<ISessionStore, RedisSessionStore>();

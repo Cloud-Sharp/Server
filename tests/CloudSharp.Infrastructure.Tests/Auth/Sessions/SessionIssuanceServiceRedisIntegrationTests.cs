@@ -26,7 +26,7 @@ namespace CloudSharp.Infrastructure.Tests.Auth.Sessions;
 [NonParallelizable]
 public sealed class SessionIssuanceServiceRedisIntegrationTests
 {
-    private static readonly DateTimeOffset InitialNow = new(2026, 10, 19, 9, 0, 0, TimeSpan.Zero);
+    private DateTimeOffset initialNow;
 
     private RedisContainer? container;
     private IConnectionMultiplexer connection = null!;
@@ -48,12 +48,7 @@ public sealed class SessionIssuanceServiceRedisIntegrationTests
         {
             ActiveKey = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32)),
         });
-        clock = new FakeClock(InitialNow);
         store = new RedisSessionStore(connection);
-        service = new SessionIssuanceService(
-            new TokenIssuer(new RandomTokenGenerator(), hasher),
-            store,
-            clock);
     }
 
     [OneTimeTearDown]
@@ -71,9 +66,13 @@ public sealed class SessionIssuanceServiceRedisIntegrationTests
     }
 
     [SetUp]
-    public void SetUp()
+    public async Task SetUp()
     {
-        clock.SetUtcNow(InitialNow);
+        var serverTime = await connection.GetServer(connection.GetEndPoints()[0]).TimeAsync();
+        initialNow = new DateTimeOffset(DateTime.SpecifyKind(serverTime, DateTimeKind.Utc));
+        clock = new FakeClock(initialNow);
+        service = new SessionIssuanceService(
+            new TokenIssuer(new RandomTokenGenerator(), hasher), store, clock);
     }
 
     [Test]
@@ -90,10 +89,10 @@ public sealed class SessionIssuanceServiceRedisIntegrationTests
         found.Value!.UserId.Should().Be(user.Id);
         found.Value.UserPublicId.Should().Be(user.PublicId);
         found.Value.SecurityVersion.Should().Be(7);
-        found.Value.IssuedAt.Should().Be(InitialNow);
-        found.Value.LastSeenAt.Should().Be(InitialNow);
-        found.Value.IdleExpiresAt.Should().Be(InitialNow.AddHours(24));
-        found.Value.AbsoluteExpiresAt.Should().Be(InitialNow.AddDays(7));
+        found.Value.IssuedAt.Should().Be(initialNow);
+        found.Value.LastSeenAt.Should().Be(initialNow);
+        found.Value.IdleExpiresAt.Should().Be(initialNow.AddHours(24));
+        found.Value.AbsoluteExpiresAt.Should().Be(initialNow.AddDays(7));
         issued.Value.IdleExpiresAt.Should().Be(found.Value.IdleExpiresAt);
         issued.Value.AbsoluteExpiresAt.Should().Be(found.Value.AbsoluteExpiresAt);
     }
@@ -158,12 +157,12 @@ public sealed class SessionIssuanceServiceRedisIntegrationTests
         members.Length.Should().Be(10);
         var oldest = await store.FindByTokenHashAsync(TokenHash.Reconstitute((string)members[0]!));
         oldest.Value.Should().NotBeNull();
-        oldest.Value!.IssuedAt.Should().Be(InitialNow.AddMinutes(2));
+        oldest.Value!.IssuedAt.Should().Be(initialNow.AddMinutes(2));
     }
 
     private User NewUser(long securityVersion = 1)
     {
-        var now = new DateTimeOffset(2026, 10, 1, 0, 0, 0, TimeSpan.Zero);
+        var now = initialNow.AddDays(-1);
         return User.Reconstitute(
             id: RandomNumberGenerator.GetInt32(1, int.MaxValue),
             publicId: Guid.CreateVersion7(),

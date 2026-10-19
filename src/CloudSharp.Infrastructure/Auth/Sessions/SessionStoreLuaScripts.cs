@@ -70,30 +70,35 @@ internal static class SessionStoreLuaScripts
 
         redis.call('ZADD', indexKey, tonumber(ARGV[10]), member)
 
-        local evicted = redis.call('ZCARD', indexKey) - maxSessions
-        if evicted > 0 then
-            local oldest = redis.call('ZRANGE', indexKey, 0, evicted - 1)
-            for _, m in ipairs(oldest) do
-                redis.call('DEL', bodyPrefix .. m)
-                redis.call('ZREM', indexKey, m)
+        -- Scores retain their existing Unix seconds format. Eviction uses exact
+        -- fixed-width ticks, so different times within one second are not ties.
+        local remaining = {}
+        for _, m in ipairs(redis.call('ZRANGE', indexKey, 0, -1)) do
+            local fields = redis.call('HMGET', bodyPrefix .. m, 'issuedAt', 'absoluteExpiresAt')
+            if fields[1] == false or fields[2] == false then
+                return redis.error_reply('Stored session ordering fields are missing.')
             end
+            table.insert(remaining, { member = m, issuedAt = fields[1], absolute = tonumber(fields[2]) })
         end
+        table.sort(remaining, function(left, right)
+            if left.issuedAt == right.issuedAt then
+                return left.member < right.member
+            end
+            return left.issuedAt < right.issuedAt
+        end)
 
+        local evicted = math.max(0, #remaining - maxSessions)
         local maxAbsolute = 0
-        if evicted > 0 then
-            local remaining = redis.call('ZRANGE', indexKey, 0, -1)
-            for _, m in ipairs(remaining) do
-                local absolute = redis.call('HGET', bodyPrefix .. m, 'absoluteExpiresAt')
-                local absoluteTicks = absolute == false and nil or tonumber(absolute)
-                if absoluteTicks ~= nil and absoluteTicks > maxAbsolute then
-                    maxAbsolute = absoluteTicks
-                end
+        for i, session in ipairs(remaining) do
+            if i <= evicted then
+                redis.call('DEL', bodyPrefix .. session.member)
+                redis.call('ZREM', indexKey, session.member)
+            elseif session.absolute ~= nil and session.absolute > maxAbsolute then
+                maxAbsolute = session.absolute
             end
-        else
-            maxAbsolute = tonumber(ARGV[8])
         end
 
-        if redis.call('ZCARD', indexKey) == 0 then
+        if #remaining - evicted == 0 then
             redis.call('DEL', indexKey)
         else
             local indexTtlMs = math.floor((maxAbsolute - nowTicks) / 10000)
@@ -185,12 +190,14 @@ internal static class SessionStoreLuaScripts
                 local nowTicks = tonumber(ARGV[5])
                 local idleTicks = tonumber(storedIdle)
                 local absoluteTicks = tonumber(storedAbsolute)
-                local storedVersionNumber = tonumber(storedVersion)
-                local newVersionNumber = tonumber(ARGV[4])
+                local newVersion = ARGV[4]
+                -- Versions are canonical positive decimal strings, not Lua doubles.
+                local versionDoesNotRegress = string.match(newVersion, '^[1-9][0-9]*$') ~= nil
+                    and (#newVersion > #storedVersion
+                        or (#newVersion == #storedVersion and newVersion >= storedVersion))
                 if idleTicks ~= nil and absoluteTicks ~= nil
                     and nowTicks < idleTicks and nowTicks < absoluteTicks
-                    and storedVersionNumber ~= nil and newVersionNumber ~= nil
-                    and newVersionNumber >= storedVersionNumber then
+                    and versionDoesNotRegress then
                     eligible = true
                 end
             end

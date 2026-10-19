@@ -249,6 +249,55 @@ public sealed class RedisSessionStoreIntegrationTests
         }
     }
 
+    [TestCase(1L, 2L)]
+    [TestCase(1_000_000L, 2_000_000L)]
+    public async Task StoreAsync_ShouldEvictOldestIssuedAt(long oldestTicks, long newestTicks)
+    {
+        var userId = NewUserId();
+        var serverTime = await connection.GetServer(connection.GetEndPoints()[0]).TimeAsync();
+        var start = new DateTimeOffset(
+            serverTime.Ticks - serverTime.Ticks % TimeSpan.TicksPerSecond, TimeSpan.Zero);
+        var oldest = await StoreSessionAsync(userId, start.AddTicks(oldestTicks), $"sh_z_{userId}");
+        for (var i = 0; i < 9; i++)
+        {
+            await StoreSessionAsync(userId, start.AddTicks(newestTicks), $"sh_m_{userId}_{i}");
+        }
+
+        var newest = await StoreSessionAsync(userId, start.AddTicks(newestTicks), $"sh_a_{userId}");
+
+        Assert.That(await IndexMembersAsync(userId), Has.Length.EqualTo(10));
+        Assert.That(await redis.KeyExistsAsync(BodyKeyOf(oldest.TokenHash.Value)), Is.False);
+        Assert.That(await redis.KeyExistsAsync(BodyKeyOf(newest.TokenHash.Value)), Is.True);
+        Assert.That(await redis.SortedSetScoreAsync(IndexKey(userId), newest.TokenHash.Value),
+            Is.EqualTo((double)newest.IssuedAt.ToUnixTimeSeconds()));
+    }
+
+    [Test]
+    public async Task StoreAsync_ShouldKeepIndexUntilLatestRemainingExpiry()
+    {
+        var userId = NewUserId();
+        var serverTime = await connection.GetServer(connection.GetEndPoints()[0]).TimeAsync();
+        var now = new DateTimeOffset(DateTime.SpecifyKind(serverTime, DateTimeKind.Utc));
+        var later = UserSession.Reconstitute(
+            Guid.CreateVersion7(), userId, Guid.CreateVersion7(), NewHash(), 1,
+            now, now, now.AddHours(1), now.AddHours(2));
+        var earlier = UserSession.Reconstitute(
+            Guid.CreateVersion7(), userId, later.UserPublicId, NewHash(), 1,
+            now.AddMinutes(-1), now.AddMinutes(-1), now.AddMinutes(10), now.AddMinutes(20));
+        Assert.That((await store.StoreAsync(later)).IsSuccess, Is.True);
+
+        var stored = await store.StoreAsync(earlier);
+
+        Assert.That(stored.IsSuccess, Is.True);
+        var bodyTtl = await redis.KeyTimeToLiveAsync(BodyKeyOf(later.TokenHash.Value));
+        var indexTtl = await redis.KeyTimeToLiveAsync(IndexKey(userId));
+        Assert.That(bodyTtl, Is.Not.Null);
+        Assert.That(indexTtl, Is.Not.Null);
+        Assert.That(indexTtl!.Value, Is.GreaterThan(TimeSpan.FromHours(1)));
+        Assert.That(indexTtl.Value, Is.EqualTo(bodyTtl!.Value).Within(TimeSpan.FromSeconds(1)));
+        Assert.That(await IndexMembersAsync(userId), Has.Length.EqualTo(2));
+    }
+
     [Test]
     public async Task StoreAsync_WithGhostIndexMember_ShouldCleanItUp()
     {
@@ -421,6 +470,61 @@ public sealed class RedisSessionStoreIntegrationTests
             SessionRedisPayload.SecurityVersionField))
             .Should().Be("5");
         (await redis.KeyExistsAsync(BodyKeyOf(other.TokenHash.Value))).Should().BeFalse();
+    }
+
+    [TestCase(9L, 10L)]
+    [TestCase(9_007_199_254_740_992L, 9_007_199_254_740_993L)]
+    [TestCase(9_007_199_254_740_993L, 9_007_199_254_740_993L)]
+    [TestCase(long.MaxValue - 1, long.MaxValue)]
+    [TestCase(long.MaxValue, long.MaxValue)]
+    public async Task FinalizePasswordChangeAsync_ShouldPreserveExactSecurityVersion(
+        long currentVersion, long newVersion)
+    {
+        var userId = NewUserId();
+        var current = await StoreSessionAsync(userId, securityVersion: currentVersion);
+        var other = await StoreSessionAsync(userId, securityVersion: currentVersion);
+        var bodyKey = BodyKeyOf(current.TokenHash.Value);
+        var before = await redis.HashGetAllAsync(bodyKey);
+        var ttlBefore = await redis.KeyTimeToLiveAsync(bodyKey);
+
+        var finalized = await store.FinalizePasswordChangeAsync(current, newVersion, current.IssuedAt);
+
+        Assert.That(finalized.IsSuccess, Is.True);
+        Assert.That(finalized.Value, Is.True);
+        var expected = before.Select(entry => entry.Name == SessionRedisPayload.SecurityVersionField
+            ? new HashEntry(entry.Name, newVersion.ToString(CultureInfo.InvariantCulture))
+            : entry);
+        Assert.That(await redis.HashGetAllAsync(bodyKey), Is.EquivalentTo(expected));
+        var ttlAfter = await redis.KeyTimeToLiveAsync(bodyKey);
+        Assert.That(ttlBefore, Is.Not.Null);
+        Assert.That(ttlAfter, Is.Not.Null);
+        Assert.That(ttlAfter!.Value, Is.InRange(ttlBefore!.Value - TimeSpan.FromSeconds(5), ttlBefore.Value));
+        Assert.That(await redis.KeyExistsAsync(BodyKeyOf(other.TokenHash.Value)), Is.False);
+    }
+
+    [TestCase(100L, 99L)]
+    [TestCase(9_007_199_254_740_993L, 9_007_199_254_740_992L)]
+    [TestCase(long.MaxValue, long.MaxValue - 1)]
+    public async Task FinalizePasswordChangeAsync_ShouldRejectSecurityVersionRegression(
+        long currentVersion, long newVersion)
+    {
+        var userId = NewUserId();
+        var current = await StoreSessionAsync(userId, securityVersion: currentVersion);
+        var other = await StoreSessionAsync(userId, securityVersion: currentVersion);
+        var bodyKey = BodyKeyOf(current.TokenHash.Value);
+        var before = await redis.HashGetAllAsync(bodyKey);
+        var ttlBefore = await redis.KeyTimeToLiveAsync(bodyKey);
+
+        var finalized = await store.FinalizePasswordChangeAsync(current, newVersion, current.IssuedAt);
+
+        Assert.That(finalized.IsSuccess, Is.True);
+        Assert.That(finalized.Value, Is.False);
+        Assert.That(await redis.HashGetAllAsync(bodyKey), Is.EquivalentTo(before));
+        var ttlAfter = await redis.KeyTimeToLiveAsync(bodyKey);
+        Assert.That(ttlBefore, Is.Not.Null);
+        Assert.That(ttlAfter, Is.Not.Null);
+        Assert.That(ttlAfter!.Value, Is.InRange(ttlBefore!.Value - TimeSpan.FromSeconds(5), ttlBefore.Value));
+        Assert.That(await redis.KeyExistsAsync(BodyKeyOf(other.TokenHash.Value)), Is.False);
     }
 
     [Test]
