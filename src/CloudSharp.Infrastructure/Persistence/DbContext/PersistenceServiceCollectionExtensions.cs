@@ -1,5 +1,7 @@
+using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Domain.Users;
+using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.Infrastructure.Persistence.Transactions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -43,6 +45,7 @@ public static class PersistenceServiceCollectionExtensions
                     .MapEnum<UserStatus>(UserStatusEnumName, nameTranslator: EnumNameTranslator)));
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
+        services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<DapperDbSession>();
 
         return services;

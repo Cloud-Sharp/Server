@@ -550,6 +550,40 @@ public class UserTests
             Assert.That(user.Status, Is.EqualTo(UserStatus.Deleted));
             Assert.That(user.SecurityVersion, Is.EqualTo(3));
             Assert.That(user.Version, Is.EqualTo(3));
+            Assert.That(user.SuspendedAt, Is.Null);
+        });
+    }
+
+    [Test]
+    public void Delete_FromSuspended_ShouldKeepStateReconstitutable()
+    {
+        var user = CreateUser();
+        user.Suspend(Now.AddMinutes(1));
+        user.Delete(Now.AddMinutes(2));
+
+        var restored = User.Reconstitute(
+            id: 42,
+            publicId: user.PublicId,
+            email: user.Email,
+            userName: user.UserName,
+            displayName: user.DisplayName,
+            passwordHash: user.PasswordHash,
+            systemRole: user.SystemRole,
+            status: user.Status,
+            securityVersion: user.SecurityVersion,
+            version: user.Version,
+            createdAt: user.CreatedAt,
+            updatedAt: user.UpdatedAt,
+            suspendedAt: user.SuspendedAt,
+            deletedAt: user.DeletedAt);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(restored.Status, Is.EqualTo(UserStatus.Deleted));
+            Assert.That(restored.SuspendedAt, Is.Null);
+            Assert.That(restored.DeletedAt, Is.EqualTo(user.DeletedAt));
+            Assert.That(restored.SecurityVersion, Is.EqualTo(3));
+            Assert.That(restored.Version, Is.EqualTo(3));
         });
     }
 
