@@ -61,3 +61,19 @@ Desktop.ini
 !.git/
 !.github/
 !.devcontainer/
+
+# Shared project skills (keep other agent-local files ignored)
+!.agents/
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/cloudsharp-persistence-entity/
+!.agents/skills/cloudsharp-repository/
+!.agents/skills/api-integration-tests/
+!.claude/
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/cloudsharp-persistence-entity/
+!.claude/skills/cloudsharp-repository/
+!.claude/skills/api-integration-tests/

@@ -1,4 +1,5 @@
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using NetArchTest.Rules;
 using NUnit.Framework;
 
@@ -105,9 +106,12 @@ public class NamespaceAndModelBoundaryRulesTests
     private static bool IsGeneratedType(Type type)
         => type.Name == "Program"
            || type.DeclaringType?.Name == "Program"
+           || type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
            || type.Namespace == "Microsoft.AspNetCore.OpenApi.Generated"
+           || (type.Namespace?.StartsWith("Microsoft.Extensions.Validation.Generated", StringComparison.Ordinal) ?? false)
            || (type.Namespace == "System.Runtime.CompilerServices"
-               && type.Name.Contains("OpenApiXmlCommentSupport_generated", StringComparison.Ordinal));
+               && (type.Name.Contains("OpenApiXmlCommentSupport_generated", StringComparison.Ordinal)
+                   || type.Name.Contains("ValidatableInfoResolver_", StringComparison.Ordinal)));
 
     private static bool IsApiContractType(Type type)
     {

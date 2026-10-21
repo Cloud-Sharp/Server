@@ -1,3 +1,3 @@
 # Auth
 
-Login / logout / session / MCP token HTTP contract tests.
+Registration / login / session authentication / password change HTTP contract tests.

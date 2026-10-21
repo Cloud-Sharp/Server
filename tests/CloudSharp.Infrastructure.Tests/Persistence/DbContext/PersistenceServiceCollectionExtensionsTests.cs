@@ -1,5 +1,7 @@
+using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Infrastructure.Persistence.DbContext;
+using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.Infrastructure.Persistence.Transactions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -74,6 +76,30 @@ public sealed class PersistenceServiceCollectionExtensionsTests
             Assert.That(otherExecutor, Is.Not.SameAs(firstExecutor));
             Assert.That(unitOfWork, Is.TypeOf<EfCoreUnitOfWork>());
             Assert.That(dapperSession, Is.Not.Null);
+        });
+    }
+
+    [Test]
+    public void AddPostgreSqlPersistence_ShouldRegisterUserRepositoryAsScoped()
+    {
+        var configuration = CreateConfiguration(
+            "Host=localhost;Database=cloudsharp;Username=cloudsharp");
+        var services = new ServiceCollection();
+        services.AddPostgreSqlPersistence(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        using var firstScope = provider.CreateScope();
+        using var secondScope = provider.CreateScope();
+
+        var first = firstScope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var sameScope = firstScope.ServiceProvider.GetRequiredService<IUserRepository>();
+        var otherScope = secondScope.ServiceProvider.GetRequiredService<IUserRepository>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sameScope, Is.SameAs(first));
+            Assert.That(otherScope, Is.Not.SameAs(first));
+            Assert.That(first, Is.TypeOf<UserRepository>());
         });
     }
 

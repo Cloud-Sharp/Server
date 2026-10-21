@@ -1,17 +1,31 @@
+using CloudSharp.Api.DependencyInjection;
+using CloudSharp.Api.Endpoints.Auth;
+using CloudSharp.Api.Endpoints.Users;
 using CloudSharp.Api.Middleware;
-using CloudSharp.Core.Common.Time;
-using CloudSharp.Infrastructure.Auth.Tokens;
 
 var builder = WebApplication.CreateBuilder(args);
+
 builder.Services.AddOpenApi();
-builder.Services.AddSingleton<IClock>(new SystemClock(TimeProvider.System));
-builder.Services.AddTokenHashing(builder.Configuration);
+builder.Services.AddCloudSharpApplication(builder.Configuration);
+builder.Services.AddCloudSharpHttp();
 
 var app = builder.Build();
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
 }
+
 app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<ErrorHandlingMiddleware>();
+app.UseStatusCodePages(UnsupportedMediaTypeStatusCodeHandler.HandleAsync);
 app.UseHttpsRedirection();
+app.UseRouting();
+app.UseMiddleware<NoStoreResponseMiddleware>();
+app.UseAuthentication();
+app.UseAuthorization();
+
+app.MapAuthEndpoints();
+app.MapUserEndpoints();
+
 app.Run();

@@ -65,16 +65,12 @@ public class LayerDependencyRulesTests
     [Test]
     public void ApiNonCompositionTypes_ShouldNotDependOnInfrastructure()
     {
-        string[] excludedCompositionNamespaces =
-        [
-            "CloudSharp.Api.DependencyInjection",
-            "CloudSharp.Api.Hosting",
-        ];
-
-        var result = Types.InAssembly(
-                ArchitectureTestContext.ApiAssembly,
-                excludedCompositionNamespaces)
+        var result = Types.InAssembly(ArchitectureTestContext.ApiAssembly)
             .That()
+            .DoNotResideInNamespaceStartingWith("CloudSharp.Api.DependencyInjection")
+            .And()
+            .DoNotResideInNamespaceStartingWith("CloudSharp.Api.Hosting")
+            .And()
             .DoNotHaveName("Program")
             .Should()
             .NotHaveDependencyOn("CloudSharp.Infrastructure")

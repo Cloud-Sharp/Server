@@ -62,6 +62,8 @@ Doc-priority hierarchy when conflicts arise: 기획서 → 설계 목록 → 영
 These are reinforced by the skills in `.claude/skills/` and the design docs:
 
 - **Domain models** (`cloudsharp-domain-model` skill): behavior-centric, not anemic. Return `FluentResults.Result`/`Result<T>` — never `throw` for business failures. Value validation via `FluentValidation`; state-transition validation via in-method `if`. `Create` vs `Reconstitute` separated. All setters `private set`. Time injected as `DateTimeOffset now`. Method names are behaviors (`Rename`, `MarkDeleted`), not `ChangeStatus`. Domains do not touch DB/auth/transactions — that's UseCase scope.
+- **Persistence entities** (`cloudsharp-persistence-entity` skill): Infrastructure entities own `ToDomain` / `FromDomain` / `UpdateFrom` data mapping. Keep schema mapping in EF Configuration and queries, tracking, and concurrency original values in repositories; saving and transactions stay in UnitOfWork/TransactionExecutor. `FromDomain` copies Id; `UpdateFrom` preserves the tracked Id. Core never depends on persistence entities.
+- **Repositories** (`cloudsharp-repository` skill): implement Core persistence ports as stateless Infrastructure adapters. Read through the shared `dbContext.ExecuteReadAsync((context, ct) => ...)` extension using the callback context and token; map only known availability failures to `DependencyUnavailable`. Return independent snapshots and stage explicit Add/Update changes, reuse tracked entities, and set the observed `expectedVersion` as EF OriginalValue. UnitOfWork saves; TransactionExecutor commits, rolls back, and clears tracking.
 - **Minimal API endpoints** (`minimal-api-endpoint` skill): endpoints are adapter layer only — HTTP ↔ command/query mapping, no business logic. .NET 10 built-in `AddValidation()` + DataAnnotations on request records; no manual validation in handlers. Request/Response DTOs in separate `Requests/`/`Responses/` folders, never inline. `ICurrentUser` for identity; never take user id from body. `MapGroup` + `RequireAuthorization` at group level. Result→HTTP via shared `ToHttpResult` mapper.
 - **Unit tests** (`aspnet-unit-testing` skill): NUnit + Bogus + FluentResults. Name pattern `MethodName_ShouldExpectedResult`; conditions via `[TestCase]`/`[TestCaseSource]`, not in name. Success and failure as separate methods. `Assert.That` only. Seeded Bogus. No DB/Redis/FS/network — those go in `*.IntegrationTests`.
 - **Integration tests** (`api-integration-tests` skill): real PostgreSQL/Redis + ASP.NET Core test host via Testcontainers. Verify API contract, EF persistence, Redis integration. Docker is required; never skip-pass when Docker is missing.
@@ -79,6 +81,8 @@ Adding ENUM values is allowed. Renaming or removing values is forbidden without 
 When the user's request matches one of these, the harness invokes the skill — follow its instructions:
 
 - `cloudsharp-domain-model` — writing/reviewing Core domain types (Entity/Aggregate/Value Object/state transitions)
+- `cloudsharp-persistence-entity` — writing/refactoring Infrastructure EF entities and entity/domain data mapping
+- `cloudsharp-repository` — writing/refactoring Infrastructure repositories, shared DbContext reads, change staging, and concurrency handling
 - `minimal-api-endpoint` — writing/reviewing Minimal API endpoints
 - `aspnet-unit-testing` — writing NUnit unit tests for Core (domain/usecase/validator)
 - `api-integration-tests` — writing integration tests in `CloudSharp.Api.IntegrationTests`

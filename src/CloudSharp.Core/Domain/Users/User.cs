@@ -386,6 +386,7 @@ public sealed class User
     /// <summary>
     /// <see cref="UserStatus.Active"/> 또는 <see cref="UserStatus.Suspended"/>에서 <see cref="UserStatus.Deleted"/>로 전이한다.
     /// <see cref="UserStatus.Deleted"/>는 terminal이며 <see cref="SecurityVersion"/>을 증가시킨다.
+    /// 정지 중이던 계정은 <see cref="SuspendedAt"/>을 비워 영속 행이 <see cref="Reconstitute"/>의 상태별 timestamp 불변식을 계속 만족하게 한다.
     /// </summary>
     public Result Delete(DateTimeOffset now)
     {
@@ -401,6 +402,7 @@ public sealed class User
 
         Status = UserStatus.Deleted;
         DeletedAt = now;
+        SuspendedAt = null;
         SecurityVersion++;
         BumpVersion(now);
         return Result.Ok();

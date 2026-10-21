@@ -10,6 +10,14 @@ public static class ErrorCodes
     {
         public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
         public const string PreconditionFailed = "PRECONDITION_FAILED";
+        public const string PreconditionRequired = "PRECONDITION_REQUIRED";
+    }
+
+    public static class Auth
+    {
+        public const string TokenRequired = "AUTH_TOKEN_REQUIRED";
+        public const string TokenInvalid = "AUTH_TOKEN_INVALID";
+        public const string TokenTypeNotAllowed = "AUTH_TOKEN_TYPE_NOT_ALLOWED";
     }
 
     public static class User
