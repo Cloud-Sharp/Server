@@ -18,6 +18,7 @@ if (app.Environment.IsDevelopment())
 
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ErrorHandlingMiddleware>();
+app.UseStatusCodePages(UnsupportedMediaTypeStatusCodeHandler.HandleAsync);
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseMiddleware<NoStoreResponseMiddleware>();

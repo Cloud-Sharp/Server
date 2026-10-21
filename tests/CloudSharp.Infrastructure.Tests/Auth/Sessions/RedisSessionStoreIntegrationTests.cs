@@ -133,7 +133,7 @@ public sealed class RedisSessionStoreIntegrationTests
     }
 
     [Test]
-    public async Task FindByTokenHashAsync_WithCorruptPayload_ShouldThrow()
+    public async Task FindByTokenHashAsync_WithCorruptPayload_ShouldReturnNullAndDeleteBody()
     {
         var userId = NewUserId();
         var hash = NewHash();
@@ -141,9 +141,15 @@ public sealed class RedisSessionStoreIntegrationTests
         await redis.HashSetAsync(BodyKeyOf(hash.Value), BodyEntries(session).Take(3).ToArray());
         await redis.KeyExpireAsync(BodyKeyOf(hash.Value), TimeSpan.FromHours(1));
 
-        var act = () => store.FindByTokenHashAsync(hash);
+        var found = await store.FindByTokenHashAsync(hash);
+        var bodyExists = await redis.KeyExistsAsync(BodyKeyOf(hash.Value));
 
-        await act.Should().ThrowAsync<InvalidOperationException>();
+        Assert.Multiple(() =>
+        {
+            Assert.That(found.IsSuccess, Is.True, found.ToString());
+            Assert.That(found.Value, Is.Null);
+            Assert.That(bodyExists, Is.False);
+        });
     }
 
     [Test]

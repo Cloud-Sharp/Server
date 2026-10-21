@@ -11,7 +11,8 @@ namespace CloudSharp.Infrastructure.Auth.Sessions;
 /// <see cref="ISessionStore"/>의 Redis 구현. 세션 본문과 사용자별 인덱스를
 /// <see cref="SessionStoreLuaScripts"/>로 원자적으로 변경하고 조회는 저장 상태의 독립 복원본을 반환한다.
 /// 취소는 명령 발송 전에만 관찰하고 발송한 명령은 Redis 명령 timeout(기본 5초)까지 기다린다.
-/// 알려진 연결·timeout 장애만 <c>DEPENDENCY_UNAVAILABLE</c>로 변환하고 서버 오류·데이터 손상은 전파한다.
+/// 알려진 연결·timeout 장애만 <c>DEPENDENCY_UNAVAILABLE</c>로 변환하고 서버 오류는 전파하며,
+/// 손상된 payload는 세션 없음으로 처리하고 본문을 정리한다.
 /// </summary>
 internal sealed class RedisSessionStore(IConnectionMultiplexer connection) : ISessionStore
 {
