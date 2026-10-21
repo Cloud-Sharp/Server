@@ -51,9 +51,9 @@ internal sealed class RedisSessionStore(IConnectionMultiplexer connection) : ISe
         ArgumentNullException.ThrowIfNull(tokenHash);
         cancellationToken.ThrowIfCancellationRequested();
 
+        var database = connection.GetDatabase();
         try
         {
-            var database = connection.GetDatabase();
             var entries = await database.HashGetAllAsync(SessionRedisPayload.BodyKey(tokenHash));
             if (entries.Length == 0)
             {
@@ -62,9 +62,26 @@ internal sealed class RedisSessionStore(IConnectionMultiplexer connection) : ISe
 
             return Result.Ok<UserSession?>(SessionRedisPayload.ToDomain(entries, tokenHash));
         }
+        catch (SessionPayloadCorruptException)
+        {
+            await TryDeleteCorruptSessionAsync(database, tokenHash);
+            return Result.Ok<UserSession?>(null);
+        }
         catch (Exception exception) when (RedisAvailabilityErrors.IsDependencyUnavailable(exception))
         {
             return Result.Fail<UserSession?>(CommonError.DependencyUnavailable());
+        }
+    }
+
+    private static async Task TryDeleteCorruptSessionAsync(IDatabase database, TokenHash tokenHash)
+    {
+        try
+        {
+            await database.KeyDeleteAsync(SessionRedisPayload.BodyKey(tokenHash));
+        }
+        catch (Exception exception) when (RedisAvailabilityErrors.IsDependencyUnavailable(exception))
+        {
+            // The session is already treated as invalid; cleanup is best effort.
         }
     }
 

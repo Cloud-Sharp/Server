@@ -86,27 +86,49 @@ internal static class SessionRedisPayload
 
     /// <summary>
     /// 저장된 본문을 <see cref="UserSession.Reconstitute"/>로 독립 복원한다.
-    /// 필드 누락·손상은 값을 노출하지 않는 <see cref="InvalidOperationException"/>으로 전파한다.
+    /// 필드 누락·손상과 저장값의 복원 불변식 위반은 값을 노출하지 않는
+    /// <see cref="SessionPayloadCorruptException"/>으로 전파한다.
     /// token hash는 payload에 저장하지 않으므로 조회에 사용한 <paramref name="tokenHash"/>를 그대로 쓴다.
     /// </summary>
     internal static UserSession ToDomain(HashEntry[] entries, TokenHash tokenHash)
     {
+        ArgumentNullException.ThrowIfNull(entries);
+        ArgumentNullException.ThrowIfNull(tokenHash);
+
         var fields = new Dictionary<RedisValue, RedisValue>(entries.Length);
         foreach (var entry in entries)
         {
             fields[entry.Name] = entry.Value;
         }
 
-        return UserSession.Reconstitute(
-            ParseGuid(Required(fields, SessionIdField), SessionIdField),
-            ParseLong(Required(fields, UserIdField), UserIdField),
-            ParseGuid(Required(fields, UserPublicIdField), UserPublicIdField),
-            tokenHash,
-            ParseLong(Required(fields, SecurityVersionField), SecurityVersionField),
-            ParseTicks(Required(fields, IssuedAtField), IssuedAtField),
-            ParseTicks(Required(fields, LastSeenAtField), LastSeenAtField),
-            ParseTicks(Required(fields, IdleExpiresAtField), IdleExpiresAtField),
-            ParseTicks(Required(fields, AbsoluteExpiresAtField), AbsoluteExpiresAtField));
+        var sessionId = ParseGuid(Required(fields, SessionIdField), SessionIdField);
+        var userId = ParseLong(Required(fields, UserIdField), UserIdField);
+        var userPublicId = ParseGuid(Required(fields, UserPublicIdField), UserPublicIdField);
+        var securityVersion = ParseLong(Required(fields, SecurityVersionField), SecurityVersionField);
+        var issuedAt = ParseTicks(Required(fields, IssuedAtField), IssuedAtField);
+        var lastSeenAt = ParseTicks(Required(fields, LastSeenAtField), LastSeenAtField);
+        var idleExpiresAt = ParseTicks(Required(fields, IdleExpiresAtField), IdleExpiresAtField);
+        var absoluteExpiresAt = ParseTicks(Required(fields, AbsoluteExpiresAtField), AbsoluteExpiresAtField);
+
+        try
+        {
+            return UserSession.Reconstitute(
+                sessionId,
+                userId,
+                userPublicId,
+                tokenHash,
+                securityVersion,
+                issuedAt,
+                lastSeenAt,
+                idleExpiresAt,
+                absoluteExpiresAt);
+        }
+        catch (ArgumentException exception) when (exception.ParamName is
+            SessionIdField or UserIdField or UserPublicIdField or SecurityVersionField
+            or IssuedAtField or LastSeenAtField or IdleExpiresAtField or AbsoluteExpiresAtField)
+        {
+            throw Corrupt(exception.ParamName!, "session");
+        }
     }
 
     private static RedisValue Required(Dictionary<RedisValue, RedisValue> fields, string fieldName)
@@ -116,7 +138,7 @@ internal static class SessionRedisPayload
             return value;
         }
 
-        throw new InvalidOperationException($"Stored session payload field '{fieldName}' is missing.");
+        throw new SessionPayloadCorruptException($"Stored session payload field '{fieldName}' is missing.");
     }
 
     private static Guid ParseGuid(RedisValue value, string fieldName) =>
@@ -129,10 +151,19 @@ internal static class SessionRedisPayload
             ? parsed
             : throw Corrupt(fieldName, "integer");
 
-    private static DateTimeOffset ParseTicks(RedisValue value, string fieldName) =>
-        new(ParseLong(value, fieldName), TimeSpan.Zero);
+    private static DateTimeOffset ParseTicks(RedisValue value, string fieldName)
+    {
+        try
+        {
+            return new DateTimeOffset(ParseLong(value, fieldName), TimeSpan.Zero);
+        }
+        catch (ArgumentOutOfRangeException)
+        {
+            throw Corrupt(fieldName, "timestamp");
+        }
+    }
 
-    private static InvalidOperationException Corrupt(string fieldName, string kind) =>
+    private static SessionPayloadCorruptException Corrupt(string fieldName, string kind) =>
         new($"Stored session payload field '{fieldName}' is not a valid {kind} value.");
 
     private static string FormatGuid(Guid value) => value.ToString("N", CultureInfo.InvariantCulture);

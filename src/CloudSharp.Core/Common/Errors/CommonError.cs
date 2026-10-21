@@ -13,4 +13,7 @@ public sealed class CommonError : CloudSharpError
 
     public static CommonError PreconditionFailed() =>
         new(new ErrorDefinition(ErrorCodes.Common.PreconditionFailed), "Resource version does not match the request.");
+
+    public static CommonError PreconditionRequired() =>
+        new(new ErrorDefinition(ErrorCodes.Common.PreconditionRequired), "An If-Match header is required.");
 }

@@ -16,4 +16,8 @@
       <ProjectReference Include="..\CloudSharp.Infrastructure\CloudSharp.Infrastructure.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+      <InternalsVisibleTo Include="CloudSharp.Api.Tests" />
+    </ItemGroup>
+
 </Project>

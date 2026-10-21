@@ -1,4 +1,5 @@
 using System.Net;
+using CloudSharp.Core.Common.Errors;
 
 namespace CloudSharp.Api.Contracts.Mapping;
 
@@ -8,9 +9,24 @@ internal static class ErrorHttpStatusCodeCatalog
         new Dictionary<string, HttpStatusCode>(StringComparer.Ordinal)
         {
             [ResultHttpMapper.RequestValidationFailedCode] = HttpStatusCode.BadRequest,
-            ["AUTH_TOKEN_REQUIRED"] = HttpStatusCode.Unauthorized,
-            ["AUTH_TOKEN_INVALID"] = HttpStatusCode.Unauthorized,
-            ["AUTH_TOKEN_TYPE_NOT_ALLOWED"] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.User.InvalidEmail] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.NameInvalid] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.DisplayNameInvalid] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.PasswordInvalid] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.PasswordMismatch] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.InvalidRole] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.InvalidStatus] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.Deleted] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.InvalidState] = HttpStatusCode.BadRequest,
+            [ErrorCodes.User.EmailConflict] = HttpStatusCode.Conflict,
+            [ErrorCodes.User.NameConflict] = HttpStatusCode.Conflict,
+            [ErrorCodes.Session.AuthInvalidCredentials] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.Session.AuthSessionInvalid] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.Session.AuthSessionExpired] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.Session.AuthUserInactive] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.Auth.TokenRequired] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.Auth.TokenInvalid] = HttpStatusCode.Unauthorized,
+            [ErrorCodes.Auth.TokenTypeNotAllowed] = HttpStatusCode.Unauthorized,
             ["PERMISSION_DENIED"] = HttpStatusCode.Forbidden,
             ["RESOURCE_NOT_FOUND"] = HttpStatusCode.NotFound,
             ["METHOD_NOT_ALLOWED"] = HttpStatusCode.MethodNotAllowed,

@@ -1,3 +1,4 @@
+using System.Globalization;
 using CloudSharp.Core.Domain.Sessions;
 using CloudSharp.Infrastructure.Auth.Sessions;
 using CloudSharp.Infrastructure.Tests.TestSupport.Builders;
@@ -107,7 +108,7 @@ public class SessionRedisPayloadTests
 
         var act = () => SessionRedisPayload.ToDomain(entries, session.TokenHash);
 
-        act.Should().Throw<InvalidOperationException>()
+        act.Should().Throw<SessionPayloadCorruptException>()
             .WithMessage($"*{missingField}*");
     }
 
@@ -123,8 +124,69 @@ public class SessionRedisPayloadTests
 
         var act = () => SessionRedisPayload.ToDomain(entries, session.TokenHash);
 
-        act.Should().Throw<InvalidOperationException>()
+        act.Should().Throw<SessionPayloadCorruptException>()
             .WithMessage($"*{corruptField}*");
+    }
+
+    [TestCaseSource(nameof(InvariantViolations))]
+    public void ToDomain_WithParseableInvariantViolation_ShouldThrowCorruptPayloadWithoutStoredValues(
+        string corruptField,
+        string corruptValue)
+    {
+        var session = TestUserSessions.Valid();
+        var entries = ToStoredEntries(session)
+            .Select(entry => entry.Name == corruptField
+                ? new HashEntry(entry.Name, corruptValue)
+                : entry)
+            .ToArray();
+
+        var exception = Assert.Throws<SessionPayloadCorruptException>(
+            () => SessionRedisPayload.ToDomain(entries, session.TokenHash))!;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(exception.Message, Does.Not.Contain(corruptValue));
+            Assert.That(exception.Message, Does.Not.Contain(session.TokenHash.Value));
+            Assert.That(exception.InnerException, Is.Null);
+        });
+    }
+
+    [TestCase(SessionRedisPayload.IssuedAtField)]
+    [TestCase(SessionRedisPayload.LastSeenAtField)]
+    [TestCase(SessionRedisPayload.IdleExpiresAtField)]
+    [TestCase(SessionRedisPayload.AbsoluteExpiresAtField)]
+    public void ToDomain_WithOutOfRangeTimestamp_ShouldThrowCorruptPayload(string corruptField)
+    {
+        var session = TestUserSessions.Valid();
+        var entries = ToStoredEntries(session)
+            .Select(entry => entry.Name == corruptField
+                ? new HashEntry(entry.Name, long.MaxValue.ToString(CultureInfo.InvariantCulture))
+                : entry)
+            .ToArray();
+
+        Assert.That(
+            () => SessionRedisPayload.ToDomain(entries, session.TokenHash),
+            Throws.TypeOf<SessionPayloadCorruptException>());
+    }
+
+    [Test]
+    public void ToDomain_WithNullEntries_ShouldThrowArgumentNullException()
+    {
+        var session = TestUserSessions.Valid();
+
+        Assert.That(
+            () => SessionRedisPayload.ToDomain(null!, session.TokenHash),
+            Throws.TypeOf<ArgumentNullException>().With.Property("ParamName").EqualTo("entries"));
+    }
+
+    [Test]
+    public void ToDomain_WithNullTokenHash_ShouldThrowArgumentNullException()
+    {
+        var session = TestUserSessions.Valid();
+
+        Assert.That(
+            () => SessionRedisPayload.ToDomain(ToStoredEntries(session), null!),
+            Throws.TypeOf<ArgumentNullException>().With.Property("ParamName").EqualTo("tokenHash"));
     }
 
     private static HashEntry[] ToStoredEntries(UserSession session) =>
@@ -138,6 +200,32 @@ public class SessionRedisPayloadTests
 
     private static IEnumerable<TestCaseData> BodyFieldsAsCases() =>
         BodyFieldNames.Select(field => new TestCaseData(field).SetName($"Corrupt {field}"));
+
+    private static IEnumerable<TestCaseData> InvariantViolations()
+    {
+        var session = TestUserSessions.Valid();
+
+        yield return new TestCaseData(SessionRedisPayload.SessionIdField, Guid.Empty.ToString("N"))
+            .SetName("Empty session id");
+        yield return new TestCaseData(SessionRedisPayload.UserPublicIdField, Guid.Empty.ToString("N"))
+            .SetName("Empty user public id");
+        yield return new TestCaseData(SessionRedisPayload.UserIdField, "-1")
+            .SetName("Negative user id");
+        yield return new TestCaseData(SessionRedisPayload.SecurityVersionField, "0")
+            .SetName("Zero security version");
+        yield return new TestCaseData(
+                SessionRedisPayload.LastSeenAtField,
+                session.IssuedAt.AddTicks(-1).Ticks.ToString(CultureInfo.InvariantCulture))
+            .SetName("Last seen before issue");
+        yield return new TestCaseData(
+                SessionRedisPayload.IdleExpiresAtField,
+                session.LastSeenAt.AddTicks(-1).Ticks.ToString(CultureInfo.InvariantCulture))
+            .SetName("Idle expiration before last seen");
+        yield return new TestCaseData(
+                SessionRedisPayload.AbsoluteExpiresAtField,
+                session.IdleExpiresAt.AddTicks(-1).Ticks.ToString(CultureInfo.InvariantCulture))
+            .SetName("Absolute expiration before idle expiration");
+    }
 
     private static void AssertSessionMatches(UserSession actual, UserSession expected)
     {

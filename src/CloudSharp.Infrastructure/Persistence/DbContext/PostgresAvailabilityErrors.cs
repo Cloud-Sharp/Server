@@ -1,5 +1,6 @@
 using System.Net.Sockets;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Storage;
 using Npgsql;
 
 namespace CloudSharp.Infrastructure.Persistence.DbContext;
@@ -31,6 +32,8 @@ internal static class PostgresAvailabilityErrors
             || postgresException.SqlState.StartsWith("53", StringComparison.Ordinal)
             || postgresException.SqlState is "57P01" or "57P02" or "57P03" or "57P04",
         DbUpdateException when exception.InnerException is not null =>
+            IsAvailabilityFailure(exception.InnerException),
+        RetryLimitExceededException when exception.InnerException is not null =>
             IsAvailabilityFailure(exception.InnerException),
         // Npgsql 기본 execution strategy는 transient provider exception을
         // InvalidOperationException으로 감싼다. provider 원인이 있을 때만 펼친다.
