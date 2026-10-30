@@ -56,6 +56,16 @@ public static class ErrorCodes
         public const string InvalidState = "SPACE_ROLE_INVALID_STATE";
     }
 
+    public static class SpaceMembership
+    {
+        public const string SpaceIdInvalid = "MEMBER_SPACE_ID_INVALID";
+        public const string UserIdInvalid = "MEMBER_USER_ID_INVALID";
+        public const string AssignedByInvalid = "MEMBER_ASSIGNED_BY_INVALID";
+        public const string RoleInvalid = "MEMBER_INVALID_ROLE";
+        public const string InvalidState = "MEMBER_INVALID_STATE";
+        public const string Inactive = "MEMBER_INACTIVE";
+    }
+
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
