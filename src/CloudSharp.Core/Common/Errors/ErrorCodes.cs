@@ -49,6 +49,13 @@ public static class ErrorCodes
         public const string TransferTargetInvalid = "SPACE_TRANSFER_TARGET_INVALID";
     }
 
+    public static class SpaceRole
+    {
+        public const string SpaceIdInvalid = "SPACE_ROLE_SPACE_ID_INVALID";
+        public const string SystemKeyInvalid = "SPACE_ROLE_SYSTEM_KEY_INVALID";
+        public const string InvalidState = "SPACE_ROLE_INVALID_STATE";
+    }
+
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
