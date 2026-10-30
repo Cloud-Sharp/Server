@@ -66,6 +66,19 @@ public static class ErrorCodes
         public const string Inactive = "MEMBER_INACTIVE";
     }
 
+    public static class SpaceInvite
+    {
+        public const string SpaceIdInvalid = "INVITE_SPACE_ID_INVALID";
+        public const string CreatedByInvalid = "INVITE_CREATED_BY_INVALID";
+        public const string TokenHashInvalid = "INVITE_TOKEN_HASH_INVALID";
+        public const string ExpiresAtInvalid = "INVITE_EXPIRES_AT_INVALID";
+        public const string MaxUsesInvalid = "INVITE_MAX_USES_INVALID";
+        public const string InvalidState = "INVITE_INVALID_STATE";
+        public const string Revoked = "INVITE_REVOKED";
+        public const string Expired = "INVITE_EXPIRED";
+        public const string UsageExhausted = "INVITE_USAGE_EXHAUSTED";
+    }
+
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
