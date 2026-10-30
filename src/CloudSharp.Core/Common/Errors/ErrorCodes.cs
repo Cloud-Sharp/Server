@@ -35,6 +35,20 @@ public static class ErrorCodes
         public const string NameConflict = "USER_NAME_CONFLICT";
     }
 
+    public static class Space
+    {
+        public const string NameInvalid = "SPACE_NAME_INVALID";
+        public const string OwnerInvalid = "SPACE_OWNER_INVALID";
+        public const string Inactive = "SPACE_INACTIVE";
+        public const string InvalidState = "SPACE_INVALID_STATE";
+        public const string QuotaInvalid = "SPACE_QUOTA_INVALID";
+        public const string QuotaExceeded = "SPACE_QUOTA_EXCEEDED";
+        public const string QuotaTooSmall = "SPACE_QUOTA_TOO_SMALL";
+        public const string StorageAmountInvalid = "SPACE_STORAGE_AMOUNT_INVALID";
+        public const string ReservationInvalid = "SPACE_RESERVATION_INVALID";
+        public const string TransferTargetInvalid = "SPACE_TRANSFER_TARGET_INVALID";
+    }
+
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
