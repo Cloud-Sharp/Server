@@ -35,6 +35,50 @@ public static class ErrorCodes
         public const string NameConflict = "USER_NAME_CONFLICT";
     }
 
+    public static class Space
+    {
+        public const string NameInvalid = "SPACE_NAME_INVALID";
+        public const string OwnerInvalid = "SPACE_OWNER_INVALID";
+        public const string Inactive = "SPACE_INACTIVE";
+        public const string InvalidState = "SPACE_INVALID_STATE";
+        public const string QuotaInvalid = "SPACE_QUOTA_INVALID";
+        public const string QuotaExceeded = "SPACE_QUOTA_EXCEEDED";
+        public const string QuotaTooSmall = "SPACE_QUOTA_TOO_SMALL";
+        public const string StorageAmountInvalid = "SPACE_STORAGE_AMOUNT_INVALID";
+        public const string ReservationInvalid = "SPACE_RESERVATION_INVALID";
+        public const string TransferTargetInvalid = "SPACE_TRANSFER_TARGET_INVALID";
+    }
+
+    public static class SpaceRole
+    {
+        public const string SpaceIdInvalid = "SPACE_ROLE_SPACE_ID_INVALID";
+        public const string SystemKeyInvalid = "SPACE_ROLE_SYSTEM_KEY_INVALID";
+        public const string InvalidState = "SPACE_ROLE_INVALID_STATE";
+    }
+
+    public static class SpaceMembership
+    {
+        public const string SpaceIdInvalid = "MEMBER_SPACE_ID_INVALID";
+        public const string UserIdInvalid = "MEMBER_USER_ID_INVALID";
+        public const string AssignedByInvalid = "MEMBER_ASSIGNED_BY_INVALID";
+        public const string RoleInvalid = "MEMBER_INVALID_ROLE";
+        public const string InvalidState = "MEMBER_INVALID_STATE";
+        public const string Inactive = "MEMBER_INACTIVE";
+    }
+
+    public static class SpaceInvite
+    {
+        public const string SpaceIdInvalid = "INVITE_SPACE_ID_INVALID";
+        public const string CreatedByInvalid = "INVITE_CREATED_BY_INVALID";
+        public const string TokenHashInvalid = "INVITE_TOKEN_HASH_INVALID";
+        public const string ExpiresAtInvalid = "INVITE_EXPIRES_AT_INVALID";
+        public const string MaxUsesInvalid = "INVITE_MAX_USES_INVALID";
+        public const string InvalidState = "INVITE_INVALID_STATE";
+        public const string Revoked = "INVITE_REVOKED";
+        public const string Expired = "INVITE_EXPIRED";
+        public const string UsageExhausted = "INVITE_USAGE_EXHAUSTED";
+    }
+
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
