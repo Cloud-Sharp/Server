@@ -6,8 +6,8 @@ namespace CloudSharp.Core.Policies.Authorization;
 
 /// <summary>
 /// 호출자가 조회한 Space·사용자·Membership·현재 Role snapshot으로 유효 Permission 집합을 계산하는 순수 정책.
-/// DB 조회, Space 상태 검사, Session SystemRole 관리자 우회, MCP scope·allowlist 제한, HTTP 응답 결정은
-/// 후속 ISpaceAuthorizationService의 책임이다.
+/// Space 상태·Session 관리자 우회는 SessionSpaceAuthorizationPolicy, 최신 조회는 ISpaceAuthorizationService,
+/// HTTP 응답·마스킹은 API 경계의 책임이다. MCP scope·allowlist 연결은 후속 작업이다.
 /// </summary>
 public static class SpacePermissionPolicy
 {

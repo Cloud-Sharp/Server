@@ -17,6 +17,8 @@ public class SpacePermissionCodesTests
     [TestCase(SpacePermission.InvitesManage, "INVITES_MANAGE")]
     [TestCase(SpacePermission.MembersView, "MEMBERS_VIEW")]
     [TestCase(SpacePermission.MembersManage, "MEMBERS_MANAGE")]
+    [TestCase(SpacePermission.UploadsManage, "UPLOADS_MANAGE")]
+    [TestCase(SpacePermission.OperationsManage, "OPERATIONS_MANAGE")]
     public void Get_ShouldReturnStableCode(SpacePermission permission, string expectedCode)
     {
         var code = SpacePermissionCodes.Get(permission);
@@ -56,7 +58,7 @@ public class SpacePermissionCodesTests
 
     [TestCase(0)]
     [TestCase(-1)]
-    [TestCase(12)]
+    [TestCase(14)]
     [TestCase(999)]
     public void Get_ShouldThrowForUndefinedValue(int undefinedValue)
     {

@@ -18,6 +18,10 @@ public static class ErrorCodes
         public const string TokenRequired = "AUTH_TOKEN_REQUIRED";
         public const string TokenInvalid = "AUTH_TOKEN_INVALID";
         public const string TokenTypeNotAllowed = "AUTH_TOKEN_TYPE_NOT_ALLOWED";
+        public const string SpaceNotFound = "AUTH_SPACE_NOT_FOUND";
+        public const string SpaceAccessDenied = "AUTH_SPACE_ACCESS_DENIED";
+        public const string SpaceStateNotAllowed = "AUTH_SPACE_STATE_NOT_ALLOWED";
+        public const string SpacePermissionDenied = "AUTH_SPACE_PERMISSION_DENIED";
     }
 
     public static class User
