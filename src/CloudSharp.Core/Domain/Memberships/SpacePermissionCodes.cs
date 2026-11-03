@@ -25,6 +25,8 @@ public static class SpacePermissionCodes
         SpacePermission.InvitesManage => "INVITES_MANAGE",
         SpacePermission.MembersView => "MEMBERS_VIEW",
         SpacePermission.MembersManage => "MEMBERS_MANAGE",
+        SpacePermission.UploadsManage => "UPLOADS_MANAGE",
+        SpacePermission.OperationsManage => "OPERATIONS_MANAGE",
         _ => throw new ArgumentOutOfRangeException(nameof(permission), permission, "Unsupported space permission."),
     };
 }

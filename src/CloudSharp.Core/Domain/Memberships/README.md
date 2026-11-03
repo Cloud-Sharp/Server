@@ -24,8 +24,12 @@ API와 영속 저장에서 사용하는 식별자이며, enum 정수값이나 `T
 | `InvitesManage` | `INVITES_MANAGE` |
 | `MembersView` | `MEMBERS_VIEW` |
 | `MembersManage` | `MEMBERS_MANAGE` |
+| `UploadsManage` | `UPLOADS_MANAGE` |
+| `OperationsManage` | `OPERATIONS_MANAGE` |
 
 - `SpaceUpdate`는 Space 정보 수정 권한이며 quota 변경, Space 삭제, 소유권 이전은 포함하지 않는다.
+- `UploadsManage`는 같은 Space의 타인 업로드 조회·취소, `OperationsManage`는 같은 Space의 타인 사용자 비동기 작업 조회·취소 권한이다. 서로 독립적이며 `FilesWrite`를 포함하거나 대체하지 않는다. 내부 WorkerJob·DLQ 운영에는 적용하지 않는다.
+- 기본 ADMIN과 OWNER는 두 관리 권한을 모두 갖고 MEMBER·VIEWER에는 기본 부여하지 않는다. 본인 작업 조회·취소는 해당 UseCase에서 별도 요청자 관계 조건으로 검사한다.
 - 기본 Role 매핑은 아래 Space Role 절을 따른다. OWNER 권한 합성과 권한 평가는 후속 작업으로 이 폴더에 추가한다.
 - 코드 문자열 파싱은 실제 소비자가 생기는 단계에서 추가한다.
 

@@ -44,4 +44,10 @@ public enum SpacePermission
 
     /// <summary>멤버 역할 변경, 정지, 제거.</summary>
     MembersManage = 11,
+
+    /// <summary>같은 Space의 타인 업로드 조회·취소. 업로드 생성 권한은 포함하지 않는다.</summary>
+    UploadsManage = 12,
+
+    /// <summary>같은 Space의 타인 사용자 비동기 작업 조회·취소. 내부 WorkerJob·DLQ 운영은 포함하지 않는다.</summary>
+    OperationsManage = 13,
 }
