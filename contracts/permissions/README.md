@@ -50,7 +50,9 @@ Space 권한 매트릭스와 endpoint별 인가 계약. Session 사용자 정책
 
 `UPLOADS_MANAGE`, `OPERATIONS_MANAGE`는 별개 권한이다. 기본 ADMIN과 OWNER가 보유하고 MEMBER·VIEWER에는 기본 부여하지 않는다. `FILES_WRITE`로 대체하거나 자동 포함시키지 않는다. Upload 생성이나 비동기 작업 생성 권한도 부여하지 않는다. 내부 WorkerJob·DLQ 운영 권한은 `OPERATIONS_MANAGE`의 범위가 아니다.
 
-Permission enum과 안정된 code 매핑은 Core에 정의한다. 실제 endpoint·인가 서비스 연결은 후속 구현에서 수행한다.
+Permission enum과 안정된 code 매핑, Session 인가 계약·Core 정책·Infrastructure 서비스는 구현한다.
+서비스는 조회 port를 통해 매 요청 최신 snapshot을 평가하며 PostgreSQL reader adapter,
+실제 DI·endpoint 연결, HTTP masking과 MCP 지원은 후속 구현에서 수행한다.
 
 ## Space 상태와 마스킹
 
