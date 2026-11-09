@@ -5,3 +5,4 @@ Architectural decisions, security notes, verification reports.
 ## Project documentation
 
 - [CloudSharp 프로젝트 종합 개요](project-overview.md) — 제품 목표, 범위, 현재 상태, 목표 아키텍처, 핵심 흐름, 운영 기준과 개발 로드맵
+- [유즈케이스 로깅 데코레이터 설계](adr/use-case-logging-decorator.md) — 공통 실행 계약, 구조화 로그 정책, Transactional Outbox와의 책임 분리
