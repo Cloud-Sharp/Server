@@ -6,6 +6,8 @@ using CloudSharp.Api.Endpoints.Users.Mapping;
 using CloudSharp.Api.Endpoints.Users.Requests;
 using CloudSharp.Api.Endpoints.Users.Responses;
 using CloudSharp.Api.Middleware;
+using CloudSharp.Core.UseCases;
+using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.PasswordChanges;
 using CloudSharp.Core.UseCases.Users.Profiles;
 using Microsoft.AspNetCore.Builder;
@@ -67,7 +69,7 @@ public static class UserEndpoints
 
     internal static async Task<IResult> ChangePasswordAsync(
         ChangePasswordRequest request,
-        PasswordChangeUseCase useCase,
+        IUseCase<PasswordChangeCommand, PasswordChangeResultDto> useCase,
         ICurrentActorAccessor currentActorAccessor,
         HttpContext httpContext,
         CancellationToken cancellationToken)

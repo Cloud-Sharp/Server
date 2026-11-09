@@ -26,6 +26,7 @@ public sealed class PasswordChangeUseCase(
     IPasswordHasher passwordHasher,
     ITransactionExecutor transactionExecutor,
     IClock clock)
+    : IUseCase<PasswordChangeCommand, PasswordChangeResultDto>
 {
     /// <summary>commit 후 보안 정리의 최대 소요 시간.</summary>
     private static readonly TimeSpan CleanupDeadline = TimeSpan.FromSeconds(10);

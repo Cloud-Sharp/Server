@@ -4,6 +4,8 @@ using CloudSharp.Api.Endpoints.Auth.Mapping;
 using CloudSharp.Api.Endpoints.Auth.Requests;
 using CloudSharp.Api.Endpoints.Auth.Responses;
 using CloudSharp.Api.Middleware;
+using CloudSharp.Core.UseCases;
+using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Logins;
 using CloudSharp.Core.UseCases.Auth.Registrations;
 using Microsoft.AspNetCore.Builder;
@@ -47,7 +49,7 @@ public static class AuthEndpoints
 
     internal static async Task<IResult> RegisterAsync(
         RegistrationRequest request,
-        RegistrationUseCase useCase,
+        IUseCase<RegistrationCommand, RegistrationResultDto> useCase,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
@@ -66,7 +68,7 @@ public static class AuthEndpoints
 
     internal static async Task<IResult> LoginAsync(
         LoginRequest request,
-        LoginUseCase useCase,
+        IUseCase<LoginCommand, LoginResultDto> useCase,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {

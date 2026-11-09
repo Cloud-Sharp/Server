@@ -20,6 +20,7 @@ public sealed class LoginUseCase(
     IPasswordHasher passwordHasher,
     SessionIssuanceService sessionIssuanceService,
     ITransactionExecutor transactionExecutor)
+    : IUseCase<LoginCommand, LoginResultDto>
 {
     private const string BearerTokenType = "Bearer";
 
