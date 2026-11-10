@@ -23,6 +23,7 @@ public sealed class RegistrationUseCase(
     SessionIssuanceService sessionIssuanceService,
     ITransactionExecutor transactionExecutor,
     IClock clock)
+    : IUseCase<RegistrationCommand, RegistrationResultDto>
 {
     private const string BearerTokenType = "Bearer";
 
