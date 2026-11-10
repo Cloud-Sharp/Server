@@ -51,6 +51,12 @@ public static class ErrorCodes
         public const string StorageAmountInvalid = "SPACE_STORAGE_AMOUNT_INVALID";
         public const string ReservationInvalid = "SPACE_RESERVATION_INVALID";
         public const string TransferTargetInvalid = "SPACE_TRANSFER_TARGET_INVALID";
+        public const string ActorRequired = "SPACE_ACTOR_REQUIRED";
+        public const string AuthorizationContextRequired = "SPACE_AUTHORIZATION_CONTEXT_REQUIRED";
+        public const string ExpectedVersionInvalid = "SPACE_EXPECTED_VERSION_INVALID";
+        public const string ListLimitInvalid = "SPACE_LIST_LIMIT_INVALID";
+        public const string ListCursorInvalid = "SPACE_LIST_CURSOR_INVALID";
+        public const string ListSortInvalid = "SPACE_LIST_SORT_INVALID";
     }
 
     public static class SpaceRole

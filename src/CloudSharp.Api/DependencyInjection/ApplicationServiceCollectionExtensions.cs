@@ -9,6 +9,17 @@ using CloudSharp.Core.UseCases.Auth.Logins;
 using CloudSharp.Core.UseCases.Auth.PasswordChanges;
 using CloudSharp.Core.UseCases.Auth.Registrations;
 using CloudSharp.Core.UseCases.Auth.Sessions;
+using CloudSharp.Core.UseCases.Spaces.Archives;
+using CloudSharp.Core.UseCases.Spaces.Creations;
+using CloudSharp.Core.UseCases.Spaces.DeletionRequests;
+using CloudSharp.Core.UseCases.Spaces.Details;
+using CloudSharp.Core.UseCases.Spaces.Dtos;
+using CloudSharp.Core.UseCases.Spaces.Listings;
+using CloudSharp.Core.UseCases.Spaces.MetadataUpdates;
+using CloudSharp.Core.UseCases.Spaces.OwnershipTransfers;
+using CloudSharp.Core.UseCases.Spaces.QuotaChanges;
+using CloudSharp.Core.UseCases.Spaces.QuotaReads;
+using CloudSharp.Core.UseCases.Spaces.Reactivations;
 using CloudSharp.Core.UseCases.Users.Profiles;
 using CloudSharp.Infrastructure.Auth.Passwords;
 using CloudSharp.Infrastructure.Auth.Sessions;
@@ -41,6 +52,17 @@ public static class ApplicationServiceCollectionExtensions
         services.AddLoggedUseCase<PasswordChangeCommand, PasswordChangeResultDto, PasswordChangeUseCase>();
         services.AddScoped<GetProfileUseCase>();
         services.AddScoped<AuthenticateSessionUseCase>();
+
+        services.AddLoggedUseCase<ListSpacesQuery, SpacePageDto, ListSpacesUseCase>();
+        services.AddLoggedUseCase<CreateSpaceCommand, SpaceResultDto, CreateSpaceUseCase>();
+        services.AddLoggedUseCase<GetSpaceQuery, SpaceResultDto, GetSpaceUseCase>();
+        services.AddLoggedUseCase<UpdateSpaceCommand, SpaceResultDto, UpdateSpaceUseCase>();
+        services.AddLoggedUseCase<ArchiveSpaceCommand, SpaceResultDto, ArchiveSpaceUseCase>();
+        services.AddLoggedUseCase<ReactivateSpaceCommand, SpaceResultDto, ReactivateSpaceUseCase>();
+        services.AddLoggedUseCase<RequestSpaceDeletionCommand, SpaceDeletionAcceptedDto, RequestSpaceDeletionUseCase>();
+        services.AddLoggedUseCase<GetSpaceQuotaQuery, SpaceQuotaDto, GetSpaceQuotaUseCase>();
+        services.AddLoggedUseCase<ChangeSpaceQuotaCommand, SpaceQuotaDto, ChangeSpaceQuotaUseCase>();
+        services.AddLoggedUseCase<TransferSpaceOwnershipCommand, SpaceResultDto, TransferSpaceOwnershipUseCase>();
 
         services.AddCloudSharpAuthentication();
 
