@@ -22,6 +22,8 @@ public sealed class FakeSpaceRepository : ISpaceRepository
 
     public Result UpdateResult { get; set; } = Result.Ok();
 
+    public Error? FindByIdFailure { get; set; }
+
     public IReadOnlyDictionary<long, Space> PersistedSpacesById => persisted;
 
     public IReadOnlyList<Space> AddedSpaces => addedSpaces;
@@ -42,8 +44,10 @@ public sealed class FakeSpaceRepository : ISpaceRepository
     {
         cancellationToken.ThrowIfCancellationRequested();
         searchedIds.Add(id);
-        return Task.FromResult(Result.Ok<Space?>(
-            persisted.TryGetValue(id, out var space) ? Copy(space) : null));
+        return Task.FromResult(FindByIdFailure is not null
+            ? Result.Fail<Space?>(FindByIdFailure)
+            : Result.Ok<Space?>(
+                persisted.TryGetValue(id, out var space) ? Copy(space) : null));
     }
 
     public Task<Result<Space?>> FindByPublicIdAsync(
