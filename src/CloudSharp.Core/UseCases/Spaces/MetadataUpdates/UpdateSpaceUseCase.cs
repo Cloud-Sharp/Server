@@ -1,4 +1,8 @@
+using CloudSharp.Core.Abstractions.Persistence;
+using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Common.Time;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
 using FluentResults;
 
@@ -6,7 +10,24 @@ namespace CloudSharp.Core.UseCases.Spaces.MetadataUpdates;
 
 public sealed class UpdateSpaceUseCase : IUseCase<UpdateSpaceCommand, SpaceResultDto>
 {
-    public Task<Result<SpaceResultDto>> ExecuteAsync(
+    private SpaceMutationWorkflow MutationWorkflow { get; }
+
+    internal UpdateSpaceUseCase(
+        ISpaceDetailsReader detailsReader,
+        ISpaceRepository spaceRepository,
+        IUnitOfWork unitOfWork,
+        ITransactionExecutor transactionExecutor,
+        IClock clock)
+    {
+        MutationWorkflow = new SpaceMutationWorkflow(
+            detailsReader,
+            spaceRepository,
+            unitOfWork,
+            transactionExecutor,
+            clock);
+    }
+
+    public async Task<Result<SpaceResultDto>> ExecuteAsync(
         UpdateSpaceCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -15,9 +36,17 @@ public sealed class UpdateSpaceUseCase : IUseCase<UpdateSpaceCommand, SpaceResul
         var validation = new UpdateSpaceCommandValidator().Validate(command);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<SpaceResultDto>());
+            return validation.ToFailureResult<SpaceResultDto>();
         }
 
-        throw new NotImplementedException();
+        return await MutationWorkflow.ExecuteAsync(
+            command.Space,
+            command.ExpectedVersion,
+            SpaceStatus.Active,
+            (space, now) => space.UpdateMetadata(
+                command.Name ?? space.Name,
+                command.Description is null ? space.Description : command.Description.Value,
+                now),
+            cancellationToken);
     }
 }

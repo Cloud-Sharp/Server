@@ -1,4 +1,8 @@
+using CloudSharp.Core.Abstractions.Persistence;
+using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Common.Time;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
 using FluentResults;
 
@@ -6,7 +10,24 @@ namespace CloudSharp.Core.UseCases.Spaces.Archives;
 
 public sealed class ArchiveSpaceUseCase : IUseCase<ArchiveSpaceCommand, SpaceResultDto>
 {
-    public Task<Result<SpaceResultDto>> ExecuteAsync(
+    private SpaceMutationWorkflow MutationWorkflow { get; }
+
+    internal ArchiveSpaceUseCase(
+        ISpaceDetailsReader detailsReader,
+        ISpaceRepository spaceRepository,
+        IUnitOfWork unitOfWork,
+        ITransactionExecutor transactionExecutor,
+        IClock clock)
+    {
+        MutationWorkflow = new SpaceMutationWorkflow(
+            detailsReader,
+            spaceRepository,
+            unitOfWork,
+            transactionExecutor,
+            clock);
+    }
+
+    public async Task<Result<SpaceResultDto>> ExecuteAsync(
         ArchiveSpaceCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -15,9 +36,14 @@ public sealed class ArchiveSpaceUseCase : IUseCase<ArchiveSpaceCommand, SpaceRes
         var validation = new ArchiveSpaceCommandValidator().Validate(command);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<SpaceResultDto>());
+            return validation.ToFailureResult<SpaceResultDto>();
         }
 
-        throw new NotImplementedException();
+        return await MutationWorkflow.ExecuteAsync(
+            command.Space,
+            command.ExpectedVersion,
+            SpaceStatus.Active,
+            (space, now) => space.Archive(now),
+            cancellationToken);
     }
 }
