@@ -69,6 +69,7 @@ Desktop.ini
 .agents/skills/*
 !.agents/skills/cloudsharp-persistence-entity/
 !.agents/skills/cloudsharp-repository/
+!.agents/skills/cloudsharp-use-case-scaffolding/
 !.agents/skills/api-integration-tests/
 !.claude/
 .claude/*
@@ -76,4 +77,5 @@ Desktop.ini
 .claude/skills/*
 !.claude/skills/cloudsharp-persistence-entity/
 !.claude/skills/cloudsharp-repository/
+!.claude/skills/cloudsharp-use-case-scaffolding/
 !.claude/skills/api-integration-tests/
