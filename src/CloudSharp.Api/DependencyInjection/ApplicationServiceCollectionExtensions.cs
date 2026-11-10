@@ -19,6 +19,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddPostgreSqlPersistence(configuration);
         services.AddUserServices();
         services.AddSpaceServices();
+        services.AddMembershipServices();
 
         return services;
     }

@@ -41,6 +41,7 @@ public static class ErrorCodes
 
     public static class Space
     {
+        public const string PublicIdInvalid = "SPACE_PUBLIC_ID_INVALID";
         public const string NameInvalid = "SPACE_NAME_INVALID";
         public const string OwnerInvalid = "SPACE_OWNER_INVALID";
         public const string Inactive = "SPACE_INACTIVE";
@@ -68,6 +69,7 @@ public static class ErrorCodes
 
     public static class SpaceMembership
     {
+        public const string PublicIdInvalid = "MEMBER_PUBLIC_ID_INVALID";
         public const string SpaceIdInvalid = "MEMBER_SPACE_ID_INVALID";
         public const string UserIdInvalid = "MEMBER_USER_ID_INVALID";
         public const string AssignedByInvalid = "MEMBER_ASSIGNED_BY_INVALID";
