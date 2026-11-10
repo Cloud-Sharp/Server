@@ -143,6 +143,36 @@ public class ListSpacesUseCaseTests
         });
     }
 
+    private static IEnumerable<TestCaseData> MalformedCandidatePages()
+    {
+        yield return new TestCaseData(new List<SpaceListCandidatePage>
+            {
+                new([], true),
+            })
+            .SetName("HasMore accompanies an empty batch");
+
+        var repeatedPage = new SpaceListCandidatePage([Owned(30)], true);
+        yield return new TestCaseData(new List<SpaceListCandidatePage>
+            {
+                repeatedPage,
+                repeatedPage,
+            })
+            .SetName("Continuation cursor repeats");
+    }
+
+    [TestCaseSource(nameof(MalformedCandidatePages))]
+    public void ExecuteAsync_ShouldThrowInvalidOperationException(
+        IReadOnlyList<SpaceListCandidatePage> pages)
+    {
+        // Arrange
+        var reader = new ScriptedSpaceListCandidateReader(pages);
+        var useCase = new ListSpacesUseCase(reader);
+
+        // Act & Assert
+        Assert.ThrowsAsync<InvalidOperationException>(async () =>
+            await useCase.ExecuteAsync(new ListSpacesQuery(Actor())));
+    }
+
     [TestCase(0)]
     [TestCase(101)]
     public async Task ExecuteAsync_ShouldReturnLimitValidationErrorWithoutDependencyCalls(int limit)
@@ -175,6 +205,30 @@ public class ListSpacesUseCaseTests
         Assert.That(reader.Reads, Is.Empty);
     }
 
+    private sealed class ScriptedSpaceListCandidateReader(IReadOnlyList<SpaceListCandidatePage> pages)
+        : ISpaceListCandidateReader
+    {
+        private int nextPageIndex;
+
+        public Task<Result<SpaceListCandidatePage>> ReadAsync(
+            CurrentActor actor,
+            string? cursor,
+            int batchSize,
+            string? sort,
+            bool descending,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            if (nextPageIndex >= pages.Count)
+            {
+                return Task.FromResult(Result.Fail<SpaceListCandidatePage>(
+                    CommonError.DependencyUnavailable()));
+            }
+
+            return Task.FromResult(Result.Ok(pages[nextPageIndex++]));
+        }
+    }
+
     private static CurrentActor Actor() => TestSpaceAuthorizationSnapshots.Session(UserId);
 
     private static SpaceListCandidate Owned(long id, SpaceStatus status = SpaceStatus.Active)
@@ -193,12 +247,13 @@ public class ListSpacesUseCaseTests
         SpaceMembershipStatus membershipStatus = SpaceMembershipStatus.Active)
     {
         var space = Space(id, status, ownerUserId: 21);
+        var role = TestSpaceAuthorizationSnapshots.Role(id: 1_000 + id, spaceId: id);
         var membership = TestSpaceAuthorizationSnapshots.Membership(
             membershipStatus,
-            userId: UserId,
-            spaceId: id,
-            id: 500 + id);
-        var role = TestSpaceAuthorizationSnapshots.Role(id: 1_000 + id, spaceId: id);
+            UserId,
+            id,
+            500 + id,
+            role.Id);
         return new SpaceListCandidate(
             new SpaceAuthorizationSnapshot(space, membership, [role]),
             PublicId(10_000 + id),
