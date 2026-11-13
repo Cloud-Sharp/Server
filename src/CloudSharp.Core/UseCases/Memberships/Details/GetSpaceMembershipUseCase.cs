@@ -1,3 +1,4 @@
+using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
@@ -8,6 +9,17 @@ namespace CloudSharp.Core.UseCases.Memberships.Details;
 
 public sealed class GetSpaceMembershipUseCase : IUseCase<GetSpaceMembershipQuery, SpaceMembershipResultDto>
 {
+    private ISpaceRepository SpaceRepository { get; } = null!;
+    private ISpaceMembershipReader MembershipReader { get; } = null!;
+
+    public GetSpaceMembershipUseCase() { }
+
+    internal GetSpaceMembershipUseCase(ISpaceRepository spaceRepository, ISpaceMembershipReader membershipReader)
+    {
+        SpaceRepository = spaceRepository;
+        MembershipReader = membershipReader;
+    }
+
     public Task<Result<SpaceMembershipResultDto>> ExecuteAsync(
         GetSpaceMembershipQuery query,
         CancellationToken cancellationToken = default)

@@ -85,6 +85,7 @@ When the user's request matches one of these, the harness invokes the skill — 
 - `cloudsharp-repository` — writing/refactoring Infrastructure repositories, shared DbContext reads, change staging, and concurrency handling
 - `minimal-api-endpoint` — writing/reviewing Minimal API endpoints
 - `aspnet-unit-testing` — writing NUnit unit tests for Core (domain/usecase/validator)
+- `cloudsharp-use-case-unit-tests` — defining expected Core use-case behavior before implementation. Apply `aspnet-unit-testing` when writing the test code.
 - `api-integration-tests` — writing integration tests in `CloudSharp.Api.IntegrationTests`
 
 Built-in: `init`, `review`, `security-review`, `simplify`, `loop`, `update-config`, `keybindings-help`, `fewer-permission-prompts`, `claude-api`.

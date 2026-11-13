@@ -69,6 +69,7 @@ public static class ErrorCodes
 
     public static class SpaceMembership
     {
+        public const string NotFound = "MEMBER_NOT_FOUND";
         public const string PublicIdInvalid = "MEMBER_PUBLIC_ID_INVALID";
         public const string SpaceIdInvalid = "MEMBER_SPACE_ID_INVALID";
         public const string UserIdInvalid = "MEMBER_USER_ID_INVALID";

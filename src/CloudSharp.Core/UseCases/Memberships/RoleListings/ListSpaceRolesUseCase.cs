@@ -1,3 +1,4 @@
+using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
@@ -8,6 +9,17 @@ namespace CloudSharp.Core.UseCases.Memberships.RoleListings;
 
 public sealed class ListSpaceRolesUseCase : IUseCase<ListSpaceRolesQuery, IReadOnlyList<SpaceRoleDto>>
 {
+    private ISpaceRepository SpaceRepository { get; } = null!;
+    private ISpaceRoleReader RoleReader { get; } = null!;
+
+    public ListSpaceRolesUseCase() { }
+
+    internal ListSpaceRolesUseCase(ISpaceRepository spaceRepository, ISpaceRoleReader roleReader)
+    {
+        SpaceRepository = spaceRepository;
+        RoleReader = roleReader;
+    }
+
     public Task<Result<IReadOnlyList<SpaceRoleDto>>> ExecuteAsync(
         ListSpaceRolesQuery query,
         CancellationToken cancellationToken = default)
