@@ -155,20 +155,12 @@ public class SpaceMembershipScaffoldingTests
     private static IEnumerable<TestCaseData> ValidInputs()
     {
         var space = AuthorizedSpace();
-        yield return ValidInput("RL-01", () => new ListSpaceRolesUseCase().ExecuteAsync(new ListSpaceRolesQuery(space)));
-        yield return ValidInput("MB-01", () => new ListSpaceMembershipsUseCase().ExecuteAsync(new ListSpaceMembershipsQuery(space)));
-        yield return ValidInput("MB-02", () => new GetSpaceMembershipUseCase().ExecuteAsync(
-            new GetSpaceMembershipQuery(space, MembershipPublicId)));
         yield return ValidInput("MB-03", () => new ReplaceSpaceMemberRolesUseCase().ExecuteAsync(
             new ReplaceSpaceMemberRolesCommand(space, MembershipPublicId, 1, [RolePublicId])));
         yield return ValidInput("MB-04", () => new SuspendSpaceMemberUseCase().ExecuteAsync(
             new SuspendSpaceMemberCommand(space, MembershipPublicId, 1)));
         yield return ValidInput("MB-05", () => new ActivateSpaceMemberUseCase().ExecuteAsync(
             new ActivateSpaceMemberCommand(space, MembershipPublicId, 1)));
-        yield return ValidInput("MB-06", () => new RemoveSpaceMemberUseCase().ExecuteAsync(
-            new RemoveSpaceMemberCommand(space, MembershipPublicId, 1)));
-        yield return ValidInput("MB-07", () => new LeaveSpaceUseCase().ExecuteAsync(
-            new LeaveSpaceCommand(TestSpaceAuthorizationSnapshots.Session(), SpacePublicId)));
     }
 
     private static TestCaseData ValidInput(string id, Func<Task> execute) =>

@@ -2,6 +2,8 @@ using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Memberships.Dtos;
 using FluentResults;
 
@@ -20,7 +22,7 @@ public sealed class GetSpaceMembershipUseCase : IUseCase<GetSpaceMembershipQuery
         MembershipReader = membershipReader;
     }
 
-    public Task<Result<SpaceMembershipResultDto>> ExecuteAsync(
+    public async Task<Result<SpaceMembershipResultDto>> ExecuteAsync(
         GetSpaceMembershipQuery query,
         CancellationToken cancellationToken = default)
     {
@@ -29,14 +31,71 @@ public sealed class GetSpaceMembershipUseCase : IUseCase<GetSpaceMembershipQuery
         var validation = new GetSpaceMembershipQueryValidator().Validate(query);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<SpaceMembershipResultDto>());
+            return validation.ToFailureResult<SpaceMembershipResultDto>();
         }
 
         if (query.Space.ActorType != ActorType.Session)
         {
-            return Task.FromResult(Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed()));
+            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
         }
 
-        return Task.FromException<Result<SpaceMembershipResultDto>>(new NotImplementedException());
+        if (!query.Space.EffectivePermissions.Contains(SpacePermission.MembersView))
+        {
+            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.PermissionDenied());
+        }
+
+        if (SpaceRepository is null || MembershipReader is null)
+        {
+            return Result.Fail<SpaceMembershipResultDto>(CommonError.DependencyUnavailable());
+        }
+
+        var findResult = await SpaceRepository.FindByIdAsync(query.Space.SpaceId, cancellationToken);
+        if (findResult.IsFailed)
+        {
+            return Result.Fail<SpaceMembershipResultDto>(findResult.Errors);
+        }
+
+        var space = findResult.Value;
+        if (space is null)
+        {
+            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.SpaceNotFound());
+        }
+
+        if (space.Id != query.Space.SpaceId || space.PublicId != query.Space.SpacePublicId)
+        {
+            throw new InvalidOperationException("Space repository returned a different space.");
+        }
+
+        if (space.Status is not (SpaceStatus.Active or SpaceStatus.Archived))
+        {
+            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.StateNotAllowed(space.Status));
+        }
+
+        var readResult = await MembershipReader.ReadAsync(
+            space.Id,
+            query.MembershipPublicId,
+            cancellationToken);
+        if (readResult.IsFailed)
+        {
+            return Result.Fail<SpaceMembershipResultDto>(readResult.Errors);
+        }
+
+        var snapshot = readResult.Value;
+        if (snapshot is null)
+        {
+            return Result.Fail<SpaceMembershipResultDto>(SpaceMembershipError.NotFound());
+        }
+
+        var membership = snapshot.Membership;
+        if (membership.SpaceId != space.Id
+            || membership.PublicId != query.MembershipPublicId
+            || membership.UserId == space.OwnerUserId)
+        {
+            return Result.Fail<SpaceMembershipResultDto>(SpaceMembershipError.NotFound());
+        }
+
+        return Result.Ok(new SpaceMembershipResultDto(
+            SpaceMembershipDto.FromSnapshot(snapshot),
+            membership.Version));
     }
 }
