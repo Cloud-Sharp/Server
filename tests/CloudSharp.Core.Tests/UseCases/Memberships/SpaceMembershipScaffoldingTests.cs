@@ -6,6 +6,7 @@ using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.Tests.TestSupport.Builders;
 using CloudSharp.Core.UseCases.Memberships.Activations;
 using CloudSharp.Core.UseCases.Memberships.Details;
+using CloudSharp.Core.UseCases.Memberships.Dtos;
 using CloudSharp.Core.UseCases.Memberships.Leaves;
 using CloudSharp.Core.UseCases.Memberships.Listings;
 using CloudSharp.Core.UseCases.Memberships.Removals;
@@ -136,11 +137,14 @@ public class SpaceMembershipScaffoldingTests
     }
 
     [TestCaseSource(nameof(ValidInputs))]
-    public void ExecuteAsync_ValidInput_ShouldReachUnimplementedWorkflow(Func<Task> execute)
+    public async Task ExecuteAsync_ShouldReturnDependencyUnavailable(
+        Func<Task<Result<SpaceMembershipResultDto>>> execute)
     {
-        var task = execute();
+        var result = await execute();
 
-        Assert.ThrowsAsync<NotImplementedException>(() => task);
+        Assert.That(result.IsFailed, Is.True);
+        Assert.That(result.Errors.Single().Metadata[CloudSharpError.ErrorCodeMetadataKey],
+            Is.EqualTo(ErrorCodes.Common.DependencyUnavailable));
     }
 
     private static IEnumerable<TestCaseData> InvalidRoleLists()
@@ -163,7 +167,9 @@ public class SpaceMembershipScaffoldingTests
             new ActivateSpaceMemberCommand(space, MembershipPublicId, 1)));
     }
 
-    private static TestCaseData ValidInput(string id, Func<Task> execute) =>
+    private static TestCaseData ValidInput(
+        string id,
+        Func<Task<Result<SpaceMembershipResultDto>>> execute) =>
         new TestCaseData(execute).SetArgDisplayNames(id);
 
     private static AuthorizedSpaceContext AuthorizedSpace()
