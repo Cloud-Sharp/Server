@@ -63,13 +63,13 @@ Space 참여 상태와 Role 할당을 관리한다. OWNER는 Space에 기록하�
 
 초대 링크의 발급·조회·폐기와 수락을 관리한다. 신규 가입 Role은 VIEWER로 고정한다.
 
-| ID | 유즈케이스 | API | 행위자·조건 | 결과와 계약 |
-|---|---|---|---|---|
-| IN-01 | 초대 목록 조회 | `GET S/invites` | `INVITES_MANAGE`, `ACTIVE`·`ARCHIVED` Space | 200, 초대 관리 정보를 cursor로 반환한다. token과 URL은 응답에서 제외한다. |
-| IN-02 | 초대 링크 생성 | `POST S/invites` | `INVITES_MANAGE`, `ACTIVE` Space, `Idempotency-Key` | 201, 만료 시각·최대 사용 횟수로 링크를 발급하고 ETag를 반환한다. token과 URL은 생성 시 한 번 제공한다. |
-| IN-03 | 초대 폐기 | `DELETE I` | `INVITES_MANAGE`, `ACTIVE` Space, Invite `If-Match` | 204, 관리용 PublicId로 초대를 폐기한다. 이미 가입한 멤버의 권한은 유지된다. |
-| IN-04 | 공개 초대 정보 조회 | `GET /public/v2/invites/{inviteToken}` | 익명 가능, 유효한 초대 token | 200, Space 이름·가입 Role 이름·만료 시각만 `no-store`로 반환한다. |
-| IN-05 | 초대 수락 | `POST /api/v2/invites/{inviteToken}/accept` | Session, 유효한 초대 token, `ACTIVE` Space, `Idempotency-Key` | 200, Space ID와 가입 결과를 반환한다. 신규 가입자의 Membership ID와 `alreadyMember=false`를 반환한다. |
+| ID    | 유즈케이스       | API                                         | 행위자·조건                                                   | 결과와 계약                                                                          |
+| ----- | ----------- | ------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------- |
+| IN-01 | 초대 목록 조회    | `GET S/invites`                             | `INVITES_MANAGE`, `ACTIVE`·`ARCHIVED` Space              | 200, 초대 관리 정보를 cursor로 반환한다. token과 URL은 응답에서 제외한다.                             |
+| IN-02 | 초대 링크 생성    | `POST S/invites`                            | `INVITES_MANAGE`, `ACTIVE` Space, `Idempotency-Key`      | 201, 만료 시각·최대 사용 횟수로 링크를 발급하고 ETag를 반환한다. token과 URL은 생성 시 한 번 제공한다.            |
+| IN-03 | 초대 폐기       | `DELETE I`                                  | `INVITES_MANAGE`, `ACTIVE` Space, Invite `If-Match`      | 204, 관리용 PublicId로 초대를 폐기한다. 이미 가입한 멤버의 권한은 유지된다.                               |
+| IN-04 | 공개 초대 정보 조회 | `GET /public/v2/invites/{inviteToken}`      | 익명 가능, 유효한 초대 token                                      | 200, Space 이름·가입 Role 이름·만료 시각만 `no-store`로 반환한다.                               |
+| IN-05 | 초대 수락       | `POST /api/v2/invites/{inviteToken}/accept` | Session, 유효한 초대 token, `ACTIVE` Space, `Idempotency-Key` | 200, Space ID와 가입 결과를 반환한다. 신규 가입자의 Membership ID와 `alreadyMember=false`를 반환한다. |
 
 - **생성.** 만료 시각은 현재보다 미래여야 한다. 최대 사용 횟수는 양수 또는 `null`이며 `null`은 제한 없음이다. 서버에는 token hash만 저장한다.
 - **수락.** 활성 계정을 확인하고 같은 Space의 VIEWER Role을 사용한다. 신규 Membership 생성과 초대 사용 횟수 증가는 한 트랜잭션으로 처리하고 동시 요청도 사용 한도를 넘을 수 없게 한다. 기존 OWNER나 활성 멤버의 반복 수락은 `alreadyMember=true`로 성공하며 Role이나 사용 횟수를 변경하지 않는다.

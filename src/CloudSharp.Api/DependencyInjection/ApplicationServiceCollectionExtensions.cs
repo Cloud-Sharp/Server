@@ -20,6 +20,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddUserServices();
         services.AddSpaceServices();
         services.AddMembershipServices();
+        services.AddInviteServices();
 
         return services;
     }
