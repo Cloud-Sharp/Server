@@ -46,11 +46,11 @@ public class ReactivateSpaceUseCaseTests
         public FakeClock Clock { get; }
 
         public ReactivateSpaceUseCase UseCase => new(
-            DetailsReader,
-            SpaceRepository,
             UnitOfWork,
             TransactionExecutor,
-            Clock);
+            Clock,
+            DetailsReader,
+            SpaceRepository);
     }
 
     [Test]

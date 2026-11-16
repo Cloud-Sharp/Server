@@ -46,11 +46,11 @@ public class ArchiveSpaceUseCaseTests
         public FakeClock Clock { get; }
 
         public ArchiveSpaceUseCase UseCase => new(
-            DetailsReader,
-            SpaceRepository,
             UnitOfWork,
             TransactionExecutor,
-            Clock);
+            Clock,
+            DetailsReader,
+            SpaceRepository);
     }
 
     [Test]

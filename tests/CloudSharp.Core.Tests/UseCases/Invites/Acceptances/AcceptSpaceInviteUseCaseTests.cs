@@ -54,7 +54,7 @@ public sealed class AcceptSpaceInviteUseCaseTests
             Assert.That(harness.TokenHasher.HashedTokens, Is.EqualTo(new[] { TestSpaceInvites.PlainToken }));
             Assert.That(harness.Invites.TokenHashReads, Is.EqualTo(new[] { TestSpaceInvites.Hash() }));
             Assert.That(harness.Users.SearchedIds, Is.EqualTo(new[] { UserId }));
-            Assert.That(harness.Spaces.SearchedIds, Is.EqualTo(new[] { SpaceId }));
+            Assert.That(harness.InviteTargets.LockedSpaceIds, Is.EqualTo(new[] { SpaceId }));
             Assert.That(harness.Memberships.UserLookups, Is.EqualTo(new[] { (SpaceId, UserId) }));
             Assert.That(harness.Roles.ReadSpaceIds, Is.EqualTo(new[] { SpaceId }));
             Assert.That(membership.Id, Is.Zero);
@@ -128,6 +128,25 @@ public sealed class AcceptSpaceInviteUseCaseTests
                 Assert.That(existing.RoleAssignments.Single().RoleId, Is.EqualTo(ViewerRoleId));
             });
         }
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldUseOwnerFromLockedRead()
+    {
+        var harness = ValidHarness(StoredInvite(), StoredMembership(SpaceMembershipStatus.Active));
+        harness.InviteTargets.BeforeLockedRead = () =>
+        {
+            harness.InviteTargets.Replace(StoredSpace(SpaceStatus.Active, UserId));
+            harness.Memberships.Current = null;
+        };
+
+        var result = await harness.UseCase.ExecuteAsync(ValidCommand());
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(result.Value.AlreadyMember, Is.True);
+        Assert.That(result.Value.MembershipPublicId, Is.Null);
+        Assert.That(harness.Memberships.UserLookups, Is.Empty);
+        AssertNoWrites(harness);
     }
 
     [TestCase(true)]
@@ -234,13 +253,16 @@ public sealed class AcceptSpaceInviteUseCaseTests
     [TestCase(SpaceStatus.Deleted)]
     public async Task ExecuteAsync_ShouldRejectUnavailableLatestSpace(SpaceStatus status)
     {
-        var harness = ValidHarness(StoredInvite(), spaceStatus: status);
+        var harness = ValidHarness(StoredInvite());
+        harness.InviteTargets.BeforeLockedRead = () => harness.InviteTargets.Replace(StoredSpace(status));
 
         var result = await harness.UseCase.ExecuteAsync(ValidCommand());
 
-        Assert.That(result.IsFailed, Is.True);
+        AssertError(result, ErrorCodes.Auth.SpaceStateNotAllowed);
         AssertNoWrites(harness);
-        Assert.That(harness.Spaces.SearchedIds, Is.EqualTo(new[] { SpaceId }));
+        Assert.That(harness.InviteTargets.LockedSpaceIds, Is.EqualTo(new[] { SpaceId }));
+        Assert.That(harness.Memberships.UserLookups, Is.Empty);
+        Assert.That(harness.Transaction.RollbackCount, Is.EqualTo(1));
     }
 
     [Test]
@@ -520,11 +542,10 @@ public sealed class AcceptSpaceInviteUseCaseTests
     private static Harness ValidHarness(
         SpaceInvite invite,
         SpaceMembership? membership = null,
-        SpaceStatus spaceStatus = SpaceStatus.Active,
         UserStatus userStatus = UserStatus.Active,
         long ownerUserId = 21,
         IEnumerable<SpaceRole>? roles = null) =>
-        new(invite, StoredSpace(spaceStatus, ownerUserId), StoredUser(Actor(), userStatus), membership, roles);
+        new(invite, StoredSpace(SpaceStatus.Active, ownerUserId), StoredUser(Actor(), userStatus), membership, roles);
 
     private static void AssertError(Result<AcceptSpaceInviteResultDto> result, string errorCode)
     {
@@ -559,7 +580,7 @@ public sealed class AcceptSpaceInviteUseCaseTests
             Assert.That(harness.TokenHasher.HashedTokens, Is.Empty);
             Assert.That(harness.Invites.TokenHashReads, Is.Empty);
             Assert.That(harness.Users.SearchedIds, Is.Empty);
-            Assert.That(harness.Spaces.SearchedIds, Is.Empty);
+            Assert.That(harness.InviteTargets.LockedSpaceIds, Is.Empty);
             Assert.That(harness.Memberships.UserLookups, Is.Empty);
             Assert.That(harness.Roles.ReadSpaceIds, Is.Empty);
             Assert.That(harness.Transaction.CommitCount, Is.Zero);
@@ -576,23 +597,19 @@ public sealed class AcceptSpaceInviteUseCaseTests
             SpaceMembership? membership = null,
             IEnumerable<SpaceRole>? roles = null)
         {
-            if (space is not null)
-            {
-                Spaces.Seed(space);
-            }
-
+            InviteTargets.Replace(space);
             Users.FoundByIdUser = user;
             Invites = new InviteRepository(invite);
             Memberships = new MembershipRepository(membership);
             Roles = new RoleReader(roles ?? DefaultRoles());
             UseCase = new AcceptSpaceInviteUseCase(
-                TokenHasher, Invites, Spaces, Roles, Users, Memberships,
-                UnitOfWork, Transaction, new FakeClock(Now));
+                TokenHasher, InviteTargets, Users, UnitOfWork, Transaction, new FakeClock(Now),
+                Invites, Roles, Memberships);
         }
 
         public TokenHasher TokenHasher { get; } = new();
         public InviteRepository Invites { get; }
-        public FakeSpaceRepository Spaces { get; } = new();
+        public InviteTargetReader InviteTargets { get; } = new();
         public RoleReader Roles { get; }
         public FakeUserRepository Users { get; } = new();
         public MembershipRepository Memberships { get; }
@@ -606,6 +623,27 @@ public sealed class AcceptSpaceInviteUseCaseTests
             TestSpaceInvites.Role(id: 102, systemKey: SpaceRoleSystemKey.Member, name: "Editor"),
             TestSpaceInvites.Role(id: 103, spaceId: 8, name: "Other viewer"),
         ];
+    }
+
+    private sealed class InviteTargetReader : ISpaceInviteTargetReader
+    {
+        private SpaceInviteTargetSnapshot? snapshot;
+
+        public List<long> LockedSpaceIds { get; } = [];
+        public Action? BeforeLockedRead { get; set; }
+
+        public void Replace(Space? space) => snapshot = space is null
+            ? null
+            : new SpaceInviteTargetSnapshot(space.Id, space.PublicId, space.OwnerUserId, space.Status);
+
+        public Task<Result<SpaceInviteTargetSnapshot?>> ReadLockedAsync(
+            long spaceId, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            LockedSpaceIds.Add(spaceId);
+            BeforeLockedRead?.Invoke();
+            return Task.FromResult(Result.Ok(snapshot?.Id == spaceId ? snapshot : null));
+        }
     }
 
     private sealed class TokenHasher : ITokenHasher
@@ -663,6 +701,7 @@ public sealed class AcceptSpaceInviteUseCaseTests
 
     private sealed class MembershipRepository(SpaceMembership? target) : ISpaceMembershipRepository
     {
+        public SpaceMembership? Current { get; set; } = target;
         public List<(long SpaceId, long UserId)> UserLookups { get; } = [];
         public List<SpaceMembership> AddedMemberships { get; } = [];
         public List<MembershipUpdate> Updates { get; } = [];
@@ -672,8 +711,8 @@ public sealed class AcceptSpaceInviteUseCaseTests
             long spaceId, long userId, CancellationToken cancellationToken = default)
         {
             UserLookups.Add((spaceId, userId));
-            var found = target is not null && target.SpaceId == spaceId && target.UserId == userId
-                ? TestSpaceInvites.Copy(target)
+            var found = Current is { } current && current.SpaceId == spaceId && current.UserId == userId
+                ? TestSpaceInvites.Copy(current)
                 : null;
             return Task.FromResult(Result.Ok(found));
         }

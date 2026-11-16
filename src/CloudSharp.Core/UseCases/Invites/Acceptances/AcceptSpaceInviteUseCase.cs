@@ -14,38 +14,36 @@ namespace CloudSharp.Core.UseCases.Invites.Acceptances;
 
 public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto>
 {
-    private ITokenHasher TokenHasher { get; } = null!;
-    private ISpaceInviteRepository InviteRepository { get; } = null!;
-    private ISpaceRepository SpaceRepository { get; } = null!;
-    private ISpaceRoleReader RoleReader { get; } = null!;
-    private IUserRepository UserRepository { get; } = null!;
-    private ISpaceMembershipRepository MembershipRepository { get; } = null!;
-    private IUnitOfWork UnitOfWork { get; } = null!;
-    private ITransactionExecutor TransactionExecutor { get; } = null!;
-    private IClock Clock { get; } = null!;
+    private ITokenHasher TokenHasher { get; }
+    private ISpaceInviteTargetReader InviteTargetReader { get; }
+    private IUserRepository UserRepository { get; }
+    private IUnitOfWork UnitOfWork { get; }
+    private ITransactionExecutor TransactionExecutor { get; }
+    private IClock Clock { get; }
+    private ISpaceInviteRepository? InviteRepository { get; }
+    private ISpaceRoleReader? RoleReader { get; }
+    private ISpaceMembershipRepository? MembershipRepository { get; }
 
-    public AcceptSpaceInviteUseCase() { }
-
-    internal AcceptSpaceInviteUseCase(
+    public AcceptSpaceInviteUseCase(
         ITokenHasher tokenHasher,
-        ISpaceInviteRepository inviteRepository,
-        ISpaceRepository spaceRepository,
-        ISpaceRoleReader roleReader,
+        ISpaceInviteTargetReader inviteTargetReader,
         IUserRepository userRepository,
-        ISpaceMembershipRepository membershipRepository,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
-        IClock clock)
+        IClock clock,
+        ISpaceInviteRepository? inviteRepository = null,
+        ISpaceRoleReader? roleReader = null,
+        ISpaceMembershipRepository? membershipRepository = null)
     {
         TokenHasher = tokenHasher;
-        InviteRepository = inviteRepository;
-        SpaceRepository = spaceRepository;
-        RoleReader = roleReader;
+        InviteTargetReader = inviteTargetReader;
         UserRepository = userRepository;
-        MembershipRepository = membershipRepository;
         UnitOfWork = unitOfWork;
         TransactionExecutor = transactionExecutor;
         Clock = clock;
+        InviteRepository = inviteRepository;
+        RoleReader = roleReader;
+        MembershipRepository = membershipRepository;
     }
 
     public async Task<Result<AcceptSpaceInviteResultDto>> ExecuteAsync(
@@ -66,9 +64,7 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
             return Result.Fail<AcceptSpaceInviteResultDto>(actorValidation.Errors);
         }
 
-        if (TokenHasher is null || InviteRepository is null || SpaceRepository is null
-            || RoleReader is null || UserRepository is null || MembershipRepository is null
-            || UnitOfWork is null || TransactionExecutor is null || Clock is null)
+        if (InviteRepository is null || RoleReader is null || MembershipRepository is null)
         {
             return Result.Fail<AcceptSpaceInviteResultDto>(CommonError.DependencyUnavailable());
         }
@@ -88,7 +84,7 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
             return Result.Fail<AcceptSpaceInviteResultDto>(hashResult.Errors);
         }
 
-        var inviteResult = await InviteRepository.FindByTokenHashAsync(hashResult.Value, cancellationToken);
+        var inviteResult = await InviteRepository!.FindByTokenHashAsync(hashResult.Value, cancellationToken);
         if (inviteResult.IsFailed)
         {
             return Result.Fail<AcceptSpaceInviteResultDto>(inviteResult.Errors);
@@ -112,7 +108,7 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
             return Result.Fail<AcceptSpaceInviteResultDto>(SessionError.AuthUserInactive());
         }
 
-        var spaceResult = await SpaceRepository.FindByIdAsync(invite.SpaceId, cancellationToken);
+        var spaceResult = await InviteTargetReader.ReadLockedAsync(invite.SpaceId, cancellationToken);
         if (spaceResult.IsFailed)
         {
             return Result.Fail<AcceptSpaceInviteResultDto>(spaceResult.Errors);
@@ -126,7 +122,7 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
 
         if (space.Id != invite.SpaceId)
         {
-            throw new InvalidOperationException("Space repository returned a different space.");
+            throw new InvalidOperationException("Invite target reader returned a different space.");
         }
 
         if (space.Status != SpaceStatus.Active)
@@ -146,7 +142,7 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
             return Result.Ok(new AcceptSpaceInviteResultDto(space.PublicId, null, true));
         }
 
-        var membershipResult = await MembershipRepository.FindLatestByUserIdAsync(
+        var membershipResult = await MembershipRepository!.FindLatestByUserIdAsync(
             space.Id,
             user.Id,
             cancellationToken);
@@ -172,7 +168,7 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
                 SpaceMembershipError.InvalidState("A suspended membership cannot accept an invite."));
         }
 
-        var rolesResult = await RoleReader.ReadAsync(space.Id, cancellationToken);
+        var rolesResult = await RoleReader!.ReadAsync(space.Id, cancellationToken);
         if (rolesResult.IsFailed)
         {
             return Result.Fail<AcceptSpaceInviteResultDto>(rolesResult.Errors);

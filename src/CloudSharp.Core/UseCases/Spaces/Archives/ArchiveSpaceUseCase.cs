@@ -12,12 +12,12 @@ public sealed class ArchiveSpaceUseCase : IUseCase<ArchiveSpaceCommand, SpaceRes
 {
     private SpaceMutationWorkflow MutationWorkflow { get; }
 
-    internal ArchiveSpaceUseCase(
-        ISpaceDetailsReader detailsReader,
-        ISpaceRepository spaceRepository,
+    public ArchiveSpaceUseCase(
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
-        IClock clock)
+        IClock clock,
+        ISpaceDetailsReader? detailsReader = null,
+        ISpaceRepository? spaceRepository = null)
     {
         MutationWorkflow = new SpaceMutationWorkflow(
             detailsReader,

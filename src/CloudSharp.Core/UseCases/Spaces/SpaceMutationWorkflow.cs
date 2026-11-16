@@ -13,15 +13,15 @@ namespace CloudSharp.Core.UseCases.Spaces;
 
 internal sealed class SpaceMutationWorkflow
 {
-    private ISpaceDetailsReader DetailsReader { get; }
-    private ISpaceRepository SpaceRepository { get; }
+    private ISpaceDetailsReader? DetailsReader { get; }
+    private ISpaceRepository? SpaceRepository { get; }
     private IUnitOfWork UnitOfWork { get; }
     private ITransactionExecutor TransactionExecutor { get; }
     private IClock Clock { get; }
 
     internal SpaceMutationWorkflow(
-        ISpaceDetailsReader detailsReader,
-        ISpaceRepository spaceRepository,
+        ISpaceDetailsReader? detailsReader,
+        ISpaceRepository? spaceRepository,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
         IClock clock)
@@ -73,7 +73,7 @@ internal sealed class SpaceMutationWorkflow
         Func<Space, DateTimeOffset, Result> domainOperation,
         CancellationToken cancellationToken)
     {
-        var readResult = await DetailsReader.ReadAsync(context.SpaceId, cancellationToken);
+        var readResult = await DetailsReader!.ReadAsync(context.SpaceId, cancellationToken);
         if (readResult.IsFailed)
         {
             return Result.Fail<SpaceResultDto>(readResult.Errors);
@@ -110,7 +110,7 @@ internal sealed class SpaceMutationWorkflow
 
         if (space.Version != observedVersion)
         {
-            var updateResult = await SpaceRepository.UpdateAsync(space, observedVersion, cancellationToken);
+            var updateResult = await SpaceRepository!.UpdateAsync(space, observedVersion, cancellationToken);
             if (updateResult.IsFailed)
             {
                 return Result.Fail<SpaceResultDto>(updateResult.Errors);
