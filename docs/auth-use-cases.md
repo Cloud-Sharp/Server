@@ -58,4 +58,4 @@ CloudSharp Production v1의 계정 등록, 로그인·로그아웃, 내 계정 �
 - 계정 등록은 현재 `Idempotency-Key`를 요구하지 않는다. 목표 계약은 키를 필수로 검증하며, 성공한 등록을 같은 키와 입력으로 재요청하면 기존 토큰을 재발급하지 않고 409 `SECRET_RESPONSE_NOT_REPLAYABLE`을 반환한다. [멱등성 계약](../.llm/api/common-contract.md#9-idempotency-key)
 - 인증 요청 제한, Session 활동 갱신, MCP 인증을 추가한다.
 
-구현된 네 API의 HTTP 동작과 PostgreSQL·Redis 연동을 검증하는 테스트가 있다. [Auth 테스트 케이스](auth-test-cases.md) · [Auth Docker 통합 테스트 문서](../tests/CloudSharp.Api.IntegrationTests/README.md)
+Core 유닛 테스트는 계정·Session 모델과 유즈케이스를 검증한다. Docker 통합 테스트는 구현된 네 API의 HTTP 동작과 PostgreSQL·Redis 연동을 검증한다. [Auth Core 테스트 케이스](auth-test-cases.md) · [Auth Docker 통합 테스트 문서](../tests/CloudSharp.Api.IntegrationTests/README.md)
