@@ -357,6 +357,10 @@ public class RemoveSpaceMemberUseCaseTests
             long spaceId, long userId, CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Admin removal looks up the selected membership by public ID.");
 
+        public Task<Result> AddAsync(
+            SpaceMembership membership, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Admin removal does not add memberships.");
+
         public Task<Result> UpdateAsync(
             SpaceMembership membership, long expectedVersion, CancellationToken cancellationToken = default)
         {

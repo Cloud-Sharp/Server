@@ -17,6 +17,8 @@ public sealed class FakeTransactionExecutor(FakePersistenceSession? session = nu
     /// <summary>커밋 직후 호출되는 hook. 커밋과 후속 작업 사이의 시각 흐름을 시뮬레이션할 때 사용한다.</summary>
     public Action? OnCommitted { get; set; }
 
+    public IError? CommitFailure { get; set; }
+
     public int CommitCount => _commitCount;
 
     public int RollbackCount => _rollbackCount;
@@ -36,6 +38,12 @@ public sealed class FakeTransactionExecutor(FakePersistenceSession? session = nu
             if (result.IsSuccess)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (result.IsSuccess && CommitFailure is { } commitFailure)
+            {
+                Record(true);
+                return Result.Fail(commitFailure);
             }
 
             Record(result.IsFailed);
@@ -64,6 +72,12 @@ public sealed class FakeTransactionExecutor(FakePersistenceSession? session = nu
             if (result.IsSuccess)
             {
                 cancellationToken.ThrowIfCancellationRequested();
+            }
+
+            if (result.IsSuccess && CommitFailure is { } commitFailure)
+            {
+                Record(true);
+                return Result.Fail<T>(commitFailure);
             }
 
             Record(result.IsFailed);

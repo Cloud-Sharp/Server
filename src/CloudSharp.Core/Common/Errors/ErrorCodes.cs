@@ -81,6 +81,7 @@ public static class ErrorCodes
 
     public static class SpaceInvite
     {
+        public const string NotFound = "INVITE_NOT_FOUND";
         public const string PublicIdInvalid = "INVITE_PUBLIC_ID_INVALID";
         public const string TokenInvalid = "INVITE_TOKEN_INVALID";
         public const string SpaceIdInvalid = "INVITE_SPACE_ID_INVALID";

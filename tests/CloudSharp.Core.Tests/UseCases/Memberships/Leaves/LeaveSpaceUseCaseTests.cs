@@ -267,6 +267,10 @@ public class LeaveSpaceUseCaseTests
             CancellationToken cancellationToken = default) =>
             throw new InvalidOperationException("Self leave must look up the authenticated user's membership.");
 
+        public Task<Result> AddAsync(
+            SpaceMembership membership, CancellationToken cancellationToken = default) =>
+            throw new InvalidOperationException("Self leave does not add memberships.");
+
         public Task<Result> UpdateAsync(
             SpaceMembership membership,
             long expectedVersion,

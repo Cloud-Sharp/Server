@@ -17,6 +17,10 @@ public interface ISpaceMembershipRepository
         long userId,
         CancellationToken cancellationToken = default);
 
+    Task<Result> AddAsync(
+        SpaceMembership membership,
+        CancellationToken cancellationToken = default);
+
     /// <summary>조회 시 관찰한 버전을 expectedVersion으로 전달한다.</summary>
     Task<Result> UpdateAsync(
         SpaceMembership membership,

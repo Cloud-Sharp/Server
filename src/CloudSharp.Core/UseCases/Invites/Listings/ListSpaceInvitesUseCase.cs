@@ -1,3 +1,4 @@
+using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
@@ -8,6 +9,17 @@ namespace CloudSharp.Core.UseCases.Invites.Listings;
 
 public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, SpaceInvitePageDto>
 {
+    private ISpaceRepository SpaceRepository { get; } = null!;
+    private ISpaceInviteReader InviteReader { get; } = null!;
+
+    public ListSpaceInvitesUseCase() { }
+
+    internal ListSpaceInvitesUseCase(ISpaceRepository spaceRepository, ISpaceInviteReader inviteReader)
+    {
+        SpaceRepository = spaceRepository;
+        InviteReader = inviteReader;
+    }
+
     public Task<Result<SpaceInvitePageDto>> ExecuteAsync(
         ListSpaceInvitesQuery query,
         CancellationToken cancellationToken = default)

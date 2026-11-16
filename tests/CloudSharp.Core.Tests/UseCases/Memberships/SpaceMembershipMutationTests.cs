@@ -373,6 +373,10 @@ public abstract class SpaceMembershipMutationTests
             public List<(SpaceMembership Membership, long ExpectedVersion)> Updates { get; } = [];
             public IError? Failure { get; set; }
 
+            public Task<Result> AddAsync(
+                SpaceMembership membership, CancellationToken cancellationToken = default) =>
+                throw new InvalidOperationException("Membership mutation does not add memberships.");
+
             public Task<Result> UpdateAsync(
                 SpaceMembership membership, long expectedVersion, CancellationToken cancellationToken = default)
             {
