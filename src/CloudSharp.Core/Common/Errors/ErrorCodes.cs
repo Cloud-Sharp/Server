@@ -41,6 +41,7 @@ public static class ErrorCodes
 
     public static class Space
     {
+        public const string PublicIdInvalid = "SPACE_PUBLIC_ID_INVALID";
         public const string NameInvalid = "SPACE_NAME_INVALID";
         public const string OwnerInvalid = "SPACE_OWNER_INVALID";
         public const string Inactive = "SPACE_INACTIVE";
@@ -51,6 +52,12 @@ public static class ErrorCodes
         public const string StorageAmountInvalid = "SPACE_STORAGE_AMOUNT_INVALID";
         public const string ReservationInvalid = "SPACE_RESERVATION_INVALID";
         public const string TransferTargetInvalid = "SPACE_TRANSFER_TARGET_INVALID";
+        public const string ActorRequired = "SPACE_ACTOR_REQUIRED";
+        public const string AuthorizationContextRequired = "SPACE_AUTHORIZATION_CONTEXT_REQUIRED";
+        public const string ExpectedVersionInvalid = "SPACE_EXPECTED_VERSION_INVALID";
+        public const string ListLimitInvalid = "SPACE_LIST_LIMIT_INVALID";
+        public const string ListCursorInvalid = "SPACE_LIST_CURSOR_INVALID";
+        public const string ListSortInvalid = "SPACE_LIST_SORT_INVALID";
     }
 
     public static class SpaceRole
@@ -62,6 +69,8 @@ public static class ErrorCodes
 
     public static class SpaceMembership
     {
+        public const string NotFound = "MEMBER_NOT_FOUND";
+        public const string PublicIdInvalid = "MEMBER_PUBLIC_ID_INVALID";
         public const string SpaceIdInvalid = "MEMBER_SPACE_ID_INVALID";
         public const string UserIdInvalid = "MEMBER_USER_ID_INVALID";
         public const string AssignedByInvalid = "MEMBER_ASSIGNED_BY_INVALID";
@@ -72,6 +81,9 @@ public static class ErrorCodes
 
     public static class SpaceInvite
     {
+        public const string NotFound = "INVITE_NOT_FOUND";
+        public const string PublicIdInvalid = "INVITE_PUBLIC_ID_INVALID";
+        public const string TokenInvalid = "INVITE_TOKEN_INVALID";
         public const string SpaceIdInvalid = "INVITE_SPACE_ID_INVALID";
         public const string CreatedByInvalid = "INVITE_CREATED_BY_INVALID";
         public const string TokenHashInvalid = "INVITE_TOKEN_HASH_INVALID";

@@ -105,7 +105,7 @@ public class NamespaceAndModelBoundaryRulesTests
 
     private static bool IsGeneratedType(Type type)
         => type.Name == "Program"
-           || type.DeclaringType?.Name == "Program"
+           || (type.DeclaringType is { } declaringType && IsGeneratedType(declaringType))
            || type.IsDefined(typeof(CompilerGeneratedAttribute), inherit: false)
            || type.Namespace == "Microsoft.AspNetCore.OpenApi.Generated"
            || (type.Namespace?.StartsWith("Microsoft.Extensions.Validation.Generated", StringComparison.Ordinal) ?? false)

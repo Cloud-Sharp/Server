@@ -7,6 +7,9 @@ public sealed class SpaceMembershipError : CloudSharpError
 {
     private SpaceMembershipError(string code, string message) : base(new ErrorDefinition(code), message) { }
 
+    public static SpaceMembershipError NotFound() =>
+        new(ErrorCodes.SpaceMembership.NotFound, "Membership was not found.");
+
     public static SpaceMembershipError SpaceIdInvalid() =>
         new(ErrorCodes.SpaceMembership.SpaceIdInvalid, "Membership space id must be positive.");
 

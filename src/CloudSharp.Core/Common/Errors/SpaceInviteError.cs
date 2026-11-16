@@ -7,6 +7,9 @@ public sealed class SpaceInviteError : CloudSharpError
 {
     private SpaceInviteError(string code, string message) : base(new ErrorDefinition(code), message) { }
 
+    public static SpaceInviteError NotFound() =>
+        new(ErrorCodes.SpaceInvite.NotFound, "Invite was not found or is no longer available.");
+
     public static SpaceInviteError InvalidState(string message) =>
         new(ErrorCodes.SpaceInvite.InvalidState, message);
 

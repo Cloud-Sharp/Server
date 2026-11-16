@@ -27,13 +27,25 @@ public static class TestSpaceAuthorizationSnapshots
         SpaceStatus status = SpaceStatus.Active,
         long ownerUserId = 21,
         Guid? publicId = null,
-        long id = 7) =>
-        global::CloudSharp.Core.Domain.Spaces.Space.Reconstitute(
-            id, publicId ?? SpacePublicId, ownerUserId, "Product", null, status,
-            null, 0, 0, 1, Now.AddDays(-7), Now,
-            status == SpaceStatus.Archived ? Now : null,
-            status is SpaceStatus.Deleting or SpaceStatus.Deleted ? Now : null,
-            status == SpaceStatus.Deleted ? Now : null);
+        long id = 7,
+        string name = "Product",
+        string? description = null,
+        long? allowedBytes = null,
+        long usedBytes = 0,
+        long reservedBytes = 0,
+        long version = 1,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? updatedAt = null)
+    {
+        var created = createdAt ?? Now.AddDays(-7);
+        var updated = updatedAt ?? Now;
+        return global::CloudSharp.Core.Domain.Spaces.Space.Reconstitute(
+            id, publicId ?? SpacePublicId, ownerUserId, name, description, status,
+            allowedBytes, usedBytes, reservedBytes, version, created, updated,
+            status == SpaceStatus.Archived ? updated : null,
+            status is SpaceStatus.Deleting or SpaceStatus.Deleted ? updated : null,
+            status == SpaceStatus.Deleted ? updated : null);
+    }
 
     public static SpaceMembership Membership(
         SpaceMembershipStatus status = SpaceMembershipStatus.Active,
