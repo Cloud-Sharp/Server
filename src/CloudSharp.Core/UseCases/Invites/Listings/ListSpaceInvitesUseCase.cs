@@ -2,6 +2,8 @@ using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
 
@@ -20,7 +22,7 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
         InviteReader = inviteReader;
     }
 
-    public Task<Result<SpaceInvitePageDto>> ExecuteAsync(
+    public async Task<Result<SpaceInvitePageDto>> ExecuteAsync(
         ListSpaceInvitesQuery query,
         CancellationToken cancellationToken = default)
     {
@@ -29,14 +31,69 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
         var validation = new ListSpaceInvitesQueryValidator().Validate(query);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<SpaceInvitePageDto>());
+            return validation.ToFailureResult<SpaceInvitePageDto>();
         }
 
         if (query.Space.ActorType != ActorType.Session)
         {
-            return Task.FromResult(Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.TokenTypeNotAllowed()));
+            return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
         }
 
-        return Task.FromException<Result<SpaceInvitePageDto>>(new NotImplementedException());
+        if (!query.Space.EffectivePermissions.Contains(SpacePermission.InvitesManage))
+        {
+            return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.PermissionDenied());
+        }
+
+        if (SpaceRepository is null || InviteReader is null)
+        {
+            return Result.Fail<SpaceInvitePageDto>(CommonError.DependencyUnavailable());
+        }
+
+        var findResult = await SpaceRepository.FindByIdAsync(query.Space.SpaceId, cancellationToken);
+        if (findResult.IsFailed)
+        {
+            return Result.Fail<SpaceInvitePageDto>(findResult.Errors);
+        }
+
+        var space = findResult.Value;
+        if (space is null)
+        {
+            return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.SpaceNotFound());
+        }
+
+        if (space.Id != query.Space.SpaceId || space.PublicId != query.Space.SpacePublicId)
+        {
+            throw new InvalidOperationException("Space repository returned a different space.");
+        }
+
+        if (space.Status is not (SpaceStatus.Active or SpaceStatus.Archived))
+        {
+            return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.StateNotAllowed(space.Status));
+        }
+
+        var readResult = await InviteReader.ReadPageAsync(
+            space.Id,
+            query.Cursor,
+            query.Limit,
+            query.Sort,
+            query.Descending,
+            cancellationToken);
+        if (readResult.IsFailed)
+        {
+            return Result.Fail<SpaceInvitePageDto>(readResult.Errors);
+        }
+
+        var page = readResult.Value;
+        return Result.Ok(new SpaceInvitePageDto(
+            page.Items.Select(invite => new SpaceInviteDto(
+                invite.PublicId,
+                invite.Status,
+                invite.ExpiresAt,
+                invite.MaxUses,
+                invite.UseCount,
+                invite.CreatedAt,
+                invite.UpdatedAt,
+                invite.RevokedAt)).ToArray(),
+            page.NextCursor));
     }
 }

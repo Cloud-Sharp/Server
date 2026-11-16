@@ -4,6 +4,8 @@ using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
 
@@ -33,7 +35,7 @@ public sealed class RevokeSpaceInviteUseCase : IUseCase<RevokeSpaceInviteCommand
         Clock = clock;
     }
 
-    public Task<Result<RevokeSpaceInviteResultDto>> ExecuteAsync(
+    public async Task<Result<RevokeSpaceInviteResultDto>> ExecuteAsync(
         RevokeSpaceInviteCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -42,14 +44,96 @@ public sealed class RevokeSpaceInviteUseCase : IUseCase<RevokeSpaceInviteCommand
         var validation = new RevokeSpaceInviteCommandValidator().Validate(command);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<RevokeSpaceInviteResultDto>());
+            return validation.ToFailureResult<RevokeSpaceInviteResultDto>();
         }
 
         if (command.Space.ActorType != ActorType.Session)
         {
-            return Task.FromResult(Result.Fail<RevokeSpaceInviteResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed()));
+            return Result.Fail<RevokeSpaceInviteResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
         }
 
-        return Task.FromException<Result<RevokeSpaceInviteResultDto>>(new NotImplementedException());
+        if (!command.Space.EffectivePermissions.Contains(SpacePermission.InvitesManage))
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(SpaceAuthorizationError.PermissionDenied());
+        }
+
+        if (SpaceRepository is null || InviteRepository is null || UnitOfWork is null
+            || TransactionExecutor is null || Clock is null)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(CommonError.DependencyUnavailable());
+        }
+
+        return await TransactionExecutor.ExecuteAsync(
+            ct => RevokeInTransactionAsync(command, ct),
+            cancellationToken: cancellationToken);
+    }
+
+    private async Task<Result<RevokeSpaceInviteResultDto>> RevokeInTransactionAsync(
+        RevokeSpaceInviteCommand command,
+        CancellationToken cancellationToken)
+    {
+        var context = command.Space;
+        var findResult = await SpaceRepository.FindByIdAsync(context.SpaceId, cancellationToken);
+        if (findResult.IsFailed)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(findResult.Errors);
+        }
+
+        var space = findResult.Value;
+        if (space is null)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(SpaceAuthorizationError.SpaceNotFound());
+        }
+
+        if (space.Id != context.SpaceId || space.PublicId != context.SpacePublicId)
+        {
+            throw new InvalidOperationException("Space repository returned a different space.");
+        }
+
+        if (space.Status != SpaceStatus.Active)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(SpaceAuthorizationError.StateNotAllowed(space.Status));
+        }
+
+        var inviteResult = await InviteRepository.FindByPublicIdAsync(
+            space.Id,
+            command.InvitePublicId,
+            cancellationToken);
+        if (inviteResult.IsFailed)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(inviteResult.Errors);
+        }
+
+        var invite = inviteResult.Value;
+        if (invite is null || invite.SpaceId != space.Id || invite.PublicId != command.InvitePublicId)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(SpaceInviteError.NotFound());
+        }
+
+        if (invite.Version != command.ExpectedVersion)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(CommonError.PreconditionFailed());
+        }
+
+        var observedVersion = invite.Version;
+        var revocation = invite.Revoke(Clock.UtcNow);
+        if (revocation.IsFailed)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(revocation.Errors);
+        }
+
+        var updateResult = await InviteRepository.UpdateAsync(invite, observedVersion, cancellationToken);
+        if (updateResult.IsFailed)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(updateResult.Errors);
+        }
+
+        var saveResult = await UnitOfWork.SaveChangesAsync(cancellationToken);
+        if (saveResult.IsFailed)
+        {
+            return Result.Fail<RevokeSpaceInviteResultDto>(saveResult.Errors);
+        }
+
+        return Result.Ok(new RevokeSpaceInviteResultDto(invite.Version));
     }
 }

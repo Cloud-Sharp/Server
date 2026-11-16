@@ -130,6 +130,27 @@ public sealed class AcceptSpaceInviteUseCaseTests
         }
     }
 
+    [TestCase(true)]
+    [TestCase(false)]
+    public async Task ExecuteAsync_ShouldRejectUnusableInvite(bool owner)
+    {
+        var invite = StoredInvite(status: SpaceInviteStatus.Revoked);
+        var existing = owner ? null : StoredMembership(SpaceMembershipStatus.Active);
+        var harness = ValidHarness(invite, existing, ownerUserId: owner ? UserId : 21);
+
+        var result = await harness.UseCase.ExecuteAsync(ValidCommand());
+
+        AssertError(result, ErrorCodes.SpaceInvite.Revoked);
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.Memberships.UserLookups, Is.Empty);
+            Assert.That(harness.Roles.ReadSpaceIds, Is.Empty);
+            Assert.That(harness.Transaction.CommitCount, Is.Zero);
+            Assert.That(harness.Transaction.RollbackCount, Is.EqualTo(1));
+        });
+        AssertNoWrites(harness);
+    }
+
     [Test]
     public async Task ExecuteAsync_ShouldExpireInviteAtLastUse()
     {

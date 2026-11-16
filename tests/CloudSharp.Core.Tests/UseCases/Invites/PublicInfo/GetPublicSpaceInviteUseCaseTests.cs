@@ -63,6 +63,28 @@ public sealed class GetPublicSpaceInviteUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_ShouldReturnPublicInviteInformation()
+    {
+        var invite = TestSpaceInvites.Stored();
+        var space = StoredSpace(SpaceStatus.Archived);
+        var viewer = TestSpaceInvites.Role(name: "Read only");
+        var harness = new Harness(invite, space, viewer);
+
+        var result = await harness.UseCase.ExecuteAsync(
+            new GetPublicSpaceInviteQuery(TestSpaceInvites.PlainToken));
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value,
+                Is.EqualTo(new PublicSpaceInviteDto(space.Name, viewer.Name, invite.ExpiresAt)));
+            Assert.That(harness.Spaces.SearchedIds, Is.EqualTo(new[] { space.Id }));
+            Assert.That(harness.Roles.ReadSpaceIds, Is.EqualTo(new[] { space.Id }));
+        });
+        AssertUnavailableReadLeavesNoWrites(harness);
+    }
+
+    [Test]
     public async Task ExecuteAsync_ShouldRejectUnknownToken()
     {
         var harness = new Harness(null, null);
