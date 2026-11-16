@@ -16,7 +16,7 @@ description: >
 
 ## 계약과 테스트 진입점
 
-- 저장소 루트의 `CLAUDE.md`, 대상 유즈케이스의 설계 문서, Command·Query, validator, 결과 DTO, 도메인 메서드와 Core 포트를 읽는다. `docs/space-use-cases.md`의 ID처럼 설계가 진입점을 가리키면 해당 핸들러와 인접 픽스처를 대조한다. 설계와 코드가 충돌하면 테스트가 어떤 계약을 기준으로 하는지 명시한다. 무변경 요청의 버전 확인 시점처럼 업무 동작을 바꾸는 미결정 사항만 확인한다.
+- 저장소 루트의 `CLAUDE.md`, 대상 유즈케이스의 설계 문서, Command·Query, validator, 결과 DTO, 도메인 메서드와 Core 포트를 읽는다. `docs/use-cases/space-use-cases.md`의 ID처럼 설계가 진입점을 가리키면 해당 핸들러와 인접 픽스처를 대조한다. 설계와 코드가 충돌하면 테스트가 어떤 계약을 기준으로 하는지 명시한다. 무변경 요청의 버전 확인 시점처럼 업무 동작을 바꾸는 미결정 사항만 확인한다.
 - `tests/CloudSharp.Core.Tests/UseCases/` 아래 해당 기능의 픽스처에서 실제 `ExecuteAsync`를 호출한다.
 - 성공 결과와 비즈니스 오류의 **목표 동작**을 직접 단언한다. 미구현 골격의 `NotImplementedException`은 실행 결과에서 예상 실패로 확인한다. 골격의 예외 자체를 단언하는 스모크 테스트는 별도 목적이다.
 
