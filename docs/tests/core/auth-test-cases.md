@@ -1,16 +1,16 @@
 # Auth 테스트 케이스
 
-[Auth 유즈케이스](auth-use-cases.md)에 해당하는 계정·Session 모델, 공통 Session 발급·인증, 등록·로그인·내 계정의 Core 유닛 테스트를 정리한다.
+[Auth 유즈케이스](../../use-cases/auth-use-cases.md)에 해당하는 계정·Session 모델, 공통 Session 발급·인증, 등록·로그인·내 계정의 Core 유닛 테스트를 정리한다.
 
 ## 공통 검증
 
 - 유즈케이스는 `ExecuteAsync`, Session 발급은 `IssueAsync`를 호출한다. 실제 도메인 객체, 고정 UTC 시계, 저장소와 트랜잭션 테스트 더블로 결과 DTO, Core `ErrorCode`, 호출 순서와 실패 후 상태를 확인한다.
 - 비밀번호 검증·해시 계산에는 제출한 값의 공백이 보존된다. 계정과 Session 저장 경계에는 각각 비밀번호 해시와 토큰 해시를 전달한다. 발급 성공 DTO는 토큰 원문을 반환하며 `ToString()`에서 비밀값 마스킹을 확인한다.
-- HTTP 상태·헤더, 실제 PostgreSQL·Redis의 저장 및 원자성은 [Auth 통합 테스트](../tests/CloudSharp.Api.IntegrationTests/README.md)에서 확인한다. AU-03 현재 Session 로그아웃, AU-04 전체 로그아웃, US-02 내 프로필 수정은 [유즈케이스의 후속 계약](auth-use-cases.md#구현-현황)이다. 대응하는 Core 도메인 행위는 아래에 포함한다.
+- HTTP 상태·헤더, 실제 PostgreSQL·Redis의 저장 및 원자성은 [Auth 통합 테스트](../../../tests/CloudSharp.Api.IntegrationTests/README.md)에서 확인한다. AU-03 현재 Session 로그아웃, AU-04 전체 로그아웃, US-02 내 프로필 수정은 [유즈케이스의 후속 계약](../../use-cases/auth-use-cases.md#구현-현황)이다. 대응하는 Core 도메인 행위는 아래에 포함한다.
 
 ## User 도메인 모델
 
-[UserTests](../tests/CloudSharp.Core.Tests/Domain/Users/UserTests.cs) · [EmailAddressTests](../tests/CloudSharp.Core.Tests/Domain/Users/EmailAddressTests.cs) · [NormalizedNameTests](../tests/CloudSharp.Core.Tests/Domain/Users/NormalizedNameTests.cs)
+[UserTests](../../../tests/CloudSharp.Core.Tests/Domain/Users/UserTests.cs) · [EmailAddressTests](../../../tests/CloudSharp.Core.Tests/Domain/Users/EmailAddressTests.cs) · [NormalizedNameTests](../../../tests/CloudSharp.Core.Tests/Domain/Users/NormalizedNameTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -25,7 +25,7 @@
 
 ## User Session과 토큰 해시
 
-[UserSessionTests](../tests/CloudSharp.Core.Tests/Domain/Sessions/UserSessionTests.cs) · [TokenHashTests](../tests/CloudSharp.Core.Tests/Common/Tokens/TokenHashTests.cs)
+[UserSessionTests](../../../tests/CloudSharp.Core.Tests/Domain/Sessions/UserSessionTests.cs) · [TokenHashTests](../../../tests/CloudSharp.Core.Tests/Common/Tokens/TokenHashTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -40,7 +40,7 @@
 
 ## AU-01 계정 등록
 
-[RegistrationUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Auth/Registrations/RegistrationUseCaseTests.cs)
+[RegistrationUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Auth/Registrations/RegistrationUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -55,7 +55,7 @@
 
 ## AU-02 로그인
 
-[LoginUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Auth/Logins/LoginUseCaseTests.cs)
+[LoginUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Auth/Logins/LoginUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -68,7 +68,7 @@
 
 ## 공통 Session 발급
 
-[SessionIssuanceServiceTests](../tests/CloudSharp.Core.Tests/UseCases/Auth/Sessions/SessionIssuanceServiceTests.cs)
+[SessionIssuanceServiceTests](../../../tests/CloudSharp.Core.Tests/UseCases/Auth/Sessions/SessionIssuanceServiceTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -79,7 +79,7 @@
 
 ## 보호된 요청의 Session 인증
 
-[AuthenticateSessionUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Auth/Authentication/AuthenticateSessionUseCaseTests.cs)
+[AuthenticateSessionUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Auth/Authentication/AuthenticateSessionUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -91,7 +91,7 @@
 
 ## US-01 내 프로필 조회
 
-[GetProfileUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Users/Profiles/GetProfileUseCaseTests.cs)
+[GetProfileUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Users/Profiles/GetProfileUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -102,7 +102,7 @@
 
 ## US-03 비밀번호 변경
 
-[PasswordChangeUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Auth/PasswordChanges/PasswordChangeUseCaseTests.cs)
+[PasswordChangeUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Auth/PasswordChanges/PasswordChangeUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -119,4 +119,4 @@
 | US-03-11 | 커밋과 후처리 사이에 현재 Session이 사라지거나 만료된다. | 변경은 성공하고 다른 Session을 제거한다. 사라진 Session은 재생성하지 않고, 만료된 Session의 보안 버전이나 만료 시각을 갱신하지 않는다. |
 | US-03-12 | `null` Command를 전달하고 정상 Command·결과의 속성과 문자열을 검사한다. | `null`은 `ArgumentNullException`이다. 성공 DTO는 User `Version`만 담는다. Command 문자열에서 비밀번호와 토큰 해시를 마스킹한다. |
 
-[User 도메인 설계](../.llm/domains/user.md) · [User Session 도메인 설계](../.llm/domains/user-session.md) · [인증·사용자 API 명세](../.llm/api/auth-users.md)
+[User 도메인 설계](../../../.llm/domains/user.md) · [User Session 도메인 설계](../../../.llm/domains/user-session.md) · [인증·사용자 API 명세](../../../.llm/api/auth-users.md)

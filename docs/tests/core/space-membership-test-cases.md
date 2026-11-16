@@ -1,10 +1,10 @@
 # Space Membership 테스트 케이스
 
-[Space Membership 유즈케이스 MB-01~MB-07](space-use-cases.md#3-space-membership)과 Membership·Role 부여 이력의 Core 유닛 테스트를 정리한다.
+[Space Membership 유즈케이스 MB-01~MB-07](../../use-cases/space-use-cases.md#3-space-membership)과 Membership·Role 부여 이력의 Core 유닛 테스트를 정리한다.
 
 ## 도메인 모델
 
-[SpaceMembershipTests](../tests/CloudSharp.Core.Tests/Domain/Memberships/SpaceMembershipTests.cs) · [MembershipRoleAssignmentTests](../tests/CloudSharp.Core.Tests/Domain/Memberships/MembershipRoleAssignmentTests.cs)
+[SpaceMembershipTests](../../../tests/CloudSharp.Core.Tests/Domain/Memberships/SpaceMembershipTests.cs) · [MembershipRoleAssignmentTests](../../../tests/CloudSharp.Core.Tests/Domain/Memberships/MembershipRoleAssignmentTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -19,7 +19,7 @@
 
 ## 멤버 변경 공통 검증
 
-MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipMutationTests.cs)를 상속한다. MB-06은 [제거 픽스처](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Removals/RemoveSpaceMemberUseCaseTests.cs)에서 해당 시나리오를 검증한다. 입력 검증과 의존성 미구성 경로는 [SpaceMembershipScaffoldingTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)에도 있다.
+MB-03~MB-05는 [SpaceMembershipMutationTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipMutationTests.cs)를 상속한다. MB-06은 [제거 픽스처](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Removals/RemoveSpaceMemberUseCaseTests.cs)에서 해당 시나리오를 검증한다. 입력 검증과 의존성 미구성 경로는 [SpaceMembershipScaffoldingTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)에도 있다.
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -33,7 +33,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-01 멤버 목록 조회
 
-[ListSpaceMembershipsUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Listings/ListSpaceMembershipsUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
+[ListSpaceMembershipsUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Listings/ListSpaceMembershipsUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -43,7 +43,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-02 멤버 상세 조회
 
-[GetSpaceMembershipUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Details/GetSpaceMembershipUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
+[GetSpaceMembershipUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Details/GetSpaceMembershipUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -53,7 +53,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-03 멤버 Role 전체 교체
 
-[ReplaceSpaceMemberRolesUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/RoleReplacements/ReplaceSpaceMemberRolesUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
+[ReplaceSpaceMemberRolesUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/RoleReplacements/ReplaceSpaceMemberRolesUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -64,7 +64,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-04 멤버 정지
 
-[SuspendSpaceMemberUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Suspensions/SuspendSpaceMemberUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
+[SuspendSpaceMemberUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Suspensions/SuspendSpaceMemberUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -73,7 +73,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-05 정지 멤버 활성화
 
-[ActivateSpaceMemberUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Activations/ActivateSpaceMemberUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
+[ActivateSpaceMemberUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Activations/ActivateSpaceMemberUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -82,7 +82,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-06 멤버 제거
 
-[RemoveSpaceMemberUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Removals/RemoveSpaceMemberUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
+[RemoveSpaceMemberUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Removals/RemoveSpaceMemberUseCaseTests.cs) · [멤버 변경 공통 검증](#멤버-변경-공통-검증)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -90,7 +90,7 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 
 ## MB-07 본인 탈퇴
 
-[LeaveSpaceUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/Leaves/LeaveSpaceUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
+[LeaveSpaceUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/Leaves/LeaveSpaceUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -101,4 +101,4 @@ MB-03~MB-05는 [SpaceMembershipMutationTests](../tests/CloudSharp.Core.Tests/Use
 | MB-07-05 | 변경 등록 후 저장 실패를 주입한다. | `DEPENDENCY_UNAVAILABLE`을 그대로 반환하고 커밋 없이 롤백한다. |
 | MB-07-06 | Actor 누락·잘못된 Session actor·MCP, 유효하지 않은 Space PublicId를 전달한다. | 각각 `SPACE_ACTOR_REQUIRED` / `Actor`, `AUTH_TOKEN_INVALID`, `AUTH_TOKEN_TYPE_NOT_ALLOWED`, `SPACE_PUBLIC_ID_INVALID` / `SpacePublicId`로 거부한다. |
 
-[Space Membership 도메인 설계](../.llm/domains/space-membership.md) · [공통 Space 인가 테스트](space-test-cases.md#공통-space-인가-정책)
+[Space Membership 도메인 설계](../../../.llm/domains/space-membership.md) · [공통 Space 인가 테스트](space-test-cases.md#공통-space-인가-정책)

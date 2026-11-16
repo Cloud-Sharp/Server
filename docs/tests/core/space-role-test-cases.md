@@ -1,10 +1,10 @@
 # Space Role 테스트 케이스
 
-[Space Role 유즈케이스 RL-01](space-use-cases.md#2-space-role)과 Role·Permission 코드의 Core 유닛 테스트를 정리한다. 멤버에게 Role을 부여하거나 교체하는 동작은 [Space Membership 테스트 케이스](space-membership-test-cases.md#mb-03-멤버-role-전체-교체)에서 확인한다.
+[Space Role 유즈케이스 RL-01](../../use-cases/space-use-cases.md#2-space-role)과 Role·Permission 코드의 Core 유닛 테스트를 정리한다. 멤버에게 Role을 부여하거나 교체하는 동작은 [Space Membership 테스트 케이스](space-membership-test-cases.md#mb-03-멤버-role-전체-교체)에서 확인한다.
 
 ## 도메인 모델
 
-[SpaceRoleTests](../tests/CloudSharp.Core.Tests/Domain/Memberships/SpaceRoleTests.cs)
+[SpaceRoleTests](../../../tests/CloudSharp.Core.Tests/Domain/Memberships/SpaceRoleTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -16,7 +16,7 @@
 
 ## Permission 코드
 
-[SpacePermissionCodesTests](../tests/CloudSharp.Core.Tests/Domain/Memberships/SpacePermissionCodesTests.cs)
+[SpacePermissionCodesTests](../../../tests/CloudSharp.Core.Tests/Domain/Memberships/SpacePermissionCodesTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -25,7 +25,7 @@
 
 ## RL-01 Space Role 목록 조회
 
-[ListSpaceRolesUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/RoleListings/ListSpaceRolesUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
+[ListSpaceRolesUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/RoleListings/ListSpaceRolesUseCaseTests.cs) · [SpaceMembershipScaffoldingTests](../../../tests/CloudSharp.Core.Tests/UseCases/Memberships/SpaceMembershipScaffoldingTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -34,4 +34,4 @@
 | RL-01-03 | Role 읽기 포트에서 실패를 반환한다. | `DEPENDENCY_UNAVAILABLE` 오류가 결과에 전달된다. |
 | RL-01-04 | Query 자체가 `null`이거나 Query의 `Space`가 누락된다. | 각각 `ArgumentNullException`, `SPACE_AUTHORIZATION_CONTEXT_REQUIRED` / `Space`다. |
 
-[Space Role 도메인 설계](../.llm/domains/space-role.md) · [공통 Space 인가 테스트](space-test-cases.md#공통-space-인가-정책)
+[Space Role 도메인 설계](../../../.llm/domains/space-role.md) · [공통 Space 인가 테스트](space-test-cases.md#공통-space-인가-정책)

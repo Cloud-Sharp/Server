@@ -1,6 +1,6 @@
 # Space 테스트 케이스
 
-[Space 유즈케이스 SP-01~SP-10](space-use-cases.md#1-space)과 Space 도메인 모델, 공통 인가 정책의 Core 유닛 테스트를 정리한다.
+[Space 유즈케이스 SP-01~SP-10](../../use-cases/space-use-cases.md#1-space)과 Space 도메인 모델, 공통 인가 정책의 Core 유닛 테스트를 정리한다.
 
 ## 공통 검증
 
@@ -10,7 +10,7 @@
 
 ## 도메인 모델
 
-[SpaceTests](../tests/CloudSharp.Core.Tests/Domain/Spaces/SpaceTests.cs)
+[SpaceTests](../../../tests/CloudSharp.Core.Tests/Domain/Spaces/SpaceTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -26,7 +26,7 @@
 
 ## 공통 Space 인가 정책
 
-[SessionSpaceAuthorizationPolicyTests](../tests/CloudSharp.Core.Tests/Policies/Authorization/SessionSpaceAuthorizationPolicyTests.cs) · [SpacePermissionPolicyTests](../tests/CloudSharp.Core.Tests/Policies/Authorization/SpacePermissionPolicyTests.cs) · [SpaceAuthorizationQueryTests](../tests/CloudSharp.Core.Tests/Policies/Authorization/SpaceAuthorizationQueryTests.cs)
+[SessionSpaceAuthorizationPolicyTests](../../../tests/CloudSharp.Core.Tests/Policies/Authorization/SessionSpaceAuthorizationPolicyTests.cs) · [SpacePermissionPolicyTests](../../../tests/CloudSharp.Core.Tests/Policies/Authorization/SpacePermissionPolicyTests.cs) · [SpaceAuthorizationQueryTests](../../../tests/CloudSharp.Core.Tests/Policies/Authorization/SpaceAuthorizationQueryTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -39,7 +39,7 @@
 
 ## SP-01 접근 가능한 Space 목록 조회
 
-[ListSpacesUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/Listings/ListSpacesUseCaseTests.cs)
+[ListSpacesUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/Listings/ListSpacesUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -50,7 +50,7 @@
 
 ## SP-02 Space 생성
 
-[CreateSpaceUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/Creations/CreateSpaceUseCaseTests.cs)
+[CreateSpaceUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/Creations/CreateSpaceUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -60,7 +60,7 @@
 
 ## SP-03 Space 상세 조회
 
-[GetSpaceUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/Details/GetSpaceUseCaseTests.cs)
+[GetSpaceUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/Details/GetSpaceUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -69,7 +69,7 @@
 
 ## SP-04 Space 정보 수정
 
-[UpdateSpaceUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/MetadataUpdates/UpdateSpaceUseCaseTests.cs)
+[UpdateSpaceUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/MetadataUpdates/UpdateSpaceUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -80,7 +80,7 @@
 
 ## SP-05 Space 보관
 
-[ArchiveSpaceUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/Archives/ArchiveSpaceUseCaseTests.cs)
+[ArchiveSpaceUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/Archives/ArchiveSpaceUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -90,7 +90,7 @@
 
 ## SP-06 Space 재활성화
 
-[ReactivateSpaceUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/Reactivations/ReactivateSpaceUseCaseTests.cs)
+[ReactivateSpaceUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/Reactivations/ReactivateSpaceUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -100,7 +100,7 @@
 
 ## SP-07 Space 삭제 요청
 
-[RequestSpaceDeletionUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/DeletionRequests/RequestSpaceDeletionUseCaseTests.cs)
+[RequestSpaceDeletionUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/DeletionRequests/RequestSpaceDeletionUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -110,7 +110,7 @@
 
 ## SP-08 Space quota 조회
 
-[GetSpaceQuotaUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/QuotaReads/GetSpaceQuotaUseCaseTests.cs)
+[GetSpaceQuotaUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/QuotaReads/GetSpaceQuotaUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -119,7 +119,7 @@
 
 ## SP-09 Space quota 변경
 
-[ChangeSpaceQuotaUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/QuotaChanges/ChangeSpaceQuotaUseCaseTests.cs)
+[ChangeSpaceQuotaUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/QuotaChanges/ChangeSpaceQuotaUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -130,7 +130,7 @@
 
 ## SP-10 Space 소유권 이전
 
-[TransferSpaceOwnershipUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Spaces/OwnershipTransfers/TransferSpaceOwnershipUseCaseTests.cs)
+[TransferSpaceOwnershipUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Spaces/OwnershipTransfers/TransferSpaceOwnershipUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -140,4 +140,4 @@
 | SP-10-04 | 대상 계정이 없거나 비활성이다. 같은 Space의 활성 Membership이 없거나 관리형 ADMIN Role이 없는 경우도 확인한다. | 부적격 대상은 `SPACE_TRANSFER_TARGET_INVALID`, ADMIN Role 누락은 `MEMBER_INVALID_ROLE`이다. 변경을 등록하지 않는다. |
 | SP-10-05 | 오래된 버전, 변경 등록 실패, 저장 충돌을 재현한다. 컨텍스트 누락, 0 이하 버전, 잘못된 대상 PublicId도 전달한다. | 오래된 버전과 저장 충돌은 `PRECONDITION_FAILED`다. 등록·저장 실패는 롤백한다. 잘못된 대상 PublicId는 `SPACE_TRANSFER_TARGET_INVALID` / `NewOwnerUserPublicId`로 거부한다. |
 
-[Space 도메인 설계](../.llm/domains/space.md) · [인가 계약](../contracts/permissions/README.md)
+[Space 도메인 설계](../../../.llm/domains/space.md) · [인가 계약](../../../contracts/permissions/README.md)

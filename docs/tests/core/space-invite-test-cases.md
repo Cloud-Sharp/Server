@@ -1,6 +1,6 @@
 # Space Invite 테스트 케이스
 
-[Space 유즈케이스의 IN-01~IN-05](space-use-cases.md#4-space-invite)에 대한 현재 Core 유닛 테스트와 API 계약의 검증 시나리오를 정리한다. 각 절의 테스트 파일에서 Core 검증 내용을 확인할 수 있다.
+[Space 유즈케이스의 IN-01~IN-05](../../use-cases/space-use-cases.md#4-space-invite)에 대한 현재 Core 유닛 테스트와 API 계약의 검증 시나리오를 정리한다. 각 절의 테스트 파일에서 Core 검증 내용을 확인할 수 있다.
 
 ## 공통 검증
 
@@ -13,7 +13,7 @@
 
 ## 도메인 모델
 
-[SpaceInviteTests](../tests/CloudSharp.Core.Tests/Domain/Invites/SpaceInviteTests.cs)
+[SpaceInviteTests](../../../tests/CloudSharp.Core.Tests/Domain/Invites/SpaceInviteTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -27,7 +27,7 @@
 
 ## IN-01 초대 목록 조회
 
-[ListSpaceInvitesUseCase](../src/CloudSharp.Core/UseCases/Invites/Listings/ListSpaceInvitesUseCase.cs) · [ListSpaceInvitesUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Invites/Listings/ListSpaceInvitesUseCaseTests.cs)
+[ListSpaceInvitesUseCase](../../../src/CloudSharp.Core/UseCases/Invites/Listings/ListSpaceInvitesUseCase.cs) · [ListSpaceInvitesUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Invites/Listings/ListSpaceInvitesUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -40,7 +40,7 @@
 
 ## IN-02 초대 링크 생성
 
-[CreateSpaceInviteUseCase](../src/CloudSharp.Core/UseCases/Invites/Creations/CreateSpaceInviteUseCase.cs) · [CreateSpaceInviteUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Invites/Creations/CreateSpaceInviteUseCaseTests.cs)
+[CreateSpaceInviteUseCase](../../../src/CloudSharp.Core/UseCases/Invites/Creations/CreateSpaceInviteUseCase.cs) · [CreateSpaceInviteUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Invites/Creations/CreateSpaceInviteUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -53,7 +53,7 @@
 
 ## IN-03 초대 폐기
 
-[RevokeSpaceInviteUseCase](../src/CloudSharp.Core/UseCases/Invites/Revocations/RevokeSpaceInviteUseCase.cs) · [RevokeSpaceInviteUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Invites/Revocations/RevokeSpaceInviteUseCaseTests.cs)
+[RevokeSpaceInviteUseCase](../../../src/CloudSharp.Core/UseCases/Invites/Revocations/RevokeSpaceInviteUseCase.cs) · [RevokeSpaceInviteUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Invites/Revocations/RevokeSpaceInviteUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -67,7 +67,7 @@
 
 ## IN-04 공개 초대 정보 조회
 
-[GetPublicSpaceInviteUseCase](../src/CloudSharp.Core/UseCases/Invites/PublicInfo/GetPublicSpaceInviteUseCase.cs) · [GetPublicSpaceInviteUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Invites/PublicInfo/GetPublicSpaceInviteUseCaseTests.cs)
+[GetPublicSpaceInviteUseCase](../../../src/CloudSharp.Core/UseCases/Invites/PublicInfo/GetPublicSpaceInviteUseCase.cs) · [GetPublicSpaceInviteUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Invites/PublicInfo/GetPublicSpaceInviteUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -79,7 +79,7 @@
 
 ## IN-05 초대 수락
 
-[AcceptSpaceInviteUseCase](../src/CloudSharp.Core/UseCases/Invites/Acceptances/AcceptSpaceInviteUseCase.cs) · [AcceptSpaceInviteUseCaseTests](../tests/CloudSharp.Core.Tests/UseCases/Invites/Acceptances/AcceptSpaceInviteUseCaseTests.cs)
+[AcceptSpaceInviteUseCase](../../../src/CloudSharp.Core/UseCases/Invites/Acceptances/AcceptSpaceInviteUseCase.cs) · [AcceptSpaceInviteUseCaseTests](../../../tests/CloudSharp.Core.Tests/UseCases/Invites/Acceptances/AcceptSpaceInviteUseCaseTests.cs)
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
@@ -113,4 +113,4 @@
 - IN-04에서 유효 토큰이 가리키는 `ARCHIVED` Space의 공개 조회 성공을 HTTP 계약에도 명시할지, 마스킹 응답의 외부 오류 코드를 무엇으로 정할지.
 - IN-05에서 기존 OWNER의 `membershipPublicId`를 HTTP에서 `null`로 보낼지 생략할지, `SUSPENDED` 멤버와 VIEWER 누락의 외부 오류, 초대 실패 사유의 HTTP 매핑. 새 멱등 키로 유효하지 않은 초대를 수락하는 기존 참여자의 HTTP 응답도 이 매핑에 포함한다.
 
-[API 세부 계약](../.llm/api/spaces-access.md#5-invite) · [공통 API 계약](../.llm/api/common-contract.md) · [초대 도메인](../.llm/domains/space-invite.md) · [인가 계약](../contracts/permissions/README.md)
+[API 세부 계약](../../../.llm/api/spaces-access.md#5-invite) · [공통 API 계약](../../../.llm/api/common-contract.md) · [초대 도메인](../../../.llm/domains/space-invite.md) · [인가 계약](../../../contracts/permissions/README.md)
