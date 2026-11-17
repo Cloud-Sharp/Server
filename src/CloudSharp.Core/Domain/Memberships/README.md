@@ -7,9 +7,8 @@ Space Membership aggregate. See .llm/domains/space-membership.md
 `SpacePermission`은 Space 단위의 개별 권한 enum이다. 각 값은 독립된 권한이며 권한 간 자동 포함 관계는
 없다. 기본값 `0`은 유효한 권한이 아니고 `[Flags]` 조합도 만들지 않는다.
 
-`SpacePermissionCodes.Get(SpacePermission)`이 안정된 코드 문자열을 반환한다. 코드 문자열이 외부
-API와 영속 저장에서 사용하는 식별자이며, enum 정수값이나 `ToString()` 결과에는 의존하지 않는다.
-정의되지 않은 enum 값은 `ArgumentOutOfRangeException`으로 거부한다.
+`SpacePermissionCodes.Get(SpacePermission)`이 외부 API에서 사용하는 안정된 코드 문자열을 반환한다.
+영속 계층은 각 권한을 고정 비트에 매핑한다. 정의되지 않은 enum 값은 `ArgumentOutOfRangeException`으로 거부한다.
 
 | 권한 | 코드 |
 |---|---|
@@ -49,8 +48,8 @@ API와 영속 저장에서 사용하는 식별자이며, enum 정수값이나 `T
 
 - `Permissions`는 변경할 수 없는 `IReadOnlySet<SpacePermission>`이며, 저장된 집합을 복사해 보관한다.
   빈 집합과 중복 입력을 허용하고 정의되지 않은 enum 값은 거부한다.
-- ADMIN SystemKey Role은 저장된 Permission 연결이 비어 있거나 일부여도 `Enum.GetValues`로 구성한
-  정의된 전체 권한을 반환한다. 새 Permission을 추가해도 기존 ADMIN의 DB 연결을 갱신할 필요가 없다.
+- `StoredPermissions`는 저장할 불변 Permission 집합을 제공한다. ADMIN SystemKey Role의
+  유효 `Permissions`는 `Enum.GetValues`로 구성한 전체 권한을 반환한다.
 - MEMBER·VIEWER는 생성 시 표의 기본 권한을 부여하고, 복원 시에는 저장된 집합을 그대로 사용한다.
 - ADMIN 판정은 Role 내부의 SystemKey로만 처리한다. 호출자는 Role 이름 대신 `Permissions`를 사용한다.
 - Space 존재 여부, Space별 이름·SystemKey 유일성, Membership 연결, 사용자 정의 Role CRUD, 권한 평가는

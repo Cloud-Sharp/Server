@@ -6,7 +6,7 @@ namespace CloudSharp.Core.Domain.Memberships;
 
 /// <summary>
 /// Space별 Role 정의와 부여된 Permission 보관을 관리한다. 기본 Role은 <see cref="SpaceRoleSystemKey"/>로
-/// 식별하며, ADMIN은 저장된 Permission 연결과 무관하게 항상 정의된 모든 <see cref="SpacePermission"/>을 갖는다.
+/// 식별하며, ADMIN은 저장된 Permission 집합과 무관하게 항상 정의된 모든 <see cref="SpacePermission"/>을 갖는다.
 /// Membership 연결, 권한 평가, 사용자 정의 Role CRUD는 후속 작업이다.
 /// </summary>
 public sealed class SpaceRole
@@ -45,9 +45,11 @@ public sealed class SpaceRole
 
     private FrozenSet<SpacePermission> _storedPermissions = FrozenSet<SpacePermission>.Empty;
 
+    /// <summary>저장용 스냅샷에 사용할, 명시적으로 부여된 불변 Permission 집합.</summary>
+    public IReadOnlySet<SpacePermission> StoredPermissions => _storedPermissions;
+
     /// <summary>
     /// ADMIN SystemKey Role이 반환하는, 정의된 모든 권한으로 구성한 불변 집합.
-    /// 새 Permission이 추가돼도 기존 ADMIN의 DB 연결을 갱신할 필요가 없다.
     /// </summary>
     private static readonly FrozenSet<SpacePermission> AllPermissions =
         Enum.GetValues<SpacePermission>().ToFrozenSet();
@@ -74,7 +76,7 @@ public sealed class SpaceRole
         }.ToFrozenSet();
 
     /// <summary>
-    /// Role의 유효 Permission 집합. ADMIN SystemKey Role은 저장된 연결이 비어 있거나 일부여도
+    /// Role의 유효 Permission 집합. ADMIN SystemKey Role은 저장된 집합이 비어 있거나 일부여도
     /// 정의된 모든 <see cref="SpacePermission"/>을 반환하고, 그 외 Role은 저장된 집합을 그대로 반환한다.
     /// 반환 집합은 변경할 수 없다.
     /// </summary>
@@ -123,7 +125,7 @@ public sealed class SpaceRole
     }
 
     /// <summary>
-    /// 영속 snapshot과 저장된 Permission 집합을 손실 없이 복원한다. ADMIN SystemKey Role은 저장된 연결과
+    /// 영속 snapshot과 저장된 Permission 집합을 손실 없이 복원한다. ADMIN SystemKey Role은 저장된 집합과
     /// 무관하게 <see cref="Permissions"/>가 정의된 모든 권한을 반환한다. 잘못된 영속 상태는 예외로 거부하고
     /// 이름을 다시 정규화하거나 Version·시각을 변경하지 않는다.
     /// </summary>
