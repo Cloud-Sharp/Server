@@ -1,13 +1,22 @@
 # Space Repository
 
-Space의 집계 저장, 상세·목록·인가 조회, 생성 시 기본 리소스 등록에 필요한 포트다. [Space 유즈케이스](../use-cases/space-use-cases.md#1-space)
+Space의 저장, 상세·목록·인가 조회, 생성 시 기본 Role 등록에 필요한 포트다. Space는 소유권, 메타데이터, 상태, 전체 용량 한도와 사용·예약량을 관리한다. 멤버십과 초대는 Space 단위로 관리한다. [Space 유즈케이스](../use-cases/space-use-cases.md#1-space)
 
-| ID | 작업·Core 포트 | 주요 호출 경로·입력 | 결과와 계약 | 현황 |
-|---|---|---|---|---|
-| RP-08 | Space 조회와 변경 등록 · [ISpaceRepository](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceRepository.cs) | SP-02·SP-04~SP-10, Membership·Invite 작업의 최신 상태 확인 · 내부 ID 또는 PublicId, 변경할 Space와 이전 버전 | `FindByIdAsync`·`FindByPublicIdAsync`는 독립적인 Space를 조회한다. `AddAsync`·`UpdateAsync`는 Unit of Work에 변경을 등록한다. 변경 충돌은 저장 시 판정한다. | 후속 |
-| RP-09 | 상세 스냅샷 조회 · [ISpaceDetailsReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceDetailsReader.cs) | SP-03~SP-06·SP-10 · 인가된 Space 내부 ID | 최신 Space·버전과 소유자 및 루트 폴더 PublicId를 `SpaceDetailsSnapshot`으로 반환한다. | 후속 |
-| RP-10 | 목록 후보 배치 조회 · [ISpaceListCandidateReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceListCandidateReader.cs) | SP-01 · actor, cursor, 배치 크기, 정렬 필드·방향 | 정렬된 후보와 `HasMore`를 반환한다. UseCase가 접근할 수 있는 후보로 응답 페이지를 채운다. | 후속 |
-| RP-11 | 기본 리소스 등록 · [ISpaceBootstrapWriter](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceBootstrapWriter.cs) | SP-02 · 저장된 Space ID, 루트 폴더 PublicId, 관리형 Role 목록, 생성 시각 | 루트 DirectoryEntry·Folder와 기본 Role을 Space 생성과 같은 Unit of Work에 등록한다. Role 권한은 `space_roles.permission_mask`에 저장한다. | 후속 |
-| RP-12 | 인가 스냅샷 조회 · [ISpaceAuthorizationReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceAuthorizationReader.cs) | [SpaceAuthorizationService](../../src/CloudSharp.Infrastructure/Auth/Authorization/SpaceAuthorizationService.cs) · Space PublicId와 사용자 내부 ID | Space·요청자 Membership·연결 Role을 일관된 조회 범위에서 읽는다. Space 미존재는 `null`이다. Membership이 없거나 비활성이어도 존재하는 Space를 반환하며 인가 정책이 접근 자격을 판단한다. | 후속 |
+## Mount와의 경계
+
+- 새 Space의 Mount 목록은 비어 있다. 각 Mount의 루트 `DirectoryEntry`·`Folder`와 초기 권한 부여는 Mount 개설과 같은 트랜잭션에서 등록한다. 루트 폴더 PublicId와 Mount별 사용량은 Mount 상세 조회에서 제공한다.
+- Space 인가 스냅샷은 Mount 접근 자격과 관리 자격을 판단하는 데에도 사용한다. Space 소유자와 활성 `ADMIN` 멤버가 Mount를 관리한다. 콘텐츠 접근은 Mount의 `PUBLIC`·`PRIVATE` 기본 권한과 해당 Mount의 Role·개인별 `MountPermission` 부여를 합산해 판단한다. Mount 권한은 `mount_role_grants.permission_mask`와 `mount_user_grants.permission_mask`에 저장한다.
+
+## 저장소 계약
+
+아래 표는 Mount 분리 적용 후의 계약이다. 현재 Core의 `SpaceDetailsSnapshot`·`SpaceListCandidate`와 `ISpaceBootstrapWriter.AddAsync`는 루트 폴더 PublicId를 포함한다. RP-09·RP-10·RP-11 구현 시 해당 포트와 호출부를 함께 개정한다.
+
+| ID    | 작업·Core 포트                                                                                                                 | 주요 호출 경로·입력                                                                                                                                  | 결과와 계약                                                                                                                          | 현황            |
+| ----- | -------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------- |
+| RP-08 | Space 조회와 변경 등록 · [ISpaceRepository](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceRepository.cs)               | SP-02·SP-04~SP-10, Membership·Invite 작업의 최신 상태 확인 · 내부 ID 또는 PublicId, 변경할 Space와 이전 버전                                                      | `FindByIdAsync`·`FindByPublicIdAsync`는 독립적인 Space를 조회한다. `AddAsync`·`UpdateAsync`는 Unit of Work에 변경을 등록한다. 변경 충돌은 저장 시 판정한다.    | 후속            |
+| RP-09 | 상세 스냅샷 조회 · [ISpaceDetailsReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceDetailsReader.cs)               | SP-03~SP-06·SP-10 · 인가된 Space 내부 ID                                                                                                          | 최신 Space·버전과 소유자 PublicId를 `SpaceDetailsSnapshot`으로 반환한다.                                                                       | Core 계약 개정 후속 |
+| RP-10 | 목록 후보 배치 조회 · [ISpaceListCandidateReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceListCandidateReader.cs) | SP-01 · actor, cursor, 배치 크기, 정렬 필드·방향                                                                                                       | Space 인가 스냅샷, 소유자 PublicId, 후보별 cursor로 구성한 정렬된 후보와 `HasMore`를 반환한다. UseCase가 접근 가능한 후보로 응답 페이지를 채운다.                           | Core 계약 개정 후속 |
+| RP-11 | 기본 Role 등록 · [ISpaceBootstrapWriter](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceBootstrapWriter.cs)          | SP-02 · 저장된 Space ID, 관리형 Role 목록, 생성 시각                                                                                                     | 기본 Role을 Space 생성과 같은 Unit of Work에 등록한다. Space Role 권한은 `space_roles.permission_mask`에 저장한다.                                   | Core 계약 개정 후속 |
+| RP-12 | 인가 스냅샷 조회 · [ISpaceAuthorizationReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceAuthorizationReader.cs)   | [SpaceAuthorizationService](../../src/CloudSharp.Infrastructure/Auth/Authorization/SpaceAuthorizationService.cs) · Space PublicId와 사용자 내부 ID | Space·요청자 Membership·연결 Role을 일관된 조회 범위에서 읽는다. Space 미존재는 `null`이다. Membership이 없거나 비활성이어도 존재하는 Space를 반환하며 인가 정책이 접근 자격을 판단한다. | 후속            |
 
 [공통 Repository 계약](persistence-repositories.md#공통-계약)
