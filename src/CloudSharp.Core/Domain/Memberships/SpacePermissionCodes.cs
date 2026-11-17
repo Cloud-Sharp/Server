@@ -1,8 +1,7 @@
 namespace CloudSharp.Core.Domain.Memberships;
 
 /// <summary>
-/// <see cref="SpacePermission"/>의 안정된 코드 문자열을 제공한다. 코드 문자열이 외부 API와
-/// 영속 저장에서 사용하는 식별자이며, enum 정수값이나 <c>ToString()</c> 결과를 대신 사용하지 않는다.
+/// 외부 API의 권한 식별자로 사용하는 <see cref="SpacePermission"/>의 안정된 코드 문자열을 제공한다.
 /// </summary>
 public static class SpacePermissionCodes
 {
