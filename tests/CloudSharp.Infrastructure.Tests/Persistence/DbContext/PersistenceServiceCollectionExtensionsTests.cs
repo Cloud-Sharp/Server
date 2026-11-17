@@ -104,6 +104,30 @@ public sealed class PersistenceServiceCollectionExtensionsTests
     }
 
     [Test]
+    public void AddPostgreSqlPersistence_ShouldRegisterSpaceRepositoryAsScoped()
+    {
+        var configuration = CreateConfiguration(
+            "Host=localhost;Database=cloudsharp;Username=cloudsharp");
+        var services = new ServiceCollection();
+        services.AddPostgreSqlPersistence(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        using var firstScope = provider.CreateScope();
+        using var secondScope = provider.CreateScope();
+
+        var first = firstScope.ServiceProvider.GetRequiredService<ISpaceRepository>();
+        var sameScope = firstScope.ServiceProvider.GetRequiredService<ISpaceRepository>();
+        var otherScope = secondScope.ServiceProvider.GetRequiredService<ISpaceRepository>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sameScope, Is.SameAs(first));
+            Assert.That(otherScope, Is.Not.SameAs(first));
+            Assert.That(first, Is.TypeOf<SpaceRepository>());
+        });
+    }
+
+    [Test]
     public void AddPostgreSqlPersistence_ShouldRejectMissingConnectionString()
     {
         var configuration = new ConfigurationBuilder().Build();

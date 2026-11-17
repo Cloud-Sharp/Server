@@ -52,6 +52,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<ISpaceRepository, SpaceRepository>();
         services.AddScoped<ISpaceInviteTargetReader, SpaceInviteTargetReader>();
         services.AddScoped<DapperDbSession>();
 
