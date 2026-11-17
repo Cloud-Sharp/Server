@@ -17,7 +17,6 @@ public class UpdateSpaceUseCaseTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 10, 4, 10, 0, TimeSpan.Zero);
     private static readonly Guid OwnerUserPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec099");
-    private static readonly Guid RootFolderPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec100");
 
     private sealed class Harness
     {
@@ -29,8 +28,7 @@ public class UpdateSpaceUseCaseTests
             {
                 DetailsReader.Snapshot = new SpaceDetailsSnapshot(
                     storedSpace,
-                    OwnerUserPublicId,
-                    RootFolderPublicId);
+                    OwnerUserPublicId);
                 SpaceRepository.Seed(storedSpace);
             }
 
@@ -408,7 +406,6 @@ public class UpdateSpaceUseCaseTests
             Assert.That(dto.Name, Is.EqualTo(expectedName));
             Assert.That(dto.Description, Is.EqualTo(expectedDescription));
             Assert.That(dto.Status, Is.EqualTo(SpaceStatus.Active));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(RootFolderPublicId));
             Assert.That(dto.MyAccess.Source, Is.EqualTo(context.AuthorizationSource));
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(context.EffectivePermissions));
             Assert.That(dto.CreatedAt, Is.EqualTo(originalSpace.CreatedAt));

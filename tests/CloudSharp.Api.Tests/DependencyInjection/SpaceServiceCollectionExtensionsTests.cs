@@ -96,7 +96,7 @@ public class SpaceServiceCollectionExtensionsTests
     {
         var space = Space.Reconstitute(7, Guid.CreateVersion7(), 21, "Product", null, status,
             null, 0, 0, 1, Now, Now, status == SpaceStatus.Archived ? Now : null, null, null);
-        return new SpaceDetailsSnapshot(space, Guid.CreateVersion7(), Guid.CreateVersion7());
+        return new SpaceDetailsSnapshot(space, Guid.CreateVersion7());
     }
 
     private static AuthorizedSpaceContext AuthorizeOwner(SpaceDetailsSnapshot snapshot)

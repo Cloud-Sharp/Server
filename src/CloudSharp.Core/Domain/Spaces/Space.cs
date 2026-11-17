@@ -44,7 +44,7 @@ public sealed class Space
 
     /// <summary>
     /// 새 ACTIVE Space를 생성한다. 소유자가 활성 User인지는 호출 UseCase가 검증하고,
-    /// 기본 Role과 루트 폴더도 같은 생성 트랜잭션에서 준비한다.
+    /// 호출자는 기본 Role을 Space와 같은 생성 트랜잭션에서 준비한다.
     /// </summary>
     public static Result<Space> Create(
         long ownerUserId,

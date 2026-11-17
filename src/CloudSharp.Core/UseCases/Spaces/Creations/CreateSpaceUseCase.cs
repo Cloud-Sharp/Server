@@ -122,7 +122,6 @@ public sealed class CreateSpaceUseCase : IUseCase<CreateSpaceCommand, SpaceResul
                 "SpaceRepository returned a space without a generated id or with a mismatched identity.");
         }
 
-        var rootFolderPublicId = Guid.CreateVersion7();
         var roles = new List<SpaceRole>(3);
         foreach (var systemKey in new[]
                  {
@@ -142,7 +141,6 @@ public sealed class CreateSpaceUseCase : IUseCase<CreateSpaceCommand, SpaceResul
 
         var bootstrapResult = await BootstrapWriter.AddAsync(
             savedSpace.Id,
-            rootFolderPublicId,
             roles,
             now,
             cancellationToken);
@@ -165,7 +163,6 @@ public sealed class CreateSpaceUseCase : IUseCase<CreateSpaceCommand, SpaceResul
             savedSpace.Description,
             savedSpace.Status,
             new SpaceAccessDto(SpaceAuthorizationSource.Owner, permissions),
-            rootFolderPublicId,
             savedSpace.CreatedAt,
             savedSpace.UpdatedAt);
         return Result.Ok(new SpaceResultDto(dto, savedSpace.Version));

@@ -63,7 +63,6 @@ public sealed class GetSpaceUseCase : IUseCase<GetSpaceQuery, SpaceResultDto>
             space.Description,
             space.Status,
             new SpaceAccessDto(query.Space.AuthorizationSource, query.Space.EffectivePermissions),
-            snapshot.RootFolderPublicId,
             space.CreatedAt,
             space.UpdatedAt);
         return Result.Ok(new SpaceResultDto(dto, space.Version));

@@ -4,5 +4,4 @@ namespace CloudSharp.Core.Abstractions.Persistence;
 
 public sealed record SpaceDetailsSnapshot(
     Space Space,
-    Guid OwnerUserPublicId,
-    Guid RootFolderPublicId);
+    Guid OwnerUserPublicId);

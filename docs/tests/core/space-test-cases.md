@@ -54,7 +54,7 @@
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
-| SP-02-01 | 활성 Session 사용자가 유한 또는 무제한 quota로 생성한다. | 요청자가 OWNER인 `ACTIVE` Space와 루트 DirectoryEntry·Folder, ADMIN·MEMBER·VIEWER Role 및 Permission을 등록한다. 두 번 저장하고 한 번 커밋한다. 반환 DTO의 PublicId·버전 1을 확인한다. |
+| SP-02-01 | 활성 Session 사용자가 유한 또는 무제한 quota로 생성한다. | 요청자가 OWNER인 `ACTIVE` Space와 권한을 포함한 기본 ADMIN·MEMBER·VIEWER Role을 등록한다. 두 번 저장하고 한 번 커밋한다. 반환 DTO의 PublicId·버전 1을 확인한다. |
 | SP-02-02 | 기본 리소스를 등록한 트랜잭션의 두 번째 저장에서 실패한다. | `DEPENDENCY_UNAVAILABLE`을 반환하고 커밋 없이 롤백한다. |
 | SP-02-03 | MCP, 비활성 사용자, 잘못된 이름 또는 음수 quota로 생성한다. | `AUTH_TOKEN_TYPE_NOT_ALLOWED`, `AUTH_USER_INACTIVE`, `SPACE_NAME_INVALID` / `Name`, `SPACE_QUOTA_INVALID` / `AllowedBytes`에 해당하는 오류를 반환하며 변경을 등록하지 않는다. |
 
@@ -64,7 +64,7 @@
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
-| SP-03-01 | 인가 후 버전·메타데이터가 달라진 `ACTIVE`·`ARCHIVED` Space를 조회한다. | 인가된 Space ID로 읽는다. 최신 메타데이터·버전, Space·소유자·루트 폴더 PublicId와 컨텍스트의 `MyAccess`를 반환한다. |
+| SP-03-01 | 인가 후 버전·메타데이터가 달라진 `ACTIVE`·`ARCHIVED` Space를 조회한다. | 인가된 Space ID로 읽는다. 최신 메타데이터·버전, Space·소유자 PublicId와 컨텍스트의 `MyAccess`를 반환한다. |
 | SP-03-02 | 조회 시 Space가 없거나 `DELETING`·`DELETED`로 바뀌었다. 컨텍스트 누락도 확인한다. | 미존재는 `AUTH_SPACE_NOT_FOUND`, 상태 거부는 실제 상태를 담은 `AUTH_SPACE_STATE_NOT_ALLOWED`다. 컨텍스트 누락 시 읽기를 시작하지 않는다. |
 
 ## SP-04 Space 정보 수정

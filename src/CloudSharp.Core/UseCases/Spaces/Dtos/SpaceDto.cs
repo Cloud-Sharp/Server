@@ -9,6 +9,5 @@ public sealed record SpaceDto(
     string? Description,
     SpaceStatus Status,
     SpaceAccessDto MyAccess,
-    Guid RootFolderPublicId,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt);

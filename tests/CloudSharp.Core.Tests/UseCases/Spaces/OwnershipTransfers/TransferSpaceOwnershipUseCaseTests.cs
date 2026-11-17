@@ -23,7 +23,6 @@ public class TransferSpaceOwnershipUseCaseTests
     private static readonly DateTimeOffset Now = new(2026, 11, 10, 5, 20, 0, TimeSpan.Zero);
     private static readonly Guid OwnerUserPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec001");
     private static readonly Guid NewOwnerUserPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec100");
-    private static readonly Guid RootFolderPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec101");
     private static readonly Guid MembershipPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec102");
     private static readonly Guid AdminRolePublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec103");
     private static readonly Guid OtherOwnerPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec104");
@@ -157,8 +156,7 @@ public class TransferSpaceOwnershipUseCaseTests
             SpaceRepository.Seed(space);
             DetailsReader.Snapshot = new SpaceDetailsSnapshot(
                 space,
-                ownerUserPublicId,
-                RootFolderPublicId);
+                ownerUserPublicId);
         }
     }
 
@@ -234,7 +232,6 @@ public class TransferSpaceOwnershipUseCaseTests
                 Is.EqualTo(new[] { scenario.Space.Id }));
             Assert.That(dto.OwnerUserPublicId, Is.EqualTo(scenario.NewOwner.PublicId));
             Assert.That(dto.SpacePublicId, Is.EqualTo(scenario.Space.PublicId));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(RootFolderPublicId));
             Assert.That(dto.Status, Is.EqualTo(SpaceStatus.Active));
             Assert.That(dto.UpdatedAt, Is.EqualTo(Now));
             Assert.That(dto.MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Membership));
@@ -298,7 +295,6 @@ public class TransferSpaceOwnershipUseCaseTests
         {
             Assert.That(result.Value.Space.SpacePublicId, Is.EqualTo(scenario.Space.PublicId));
             Assert.That(result.Value.Space.OwnerUserPublicId, Is.EqualTo(scenario.CurrentOwner.PublicId));
-            Assert.That(result.Value.Space.RootFolderPublicId, Is.EqualTo(RootFolderPublicId));
             Assert.That(result.Value.Space.UpdatedAt, Is.EqualTo(scenario.Space.UpdatedAt));
             Assert.That(result.Value.Space.MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Owner));
             Assert.That(

@@ -17,7 +17,6 @@ public class ArchiveSpaceUseCaseTests
 {
     private static readonly DateTimeOffset Now = new(2026, 11, 10, 4, 20, 0, TimeSpan.Zero);
     private static readonly Guid OwnerUserPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec099");
-    private static readonly Guid RootFolderPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec100");
 
     private sealed class Harness
     {
@@ -29,8 +28,7 @@ public class ArchiveSpaceUseCaseTests
             {
                 DetailsReader.Snapshot = new SpaceDetailsSnapshot(
                     storedSpace,
-                    OwnerUserPublicId,
-                    RootFolderPublicId);
+                    OwnerUserPublicId);
                 SpaceRepository.Seed(storedSpace);
             }
 
@@ -92,7 +90,6 @@ public class ArchiveSpaceUseCaseTests
             Assert.That(dto.Name, Is.EqualTo(space.Name));
             Assert.That(dto.Description, Is.EqualTo(space.Description));
             Assert.That(dto.Status, Is.EqualTo(SpaceStatus.Archived));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(RootFolderPublicId));
             Assert.That(dto.MyAccess.Source, Is.EqualTo(context.AuthorizationSource));
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(context.EffectivePermissions));
             Assert.That(dto.CreatedAt, Is.EqualTo(space.CreatedAt));

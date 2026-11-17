@@ -237,7 +237,6 @@ public class ListSpacesUseCaseTests
         return new SpaceListCandidate(
             new SpaceAuthorizationSnapshot(space, null, []),
             Actor().UserPublicId,
-            PublicId(20_000 + id),
             $"opaque-cursor-{id}");
     }
 
@@ -257,7 +256,6 @@ public class ListSpacesUseCaseTests
         return new SpaceListCandidate(
             new SpaceAuthorizationSnapshot(space, membership, [role]),
             PublicId(10_000 + id),
-            PublicId(20_000 + id),
             $"opaque-cursor-{id}");
     }
 
@@ -267,7 +265,6 @@ public class ListSpacesUseCaseTests
         return new SpaceListCandidate(
             new SpaceAuthorizationSnapshot(space, null, []),
             PublicId(10_000 + id),
-            PublicId(20_000 + id),
             $"opaque-cursor-{id}");
     }
 
@@ -293,7 +290,6 @@ public class ListSpacesUseCaseTests
             Assert.That(item.Name, Is.EqualTo(space.Name));
             Assert.That(item.Description, Is.EqualTo(space.Description));
             Assert.That(item.Status, Is.EqualTo(space.Status));
-            Assert.That(item.RootFolderPublicId, Is.EqualTo(candidate.RootFolderPublicId));
             Assert.That(item.CreatedAt, Is.EqualTo(space.CreatedAt));
             Assert.That(item.UpdatedAt, Is.EqualTo(space.UpdatedAt));
         });

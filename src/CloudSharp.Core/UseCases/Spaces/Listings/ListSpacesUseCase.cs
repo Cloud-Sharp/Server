@@ -132,7 +132,6 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
             space.Description,
             space.Status,
             new SpaceAccessDto(authorization.AuthorizationSource, authorization.EffectivePermissions),
-            candidate.RootFolderPublicId,
             space.CreatedAt,
             space.UpdatedAt);
     }

@@ -75,7 +75,6 @@ public class CreateSpaceUseCaseTests
             Assert.That(savedSpace.Id, Is.Positive);
             Assert.That(bootstrap.SpaceId, Is.EqualTo(savedSpace.Id));
             Assert.That(bootstrap.CreatedAt, Is.EqualTo(Now));
-            Assert.That(bootstrap.RootFolderPublicId, Is.Not.EqualTo(Guid.Empty));
             Assert.That(bootstrap.Roles.Select(role => role.SystemKey), Is.EquivalentTo(new[]
             {
                 SpaceRoleSystemKey.Admin,
@@ -94,7 +93,6 @@ public class CreateSpaceUseCaseTests
             Assert.That(space.Name, Is.EqualTo("Product Space"));
             Assert.That(space.Description, Is.EqualTo("Product documents"));
             Assert.That(space.Status, Is.EqualTo(SpaceStatus.Active));
-            Assert.That(space.RootFolderPublicId, Is.EqualTo(bootstrap.RootFolderPublicId));
             Assert.That(space.MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Owner));
             Assert.That(space.MyAccess.Permissions, Is.EquivalentTo(Enum.GetValues<SpacePermission>()));
             Assert.That(space.CreatedAt, Is.EqualTo(Now));

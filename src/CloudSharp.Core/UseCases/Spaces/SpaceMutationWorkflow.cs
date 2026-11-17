@@ -130,7 +130,6 @@ internal sealed class SpaceMutationWorkflow
             space.Description,
             space.Status,
             new SpaceAccessDto(context.AuthorizationSource, context.EffectivePermissions),
-            snapshot.RootFolderPublicId,
             space.CreatedAt,
             space.UpdatedAt);
         return Result.Ok(new SpaceResultDto(dto, space.Version));
