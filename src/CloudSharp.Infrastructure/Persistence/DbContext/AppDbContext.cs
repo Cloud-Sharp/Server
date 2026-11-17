@@ -11,9 +11,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
 {
     public DbSet<UserEntity> Users => Set<UserEntity>();
     public DbSet<SpaceEntity> Spaces => Set<SpaceEntity>();
-    public DbSet<PermissionEntity> Permissions => Set<PermissionEntity>();
     public DbSet<SpaceRoleEntity> SpaceRoles => Set<SpaceRoleEntity>();
-    public DbSet<SpaceRolePermissionEntity> SpaceRolePermissions => Set<SpaceRolePermissionEntity>();
     public DbSet<SpaceMembershipEntity> SpaceMemberships => Set<SpaceMembershipEntity>();
     public DbSet<SpaceMembershipRoleEntity> SpaceMembershipRoles => Set<SpaceMembershipRoleEntity>();
     public DbSet<SpaceInviteEntity> SpaceInvites => Set<SpaceInviteEntity>();

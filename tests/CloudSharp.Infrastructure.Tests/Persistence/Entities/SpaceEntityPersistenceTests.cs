@@ -62,19 +62,13 @@ public sealed class SpaceEntityPersistenceTests
     }
 
     [Test]
-    public async Task SaveChangesAsync_ShouldPropagateGeneratedIdsToBothJoinRows()
+    public async Task SaveChangesAsync_ShouldStoreRoleMaskAndPropagateGeneratedMembershipId()
     {
         await using var scope = services!.CreateAsyncScope();
         var context = GetContext(scope);
         var (ownerId, memberId) = await SaveUsersAsync(context);
         var space = CreateSpace(ownerId);
-        var permission = new PermissionEntity
-        {
-            Code = SpacePermissionCodes.Get(SpacePermission.SpaceView),
-            Description = "View Space",
-            CreatedAt = Timestamp,
-        };
-        context.AddRange(space, permission);
+        context.Spaces.Add(space);
         await context.SaveChangesAsync();
 
         var existingRole = CreateRole(space.Id, SpaceRoleSystemKey.Member);
@@ -84,12 +78,7 @@ public sealed class SpaceEntityPersistenceTests
         var role = CreateRole(space.Id, SpaceRoleSystemKey.Viewer);
         var membership = CreateMembership(space.Id, memberId, SpaceMembershipStatus.Active);
         var assignment = MembershipRoleAssignment.Create(existingRole.Id, ownerId, Timestamp);
-        context.SpaceRolePermissions.Add(new SpaceRolePermissionEntity
-        {
-            Role = role,
-            PermissionId = permission.Id,
-            CreatedAt = Timestamp,
-        });
+        context.SpaceRoles.Add(role);
         context.SpaceMembershipRoles.Add(SpaceMembershipRoleEntity.FromDomain(membership, assignment));
 
         await context.SaveChangesAsync();
@@ -99,26 +88,50 @@ public sealed class SpaceEntityPersistenceTests
         var savedRole = await readContext.SpaceRoles.AsNoTracking().SingleAsync(row => row.PublicId == role.PublicId);
         var savedMembership = await readContext.SpaceMemberships.AsNoTracking()
             .SingleAsync(row => row.PublicId == membership.PublicId);
-        var rolePermission = await readContext.SpaceRolePermissions.AsNoTracking()
-            .SingleAsync(row => row.RoleId == savedRole.Id);
         var membershipRole = await readContext.SpaceMembershipRoles.AsNoTracking()
             .SingleAsync(row => row.MembershipId == savedMembership.Id);
         var systemKey = await readContext.Database.SqlQuery<string>(
             $"""SELECT system_key AS "Value" FROM space_roles WHERE id = {savedRole.Id}""").SingleAsync();
+        var storedMask = await readContext.Database.SqlQuery<long>(
+            $"""SELECT permission_mask AS "Value" FROM space_roles WHERE id = {savedRole.Id}""").SingleAsync();
 
         Assert.Multiple(() =>
         {
             Assert.That(savedRole.Id, Is.GreaterThan(0).And.EqualTo(role.Id));
             Assert.That(savedRole.SystemKey, Is.EqualTo(SpaceRoleSystemKey.Viewer));
             Assert.That(systemKey, Is.EqualTo("VIEWER"));
-            Assert.That(rolePermission.PermissionId, Is.EqualTo(permission.Id));
-            Assert.That(rolePermission.CreatedAt, Is.EqualTo(Timestamp));
+            Assert.That(storedMask, Is.EqualTo(21L));
+            Assert.That(savedRole.PermissionMask, Is.EqualTo(storedMask));
+            Assert.That(savedRole.ToDomain().StoredPermissions, Is.EquivalentTo(new[]
+            {
+                SpacePermission.SpaceView,
+                SpacePermission.FilesRead,
+                SpacePermission.FilesDownload,
+            }));
             Assert.That(savedMembership.Id, Is.GreaterThan(0).And.EqualTo(membership.Id));
             Assert.That(membershipRole.RoleId, Is.EqualTo(existingRole.Id));
             Assert.That(membershipRole.SpaceId, Is.EqualTo(space.Id));
             Assert.That(membershipRole.AssignedByUserId, Is.EqualTo(ownerId));
             Assert.That(membershipRole.AssignedAt, Is.EqualTo(Timestamp));
         });
+    }
+
+    [TestCase(-1L)]
+    [TestCase(8192L)]
+    public async Task SaveChangesAsync_ShouldRejectInvalidRolePermissionMask(long mask)
+    {
+        await using var scope = services!.CreateAsyncScope();
+        var context = GetContext(scope);
+        var (ownerId, _) = await SaveUsersAsync(context);
+        var space = CreateSpace(ownerId);
+        context.Spaces.Add(space);
+        await context.SaveChangesAsync();
+
+        var role = CreateRole(space.Id, SpaceRoleSystemKey.Viewer);
+        role.PermissionMask = mask;
+        context.SpaceRoles.Add(role);
+
+        AssertPostgresViolation(context, PostgresErrorCodes.CheckViolation, "chk_space_roles_permission_mask");
     }
 
     [TestCase(false, "fk_space_membership_roles_role")]

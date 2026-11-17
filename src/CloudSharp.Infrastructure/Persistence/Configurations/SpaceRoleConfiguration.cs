@@ -19,6 +19,10 @@ public sealed class SpaceRoleConfiguration : IEntityTypeConfiguration<SpaceRoleE
                 table.HasCheckConstraint("chk_space_roles_color", "color ~ '^#[0-9A-Fa-f]{6}$'");
                 table.HasCheckConstraint("chk_space_roles_position_non_negative", "position >= 0");
                 table.HasCheckConstraint("chk_space_roles_version_positive", "version > 0");
+                table.HasCheckConstraint(
+                    "chk_space_roles_permission_mask",
+                    FormattableString.Invariant(
+                        $"permission_mask >= 0 AND (permission_mask & {SpacePermissionMask.KnownBits}::BIGINT) = permission_mask"));
             });
 
         builder.HasKey(entity => entity.Id).HasName("pk_space_roles");
@@ -45,6 +49,12 @@ public sealed class SpaceRoleConfiguration : IEntityTypeConfiguration<SpaceRoleE
         builder.Property(entity => entity.IsManaged)
             .HasColumnName("is_managed")
             .HasDefaultValue(false)
+            .ValueGeneratedNever();
+        builder.Property(entity => entity.PermissionMask)
+            .HasColumnName("permission_mask")
+            .HasColumnType("bigint")
+            .IsRequired()
+            .HasDefaultValue(0L)
             .ValueGeneratedNever();
         builder.Property(entity => entity.Version)
             .HasColumnName("version")

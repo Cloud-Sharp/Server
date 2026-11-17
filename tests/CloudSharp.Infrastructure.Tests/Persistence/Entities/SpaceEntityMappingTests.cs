@@ -79,29 +79,61 @@ public sealed class SpaceEntityMappingTests
             5, false, 7, CreatedAt, UpdatedAt, UpdatedAt, permissions);
 
         var entity = SpaceRoleEntity.FromDomain(role);
-        var restored = entity.ToDomain(permissions);
+        var restored = entity.ToDomain();
 
         Assert.Multiple(() =>
         {
             Assert.That(entity.Id, Is.EqualTo(id));
+            Assert.That(entity.PermissionMask, Is.EqualTo(20L));
             Assert.That(restored, Is.EqualTo(role).UsingPropertiesComparer());
             Assert.That(restored.Permissions, Is.EquivalentTo(permissions));
         });
     }
 
-    [Test]
-    public void SpaceRoleEntity_ToDomain_ShouldUseCoreAdminPermissionsWhenStoredPermissionsAreEmpty()
+    [TestCase(0L, false)]
+    [TestCase(4100L, true)]
+    public void SpaceRoleEntity_ShouldPreserveAdminStoredPermissionsAlongsideAllEffectivePermissions(
+        long storedMask,
+        bool hasStoredPermissions)
     {
-        var role = SpaceRole.CreateManaged(21, SpaceRoleSystemKey.Admin, CreatedAt).Value;
+        SpacePermission[] storedPermissions = hasStoredPermissions
+            ? [SpacePermission.FilesRead, SpacePermission.OperationsManage]
+            : [];
+        var role = SpaceRole.Reconstitute(
+            31, PublicId, 21, "Admin", "ADMIN", SpaceRoleSystemKey.Admin, null,
+            2, true, 1, CreatedAt, CreatedAt, null, storedPermissions);
+
         var entity = SpaceRoleEntity.FromDomain(role);
+        var restored = entity.ToDomain();
 
-        var restored = entity.ToDomain([]);
+        Assert.Multiple(() =>
+        {
+            Assert.That(entity.PermissionMask, Is.EqualTo(storedMask));
+            Assert.That(restored.StoredPermissions, Is.EquivalentTo(storedPermissions));
+            Assert.That(restored.Permissions, Is.EquivalentTo(Enum.GetValues<SpacePermission>()));
+            Assert.That(SpaceRoleEntity.FromDomain(restored).PermissionMask, Is.EqualTo(storedMask));
+        });
+    }
 
-        Assert.That(restored.Permissions, Is.EquivalentTo(Enum.GetValues<SpacePermission>()));
+    [TestCase(SpaceRoleSystemKey.Admin, 8191L)]
+    [TestCase(SpaceRoleSystemKey.Member, 765L)]
+    [TestCase(SpaceRoleSystemKey.Viewer, 21L)]
+    public void SpaceRoleEntity_ShouldEncodeManagedRolePermissions(SpaceRoleSystemKey systemKey, long expectedMask)
+    {
+        var role = SpaceRole.CreateManaged(21, systemKey, CreatedAt).Value;
+
+        var entity = SpaceRoleEntity.FromDomain(role);
+        var restored = entity.ToDomain();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(entity.PermissionMask, Is.EqualTo(expectedMask));
+            Assert.That(restored.Permissions, Is.EquivalentTo(role.Permissions));
+        });
     }
 
     [Test]
-    public void SpaceRoleEntity_UpdateFrom_ShouldPreserveIdAndClearOptionalFields()
+    public void SpaceRoleEntity_UpdateFrom_ShouldPreserveIdAndClearOptionalFieldsAndPermissions()
     {
         var entity = new SpaceRoleEntity
         {
@@ -109,6 +141,7 @@ public sealed class SpaceEntityMappingTests
             SystemKey = SpaceRoleSystemKey.Member,
             Color = "#ABC123",
             DeletedAt = UpdatedAt,
+            PermissionMask = 765L,
         };
         var role = SpaceRole.Reconstitute(
             0, PublicId, 21, "Reader", "READER", null, null,
@@ -122,21 +155,48 @@ public sealed class SpaceEntityMappingTests
             Assert.That(entity.SystemKey, Is.Null);
             Assert.That(entity.Color, Is.Null);
             Assert.That(entity.DeletedAt, Is.Null);
+            Assert.That(entity.PermissionMask, Is.Zero);
         });
     }
 
-    [Test]
-    public void PermissionEntity_ToDomain_ShouldResolveEveryStableCode([Values] SpacePermission permission)
+    [TestCase(SpacePermission.SpaceView, 1L)]
+    [TestCase(SpacePermission.SpaceUpdate, 2L)]
+    [TestCase(SpacePermission.FilesRead, 4L)]
+    [TestCase(SpacePermission.FilesWrite, 8L)]
+    [TestCase(SpacePermission.FilesDownload, 16L)]
+    [TestCase(SpacePermission.SharesView, 32L)]
+    [TestCase(SpacePermission.SharesManage, 64L)]
+    [TestCase(SpacePermission.TagsManage, 128L)]
+    [TestCase(SpacePermission.InvitesManage, 256L)]
+    [TestCase(SpacePermission.MembersView, 512L)]
+    [TestCase(SpacePermission.MembersManage, 1024L)]
+    [TestCase(SpacePermission.UploadsManage, 2048L)]
+    [TestCase(SpacePermission.OperationsManage, 4096L)]
+    public void SpaceRoleEntity_ShouldRoundTripEveryPermissionAtItsAssignedBit(
+        SpacePermission permission,
+        long expectedMask)
     {
-        var entity = new PermissionEntity { Code = SpacePermissionCodes.Get(permission) };
+        var role = SpaceRole.Reconstitute(
+            31, PublicId, 21, "Reader", "READER", null, null,
+            0, false, 1, CreatedAt, CreatedAt, null, [permission]);
 
-        Assert.That(entity.ToDomain(), Is.EqualTo(permission));
+        var entity = SpaceRoleEntity.FromDomain(role);
+        var restored = entity.ToDomain();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(entity.PermissionMask, Is.EqualTo(expectedMask));
+            Assert.That(restored.StoredPermissions, Is.EquivalentTo(new[] { permission }));
+        });
     }
 
-    [Test]
-    public void PermissionEntity_ToDomain_ShouldRejectUnknownStoredCode()
+    [TestCase(-1L)]
+    [TestCase(8192L)]
+    public void SpaceRoleEntity_ToDomain_ShouldRejectInvalidStoredPermissionMask(long mask)
     {
-        var entity = new PermissionEntity { Code = "UNKNOWN_PERMISSION" };
+        var role = SpaceRole.CreateManaged(21, SpaceRoleSystemKey.Viewer, CreatedAt).Value;
+        var entity = SpaceRoleEntity.FromDomain(role);
+        entity.PermissionMask = mask;
 
         Assert.That(() => entity.ToDomain(), Throws.InvalidOperationException);
     }

@@ -2,7 +2,7 @@ using CloudSharp.Core.Domain.Memberships;
 
 namespace CloudSharp.Infrastructure.Persistence.Entities;
 
-/// <summary>Persistence row for a Space role. Permission links are stored separately.</summary>
+/// <summary>Persistence row for a Space role and its stored permission mask.</summary>
 public sealed class SpaceRoleEntity
 {
     public long Id { get; set; }
@@ -14,13 +14,14 @@ public sealed class SpaceRoleEntity
     public string? Color { get; set; }
     public int Position { get; set; }
     public bool IsManaged { get; set; }
+    public long PermissionMask { get; set; }
     public long Version { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? DeletedAt { get; set; }
 
-    /// <summary>Restores the role using the permissions from its stored links.</summary>
-    public SpaceRole ToDomain(IEnumerable<SpacePermission> permissions) =>
+    /// <summary>Restores the role and its stored permission set.</summary>
+    public SpaceRole ToDomain() =>
         SpaceRole.Reconstitute(
             id: Id,
             publicId: PublicId,
@@ -35,7 +36,7 @@ public sealed class SpaceRoleEntity
             createdAt: CreatedAt,
             updatedAt: UpdatedAt,
             deletedAt: DeletedAt,
-            permissions: permissions);
+            permissions: SpacePermissionMask.Decode(PermissionMask));
 
     public static SpaceRoleEntity FromDomain(SpaceRole role)
     {
@@ -50,6 +51,8 @@ public sealed class SpaceRoleEntity
     {
         ArgumentNullException.ThrowIfNull(role);
 
+        var permissionMask = SpacePermissionMask.Encode(role.StoredPermissions);
+
         PublicId = role.PublicId;
         SpaceId = role.SpaceId;
         Name = role.Name;
@@ -58,6 +61,7 @@ public sealed class SpaceRoleEntity
         Color = role.Color;
         Position = role.Position;
         IsManaged = role.IsManaged;
+        PermissionMask = permissionMask;
         Version = role.Version;
         CreatedAt = role.CreatedAt;
         UpdatedAt = role.UpdatedAt;
