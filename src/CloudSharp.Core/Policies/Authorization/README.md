@@ -31,5 +31,6 @@ SystemRole x SpacePermission rules. See .llm/auth/authorization.md
   관리자·OWNER 경로의 MembershipId는 null이다. 요청 밖에 캐시하지 않는다.
 - `SpaceAuthorizationError`는 미존재·접근 거부·상태 거부·Permission 부족을 내부 code로 구분하고
   상태 오류의 `ActualSpaceStatus`를 보존한다. 외부 403/404 표현이나 감사 저장을 수행하지 않는다.
-- PostgreSQL reader adapter, 실제 DI·API filter 연결, MCP 지원은 후속 작업이다.
+- PostgreSQL `SpaceAuthorizationReader`와 scoped DI 등록은 Infrastructure·API 구성에 구현되어 있다.
+  API filter 연결과 MCP 지원은 후속 작업이다.
   본인 탈퇴의 SUSPENDED·LEFT 예외와 Upload·작업 요청자 조건은 전용 UseCase가 검증한다.

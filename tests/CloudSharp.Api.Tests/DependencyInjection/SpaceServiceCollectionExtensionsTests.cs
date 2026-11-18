@@ -1,4 +1,5 @@
 using CloudSharp.Api.DependencyInjection;
+using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Actors;
@@ -16,6 +17,7 @@ using CloudSharp.Core.UseCases.Spaces.Dtos;
 using CloudSharp.Core.UseCases.Spaces.Listings;
 using CloudSharp.Core.UseCases.Spaces.MetadataUpdates;
 using CloudSharp.Core.UseCases.Spaces.Reactivations;
+using CloudSharp.Infrastructure.Auth.Authorization;
 using CloudSharp.TestSupport.Fakes;
 using FluentResults;
 using Microsoft.AspNetCore.Builder;
@@ -70,6 +72,36 @@ public class SpaceServiceCollectionExtensionsTests
                     Is.EqualTo(ErrorCodes.Common.DependencyUnavailable));
             }
         }
+    }
+
+    [Test]
+    public void AddCloudSharpApplication_ShouldResolveSpaceAuthorizationServiceAsScoped()
+    {
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+        {
+            EnvironmentName = Environments.Development,
+        });
+        builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["TokenHashing:ActiveKey"] = Convert.ToBase64String(new byte[32]),
+            ["ConnectionStrings:PostgreSql"] = "Host=localhost;Database=cloudsharp_test;Username=test;Password=test",
+            ["ConnectionStrings:Redis"] = "localhost:6379",
+        });
+        builder.Services.AddCloudSharpApplication(builder.Configuration);
+
+        using var app = builder.Build();
+        using var firstScope = app.Services.CreateScope();
+        using var secondScope = app.Services.CreateScope();
+        var first = firstScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationService>();
+        var sameScope = firstScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationService>();
+        var otherScope = secondScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationService>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first, Is.TypeOf<SpaceAuthorizationService>());
+            Assert.That(sameScope, Is.SameAs(first));
+            Assert.That(otherScope, Is.Not.SameAs(first));
+        });
     }
 
     [Test]

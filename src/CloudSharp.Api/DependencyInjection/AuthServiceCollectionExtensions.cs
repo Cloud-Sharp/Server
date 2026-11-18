@@ -6,6 +6,7 @@ using CloudSharp.Core.UseCases.Auth.Logins;
 using CloudSharp.Core.UseCases.Auth.PasswordChanges;
 using CloudSharp.Core.UseCases.Auth.Registrations;
 using CloudSharp.Core.UseCases.Auth.Sessions;
+using CloudSharp.Infrastructure.Auth.Authorization;
 using CloudSharp.Infrastructure.Auth.Passwords;
 using CloudSharp.Infrastructure.Auth.Sessions;
 using CloudSharp.Infrastructure.Auth.Tokens;
@@ -23,6 +24,7 @@ internal static class AuthServiceCollectionExtensions
         services.AddSingleton<IPasswordHasher, Pbkdf2PasswordHasher>();
 
         services.AddScoped<SessionIssuanceService>();
+        services.AddScoped<ISpaceAuthorizationService, SpaceAuthorizationService>();
         services.AddLoggedUseCase<RegistrationCommand, RegistrationResultDto, RegistrationUseCase>();
         services.AddLoggedUseCase<LoginCommand, LoginResultDto, LoginUseCase>();
         services.AddLoggedUseCase<PasswordChangeCommand, PasswordChangeResultDto, PasswordChangeUseCase>();

@@ -439,6 +439,216 @@ public sealed class SpaceRepositoryIntegrationTests
     }
 
     [Test]
+    public async Task AuthorizationReadAsync_ShouldReturnNullForMissingSpace()
+    {
+        await using var scope = CreateScope();
+
+        var result = await scope.AuthorizationReader.ReadAsync(Guid.CreateVersion7(), userId: 1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.True, result.ToString());
+            Assert.That(result.Value, Is.Null);
+            Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
+        });
+    }
+
+    [TestCase(MembershipAbsence.OtherUser)]
+    [TestCase(MembershipAbsence.LeftHistory)]
+    public async Task AuthorizationReadAsync_ShouldReturnSpaceWithoutCurrentMembership(
+        MembershipAbsence absence)
+    {
+        var owner = await SeedUserAsync();
+        var requester = await SeedUserAsync();
+        var space = await SeedSpaceAsync(ownerId: owner.Id, createdAt: Timestamp.AddDays(30));
+        var membershipUser = absence == MembershipAbsence.OtherUser ? await SeedUserAsync() : requester;
+        var status = absence == MembershipAbsence.OtherUser
+            ? SpaceMembershipStatus.Active
+            : SpaceMembershipStatus.Left;
+        await using (var seedScope = CreateScope())
+        {
+            var membership = CreateMembershipEntity(space.Id, membershipUser.Id, status, space.CreatedAt);
+            seedScope.Context.SpaceMemberships.Add(membership);
+            SpaceRoleEntity? role = null;
+            if (status == SpaceMembershipStatus.Active)
+            {
+                role = SpaceRoleEntity.FromDomain(
+                    SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Viewer, space.CreatedAt).Value);
+                seedScope.Context.SpaceRoles.Add(role);
+            }
+
+            await seedScope.Context.SaveChangesAsync();
+            if (role is not null)
+            {
+                seedScope.Context.SpaceMembershipRoles.Add(
+                    SpaceMembershipRoleEntity.FromDomain(
+                        membership,
+                        MembershipRoleAssignment.Create(role.Id, owner.Id, space.CreatedAt)));
+                await seedScope.Context.SaveChangesAsync();
+            }
+        }
+
+        await using var scope = CreateScope();
+        var result = await scope.AuthorizationReader.ReadAsync(space.PublicId, requester.Id);
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.That(result.Value, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value!.Space, Is.EqualTo(space).UsingPropertiesComparer());
+            Assert.That(result.Value.Membership, Is.Null);
+            Assert.That(result.Value.Roles, Is.Empty);
+            Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
+        });
+    }
+
+    [TestCase(SpaceMembershipStatus.Active)]
+    [TestCase(SpaceMembershipStatus.Suspended)]
+    public async Task AuthorizationReadAsync_ShouldRestoreOnlyCurrentMembershipAssignmentsAndRoles(
+        SpaceMembershipStatus membershipStatus)
+    {
+        var owner = await SeedUserAsync();
+        var requester = await SeedUserAsync();
+        var otherUser = await SeedUserAsync();
+        var createdAt = Timestamp.AddDays(31);
+        var space = await SeedSpaceAsync(ownerId: owner.Id, createdAt: createdAt);
+        SpaceRoleEntity currentRole;
+        SpaceRoleEntity deletedRole;
+        SpaceRoleEntity leftRole;
+        SpaceRoleEntity otherRole;
+        SpaceMembershipEntity currentMembership;
+        await using (var seedScope = CreateScope())
+        {
+            currentRole = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Member, createdAt).Value);
+            deletedRole = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Viewer, createdAt).Value);
+            deletedRole.DeletedAt = createdAt;
+            leftRole = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Admin, createdAt).Value);
+            leftRole.DeletedAt = createdAt;
+            otherRole = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Admin, createdAt).Value);
+            currentMembership = CreateMembershipEntity(space.Id, requester.Id, membershipStatus, createdAt);
+            currentMembership.UpdatedAt = createdAt.AddMinutes(2);
+            var leftHistory = CreateMembershipEntity(
+                space.Id, requester.Id, SpaceMembershipStatus.Left, createdAt);
+            var otherMembership = CreateMembershipEntity(
+                space.Id, otherUser.Id, SpaceMembershipStatus.Active, createdAt);
+            seedScope.Context.SpaceRoles.AddRange(currentRole, deletedRole, leftRole, otherRole);
+            seedScope.Context.SpaceMemberships.AddRange(currentMembership, leftHistory, otherMembership);
+            await seedScope.Context.SaveChangesAsync();
+            seedScope.Context.SpaceMembershipRoles.AddRange(
+                SpaceMembershipRoleEntity.FromDomain(
+                    currentMembership,
+                    MembershipRoleAssignment.Create(currentRole.Id, owner.Id, createdAt.AddMinutes(1))),
+                SpaceMembershipRoleEntity.FromDomain(
+                    currentMembership,
+                    MembershipRoleAssignment.Create(deletedRole.Id, otherUser.Id, createdAt.AddMinutes(2))),
+                SpaceMembershipRoleEntity.FromDomain(
+                    leftHistory,
+                    MembershipRoleAssignment.Create(leftRole.Id, owner.Id, createdAt)),
+                SpaceMembershipRoleEntity.FromDomain(
+                    otherMembership,
+                    MembershipRoleAssignment.Create(otherRole.Id, owner.Id, createdAt)));
+            await seedScope.Context.SaveChangesAsync();
+        }
+
+        await using var scope = CreateScope();
+        var result = await scope.AuthorizationReader.ReadAsync(space.PublicId, requester.Id);
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.That(result.Value, Is.Not.Null);
+        var membership = result.Value!.Membership;
+        Assert.That(membership, Is.Not.Null);
+        var currentAssignment = membership!.RoleAssignments.Single(
+            assignment => assignment.RoleId == currentRole.Id);
+        var deletedAssignment = membership.RoleAssignments.Single(
+            assignment => assignment.RoleId == deletedRole.Id);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.Space, Is.EqualTo(space).UsingPropertiesComparer());
+            Assert.That(membership.Id, Is.EqualTo(currentMembership.Id));
+            Assert.That(membership.PublicId, Is.EqualTo(currentMembership.PublicId));
+            Assert.That(membership.UserId, Is.EqualTo(requester.Id));
+            Assert.That(membership.Status, Is.EqualTo(membershipStatus));
+            Assert.That(membership.UpdatedAt, Is.EqualTo(createdAt.AddMinutes(2)));
+            Assert.That(membership.SuspendedAt,
+                Is.EqualTo(membershipStatus == SpaceMembershipStatus.Suspended ? createdAt : (DateTimeOffset?)null));
+            Assert.That(membership.LeftAt, Is.Null);
+            Assert.That(membership.RoleAssignments.Select(assignment => assignment.RoleId),
+                Is.EquivalentTo(new[] { currentRole.Id, deletedRole.Id }));
+            Assert.That(currentAssignment.AssignedByUserId, Is.EqualTo(owner.Id));
+            Assert.That(currentAssignment.AssignedAt, Is.EqualTo(createdAt.AddMinutes(1)));
+            Assert.That(deletedAssignment.AssignedByUserId, Is.EqualTo(otherUser.Id));
+            Assert.That(deletedAssignment.AssignedAt, Is.EqualTo(createdAt.AddMinutes(2)));
+            Assert.That(result.Value.Roles.Select(role => role.Id),
+                Is.EquivalentTo(new[] { currentRole.Id, deletedRole.Id }));
+            Assert.That(result.Value.Roles.Single(role => role.Id == deletedRole.Id).DeletedAt,
+                Is.EqualTo(createdAt));
+            Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task AuthorizationReadAsync_ShouldReturnFreshIndependentSnapshotsAfterRoleChange()
+    {
+        var owner = await SeedUserAsync();
+        var requester = await SeedUserAsync();
+        var createdAt = Timestamp.AddDays(32);
+        var space = await SeedSpaceAsync(ownerId: owner.Id, createdAt: createdAt);
+        SpaceRoleEntity role;
+        await using (var seedScope = CreateScope())
+        {
+            role = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Viewer, createdAt).Value);
+            var membership = CreateMembershipEntity(
+                space.Id, requester.Id, SpaceMembershipStatus.Active, createdAt);
+            seedScope.Context.SpaceRoles.Add(role);
+            seedScope.Context.SpaceMemberships.Add(membership);
+            await seedScope.Context.SaveChangesAsync();
+            seedScope.Context.SpaceMembershipRoles.Add(
+                SpaceMembershipRoleEntity.FromDomain(
+                    membership,
+                    MembershipRoleAssignment.Create(role.Id, owner.Id, createdAt)));
+            await seedScope.Context.SaveChangesAsync();
+        }
+
+        await using var scope = CreateScope();
+        var first = await scope.AuthorizationReader.ReadAsync(space.PublicId, requester.Id);
+        Assert.That(first.IsSuccess, Is.True, first.ToString());
+        var firstRole = first.Value!.Roles.Single();
+        Assert.That(firstRole.StoredPermissions, Does.Not.Contain(SpacePermission.FilesWrite));
+
+        await using (var updateScope = CreateScope())
+        {
+            var persistedRole = await updateScope.Context.SpaceRoles.SingleAsync(entity => entity.Id == role.Id);
+            persistedRole.PermissionMask |= 1L << ((int)SpacePermission.FilesWrite - 1);
+            persistedRole.Version++;
+            persistedRole.UpdatedAt = createdAt.AddMinutes(1);
+            await updateScope.Context.SaveChangesAsync();
+        }
+
+        var second = await scope.AuthorizationReader.ReadAsync(space.PublicId, requester.Id);
+
+        Assert.That(second.IsSuccess, Is.True, second.ToString());
+        var secondRole = second.Value!.Roles.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(first.Value.Space, Is.Not.SameAs(second.Value.Space));
+            Assert.That(first.Value.Membership, Is.Not.SameAs(second.Value.Membership));
+            Assert.That(firstRole, Is.Not.SameAs(secondRole));
+            Assert.That(firstRole.StoredPermissions, Does.Not.Contain(SpacePermission.FilesWrite));
+            Assert.That(secondRole.StoredPermissions, Does.Contain(SpacePermission.FilesWrite));
+            Assert.That(firstRole.Version, Is.EqualTo(1));
+            Assert.That(secondRole.Version, Is.EqualTo(2));
+            Assert.That(firstRole.UpdatedAt, Is.EqualTo(createdAt));
+            Assert.That(secondRole.UpdatedAt, Is.EqualTo(createdAt.AddMinutes(1)));
+            Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
+        });
+    }
+
+    [Test]
     public async Task ListReadAsync_ShouldPaginateBidirectionallyAcrossEqualTimestamps()
     {
         var owner = await SeedUserAsync();
@@ -893,6 +1103,12 @@ public sealed class SpaceRepositoryIntegrationTests
         }
     }
 
+    public enum MembershipAbsence
+    {
+        OtherUser,
+        LeftHistory,
+    }
+
     private sealed class FailSecondSaveUnitOfWork(IUnitOfWork inner) : IUnitOfWork
     {
         public int CallCount { get; private set; }
@@ -921,6 +1137,9 @@ public sealed class SpaceRepositoryIntegrationTests
 
         public ISpaceListCandidateReader ListCandidateReader =>
             serviceScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
+
+        public ISpaceAuthorizationReader AuthorizationReader =>
+            serviceScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationReader>();
 
         public ISpaceBootstrapWriter BootstrapWriter =>
             serviceScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
