@@ -21,7 +21,7 @@ public sealed class LeaveSpaceUseCase : IUseCase<LeaveSpaceCommand, LeaveSpaceRe
 
     public LeaveSpaceUseCase() { }
 
-    internal LeaveSpaceUseCase(
+    public LeaveSpaceUseCase(
         ISpaceRepository spaceRepository,
         ISpaceMembershipRepository membershipRepository,
         IUnitOfWork unitOfWork,

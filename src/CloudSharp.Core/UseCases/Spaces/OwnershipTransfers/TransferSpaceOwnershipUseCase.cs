@@ -25,7 +25,7 @@ public sealed class TransferSpaceOwnershipUseCase : IUseCase<TransferSpaceOwners
 
     public TransferSpaceOwnershipUseCase() { }
 
-    internal TransferSpaceOwnershipUseCase(
+    public TransferSpaceOwnershipUseCase(
         ISpaceDetailsReader detailsReader,
         IUserRepository userRepository,
         ISpaceRepository spaceRepository,

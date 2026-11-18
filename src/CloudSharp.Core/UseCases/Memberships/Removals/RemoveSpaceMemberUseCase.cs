@@ -21,7 +21,7 @@ public sealed class RemoveSpaceMemberUseCase : IUseCase<RemoveSpaceMemberCommand
 
     public RemoveSpaceMemberUseCase() { }
 
-    internal RemoveSpaceMemberUseCase(
+    public RemoveSpaceMemberUseCase(
         ISpaceRepository spaceRepository,
         ISpaceMembershipRepository membershipRepository,
         IUnitOfWork unitOfWork,

@@ -102,6 +102,45 @@ public class MembershipServiceCollectionExtensionsTests
         });
     }
 
+    [Test]
+    public async Task AddMembershipServices_ShouldExecuteListMembershipsWithRegisteredPersistence()
+    {
+        var now = new DateTimeOffset(2026, 11, 18, 1, 2, 3, TimeSpan.Zero);
+        var space = Space.Reconstitute(
+            7, Guid.CreateVersion7(), 21, "Product", null, SpaceStatus.Active,
+            null, 0, 0, 1, now, now, null, null, null);
+        var repository = new FakeSpaceRepository();
+        repository.Seed(space);
+        var reader = new MembershipReader();
+        var services = new ServiceCollection();
+        services.AddLogging();
+        services.AddScoped<ISpaceRepository>(_ => repository);
+        services.AddScoped<ISpaceMembershipReader>(_ => reader);
+        services.AddMembershipServices();
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var scope = provider.CreateScope();
+        var useCase = scope.ServiceProvider
+            .GetRequiredService<IUseCase<ListSpaceMembershipsQuery, SpaceMembershipPageDto>>();
+        var actor = CurrentActor.ForSession(
+            space.OwnerUserId, Guid.CreateVersion7(), SystemRole.User, Guid.CreateVersion7());
+        var authorization = new SpaceAuthorizationQuery(
+            actor, space.PublicId, [SpacePermission.MembersView], [SpaceStatus.Active]);
+        var context = SessionSpaceAuthorizationPolicy.Evaluate(
+            authorization, new SpaceAuthorizationSnapshot(space, null, [])).Value;
+
+        var result = await useCase.ExecuteAsync(new ListSpaceMembershipsQuery(context));
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.Multiple(() =>
+        {
+            Assert.That(useCase, Is.TypeOf<LoggingUseCaseDecorator<ListSpaceMembershipsQuery, SpaceMembershipPageDto>>());
+            Assert.That(repository.SearchedIds, Is.EqualTo(new[] { space.Id }));
+            Assert.That(reader.RequestedSpaces, Is.EqualTo(new[] { (space.Id, space.OwnerUserId) }));
+            Assert.That(result.Value.Items, Is.Empty);
+            Assert.That(result.Value.NextCursor, Is.Null);
+        });
+    }
+
     private static void AssertRegistration<TInput, TOutput, TUseCase>(IServiceScope firstScope, IServiceScope secondScope)
         where TUseCase : class, IUseCase<TInput, TOutput>
     {
@@ -134,5 +173,29 @@ public class MembershipServiceCollectionExtensionsTests
             IReadOnlyList<SpaceRole> roles = role.SpaceId == spaceId ? [role] : [];
             return Task.FromResult(Result.Ok(roles));
         }
+    }
+
+    private sealed class MembershipReader : ISpaceMembershipReader
+    {
+        public List<(long SpaceId, long OwnerUserId)> RequestedSpaces { get; } = [];
+
+        public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
+            long spaceId,
+            long ownerUserId,
+            string? cursor,
+            int limit,
+            string? sort,
+            bool descending,
+            CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            RequestedSpaces.Add((spaceId, ownerUserId));
+            return Task.FromResult(Result.Ok(new SpaceMembershipReadPage([], null)));
+        }
+
+        public Task<Result<SpaceMembershipReadSnapshot?>> ReadAsync(
+            long spaceId,
+            Guid membershipPublicId,
+            CancellationToken cancellationToken = default) => throw new NotSupportedException();
     }
 }

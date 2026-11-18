@@ -22,7 +22,7 @@ public sealed class ActivateSpaceMemberUseCase : IUseCase<ActivateSpaceMemberCom
 
     public ActivateSpaceMemberUseCase() { }
 
-    internal ActivateSpaceMemberUseCase(
+    public ActivateSpaceMemberUseCase(
         ISpaceRepository spaceRepository,
         ISpaceMembershipReader membershipReader,
         ISpaceMembershipRepository membershipRepository,

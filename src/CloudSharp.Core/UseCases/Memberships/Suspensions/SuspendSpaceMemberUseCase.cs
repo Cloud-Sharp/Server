@@ -22,7 +22,7 @@ public sealed class SuspendSpaceMemberUseCase : IUseCase<SuspendSpaceMemberComma
 
     public SuspendSpaceMemberUseCase() { }
 
-    internal SuspendSpaceMemberUseCase(
+    public SuspendSpaceMemberUseCase(
         ISpaceRepository spaceRepository,
         ISpaceMembershipReader membershipReader,
         ISpaceMembershipRepository membershipRepository,

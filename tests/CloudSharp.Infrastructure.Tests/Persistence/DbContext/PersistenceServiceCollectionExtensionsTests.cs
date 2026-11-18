@@ -181,6 +181,38 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         });
     }
 
+    [TestCase(typeof(ISpaceMembershipReader), typeof(SpaceMembershipReader))]
+    [TestCase(typeof(ISpaceMembershipRepository), typeof(SpaceMembershipRepository))]
+    [TestCase(typeof(ISpaceOwnershipMembershipRepository), typeof(SpaceOwnershipMembershipRepository))]
+    public void AddPostgreSqlPersistence_ShouldRegisterSpaceMembershipPortAsScoped(
+        Type portType,
+        Type implementationType)
+    {
+        var configuration = CreateConfiguration(
+            "Host=localhost;Database=cloudsharp;Username=cloudsharp");
+        var services = new ServiceCollection();
+        services.AddSingleton<ITokenHasher>(new HmacSha256TokenHasher(new TokenHashingOptions
+        {
+            ActiveKey = Convert.ToBase64String(new byte[32]),
+        }));
+        services.AddPostgreSqlPersistence(configuration);
+
+        using var provider = services.BuildServiceProvider(validateScopes: true);
+        using var firstScope = provider.CreateScope();
+        using var secondScope = provider.CreateScope();
+
+        var first = firstScope.ServiceProvider.GetRequiredService(portType);
+        var sameScope = firstScope.ServiceProvider.GetRequiredService(portType);
+        var otherScope = secondScope.ServiceProvider.GetRequiredService(portType);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(first, Is.TypeOf(implementationType));
+            Assert.That(sameScope, Is.SameAs(first));
+            Assert.That(otherScope, Is.Not.SameAs(first));
+        });
+    }
+
     [Test]
     public void AddPostgreSqlPersistence_ShouldRejectMissingConnectionString()
     {

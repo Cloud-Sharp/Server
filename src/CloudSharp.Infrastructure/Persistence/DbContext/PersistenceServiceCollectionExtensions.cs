@@ -57,6 +57,9 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ISpaceListCandidateReader, SpaceListCandidateReader>();
         services.AddScoped<ISpaceAuthorizationReader, SpaceAuthorizationReader>();
         services.AddScoped<ISpaceRoleReader, SpaceRoleReader>();
+        services.AddScoped<ISpaceMembershipReader, SpaceMembershipReader>();
+        services.AddScoped<ISpaceMembershipRepository, SpaceMembershipRepository>();
+        services.AddScoped<ISpaceOwnershipMembershipRepository, SpaceOwnershipMembershipRepository>();
         services.AddScoped<ISpaceBootstrapWriter, SpaceBootstrapWriter>();
         services.AddScoped<ISpaceInviteTargetReader, SpaceInviteTargetReader>();
         services.AddScoped<DapperDbSession>();

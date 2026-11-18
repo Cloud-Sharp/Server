@@ -16,7 +16,7 @@ public sealed class ListSpaceMembershipsUseCase : IUseCase<ListSpaceMembershipsQ
 
     public ListSpaceMembershipsUseCase() { }
 
-    internal ListSpaceMembershipsUseCase(ISpaceRepository spaceRepository, ISpaceMembershipReader membershipReader)
+    public ListSpaceMembershipsUseCase(ISpaceRepository spaceRepository, ISpaceMembershipReader membershipReader)
     {
         SpaceRepository = spaceRepository;
         MembershipReader = membershipReader;
