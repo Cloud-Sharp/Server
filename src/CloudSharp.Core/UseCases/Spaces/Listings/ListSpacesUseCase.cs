@@ -15,7 +15,7 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
 
     public ListSpacesUseCase() { }
 
-    internal ListSpacesUseCase(ISpaceListCandidateReader candidateReader) => CandidateReader = candidateReader;
+    public ListSpacesUseCase(ISpaceListCandidateReader candidateReader) => CandidateReader = candidateReader;
 
     public async Task<Result<SpacePageDto>> ExecuteAsync(
         ListSpacesQuery query,

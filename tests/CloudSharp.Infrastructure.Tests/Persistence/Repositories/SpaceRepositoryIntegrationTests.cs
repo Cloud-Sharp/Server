@@ -1,10 +1,16 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
+using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Tokens;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
+using CloudSharp.Core.UseCases.Spaces.Creations;
+using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
+using CloudSharp.TestSupport.Fakes;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -41,7 +47,13 @@ public sealed class SpaceRepositoryIntegrationTests
                 ["ConnectionStrings:PostgreSql"] = postgres.GetConnectionString(),
             })
             .Build();
-        services = new ServiceCollection().AddPostgreSqlPersistence(configuration).BuildServiceProvider();
+        services = new ServiceCollection()
+            .AddSingleton<ITokenHasher>(new HmacSha256TokenHasher(new TokenHashingOptions
+            {
+                ActiveKey = Convert.ToBase64String(new byte[32]),
+            }))
+            .AddPostgreSqlPersistence(configuration)
+            .BuildServiceProvider();
 
         await using var scope = CreateScope();
         await scope.Context.Database.EnsureCreatedAsync();
@@ -366,6 +378,377 @@ public sealed class SpaceRepositoryIntegrationTests
         Assert.That(scope.Context.Spaces.Local, Is.Empty);
     }
 
+    [Test]
+    public async Task DetailsReadAsync_ShouldReturnCurrentSpaceAndOwnerPublicId()
+    {
+        var seeded = await SeedSpaceAsync();
+        await using var scope = CreateScope();
+        var ownerPublicId = await scope.Context.Users.AsNoTracking()
+            .Where(user => user.Id == seeded.OwnerUserId)
+            .Select(user => user.PublicId)
+            .SingleAsync();
+
+        var result = await scope.DetailsReader.ReadAsync(seeded.Id);
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.That(result.Value, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value!.Space, Is.EqualTo(seeded).UsingPropertiesComparer());
+            Assert.That(result.Value.OwnerUserPublicId, Is.EqualTo(ownerPublicId));
+        });
+    }
+
+    [Test]
+    public async Task DetailsReadAsync_ShouldReturnNullForMissingSpace()
+    {
+        await using var scope = CreateScope();
+
+        var result = await scope.DetailsReader.ReadAsync(-1);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.True, result.ToString());
+            Assert.That(result.Value, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task DetailsReadAsync_ShouldReturnDetachedIndependentSnapshots()
+    {
+        var seeded = await SeedSpaceAsync();
+        await using var scope = CreateScope();
+
+        var first = await scope.DetailsReader.ReadAsync(seeded.Id);
+        var second = await scope.DetailsReader.ReadAsync(seeded.Id);
+        Assert.That(first.Value, Is.Not.Null);
+        Assert.That(second.Value, Is.Not.Null);
+        Assert.That(first.Value!.Space, Is.Not.SameAs(second.Value!.Space));
+
+        var mutation = first.Value.Space.UpdateMetadata("Changed snapshot", null, Timestamp.AddHours(1));
+        Assert.That(mutation.IsSuccess, Is.True, mutation.ToString());
+        var reloaded = await scope.DetailsReader.ReadAsync(seeded.Id);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.Value.Space.Name, Is.EqualTo(seeded.Name));
+            Assert.That(reloaded.Value!.Space.Name, Is.EqualTo(seeded.Name));
+            Assert.That(reloaded.Value.Space.Version, Is.EqualTo(seeded.Version));
+            Assert.That(scope.Context.Spaces.Local, Is.Empty);
+        });
+    }
+
+    [Test]
+    public async Task ListReadAsync_ShouldPaginateBidirectionallyAcrossEqualTimestamps()
+    {
+        var owner = await SeedUserAsync();
+        var createdAt = Timestamp.AddDays(40);
+        var seeded = new List<Space>();
+        for (var index = 0; index < 5; index++)
+        {
+            seeded.Add(await SeedSpaceAsync(ownerId: owner.Id, createdAt: createdAt));
+        }
+
+        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
+        await using var scope = CreateScope();
+
+        var descending = await ReadAllCandidatesAsync(scope, actor, descending: true, batchSize: 2);
+        var ascending = await ReadAllCandidatesAsync(scope, actor, descending: false, batchSize: 2);
+
+        var descendingIds = descending.Select(candidate => candidate.Authorization.Space.PublicId).ToArray();
+        var ascendingIds = ascending.Select(candidate => candidate.Authorization.Space.PublicId).ToArray();
+        var seededIds = seeded.Select(space => space.PublicId).ToHashSet();
+        var expectedDescending = seeded.OrderByDescending(space => space.PublicId)
+            .Select(space => space.PublicId)
+            .ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(ascendingIds, Is.EqualTo(descendingIds.Reverse()));
+            Assert.That(descendingIds.Where(seededIds.Contains), Is.EqualTo(expectedDescending));
+            Assert.That(ascendingIds.Where(seededIds.Contains), Is.EqualTo(expectedDescending.Reverse()));
+            Assert.That(descendingIds, Is.Unique);
+            Assert.That(ascendingIds, Is.Unique);
+        });
+    }
+
+    [Test]
+    public async Task ListReadAsync_ShouldReplayCursorAfterBoundarySpaceDeletion()
+    {
+        var owner = await SeedUserAsync();
+        var createdAt = new DateTimeOffset(9000, 1, 1, 0, 0, 0, TimeSpan.Zero);
+        var seeded = new List<Space>();
+        for (var index = 0; index < 3; index++)
+        {
+            seeded.Add(await SeedSpaceAsync(ownerId: owner.Id, createdAt: createdAt));
+        }
+
+        var expected = seeded.OrderByDescending(space => space.PublicId).ToArray();
+        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
+        await using var scope = CreateScope();
+        var first = await scope.ListCandidateReader.ReadAsync(actor, null, 1, null, descending: true);
+        Assert.That(first.IsSuccess, Is.True, first.ToString());
+        Assert.That(first.Value.Candidates, Has.Count.EqualTo(1));
+        var boundary = first.Value.Candidates[0];
+        Assert.That(boundary.Authorization.Space.PublicId, Is.EqualTo(expected[0].PublicId));
+
+        await scope.Context.Spaces
+            .Where(space => space.Id == boundary.Authorization.Space.Id)
+            .ExecuteDeleteAsync();
+        var replayed = await scope.ListCandidateReader.ReadAsync(
+            actor, boundary.CursorAfter, 1, null, descending: true);
+
+        Assert.That(replayed.IsSuccess, Is.True, replayed.ToString());
+        Assert.Multiple(() =>
+        {
+            Assert.That(replayed.Value.Candidates, Has.Count.EqualTo(1));
+            Assert.That(replayed.Value.Candidates[0].Authorization.Space.PublicId,
+                Is.EqualTo(expected[1].PublicId));
+            Assert.That(replayed.Value.Candidates[0].CursorAfter, Is.Not.EqualTo(boundary.CursorAfter));
+        });
+    }
+
+    [Test]
+    public async Task ListReadAsync_ShouldRejectTamperedCursor()
+    {
+        var owner = await SeedUserAsync();
+        await SeedSpaceAsync(ownerId: owner.Id);
+        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
+        await using var scope = CreateScope();
+        var page = await scope.ListCandidateReader.ReadAsync(actor, null, 1, null, descending: true);
+        var cursor = page.Value.Candidates[0].CursorAfter;
+        var last = cursor[^1] == 'A' ? 'B' : 'A';
+        var tampered = cursor[..^1] + last;
+
+        var result = await scope.ListCandidateReader.ReadAsync(actor, tampered, 1, null, descending: true);
+
+        AssertError(result, ErrorCodes.Space.ListCursorInvalid, "PropertyName", "Cursor");
+    }
+
+    [Test]
+    public async Task ListReadAsync_ShouldRejectMismatchedCursorScopeOrDirection()
+    {
+        var owner = await SeedUserAsync();
+        await SeedSpaceAsync(ownerId: owner.Id);
+        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
+        await using var scope = CreateScope();
+        var page = await scope.ListCandidateReader.ReadAsync(actor, null, 1, null, descending: true);
+        var cursor = page.Value.Candidates[0].CursorAfter;
+
+        var directionMismatch = await scope.ListCandidateReader.ReadAsync(
+            actor, cursor, 1, null, descending: false);
+        var userMismatch = await scope.ListCandidateReader.ReadAsync(
+            CurrentActor.ForSession(actor.UserId, Guid.CreateVersion7(), actor.SystemRole, Guid.CreateVersion7()),
+            cursor, 1, null, descending: true);
+        var roleMismatch = await scope.ListCandidateReader.ReadAsync(
+            CurrentActor.ForSession(actor.UserId, actor.UserPublicId, SystemRole.SystemAdmin, Guid.CreateVersion7()),
+            cursor, 1, null, descending: true);
+        var typeMismatch = await scope.ListCandidateReader.ReadAsync(
+            CurrentActor.ForMcp(actor.UserId, actor.UserPublicId, actor.SystemRole, 99, Guid.CreateVersion7()),
+            cursor, 1, null, descending: true);
+
+        foreach (var result in new[] { directionMismatch, userMismatch, roleMismatch, typeMismatch })
+        {
+            AssertError(result, ErrorCodes.Space.ListCursorInvalid, "PropertyName", "Cursor");
+        }
+    }
+
+    [TestCase("name")]
+    [TestCase("created_at")]
+    public async Task ListReadAsync_ShouldRejectUnsupportedSort(string sort)
+    {
+        var owner = await SeedUserAsync();
+        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
+        await using var scope = CreateScope();
+
+        var result = await scope.ListCandidateReader.ReadAsync(actor, null, 1, sort, descending: true);
+
+        AssertError(result, ErrorCodes.Space.ListSortInvalid, "PropertyName", "Sort");
+    }
+
+    [TestCase(SpaceMembershipStatus.Active)]
+    [TestCase(SpaceMembershipStatus.Suspended)]
+    public async Task ListReadAsync_ShouldRestoreCurrentMembershipAssignmentsAndRoles(
+        SpaceMembershipStatus membershipStatus)
+    {
+        var owner = await SeedUserAsync();
+        var member = await SeedUserAsync();
+        var createdAt = Timestamp.AddDays(20);
+        var space = await SeedSpaceAsync(ownerId: owner.Id, createdAt: createdAt);
+        SpaceMembershipEntity currentMembership;
+        SpaceRoleEntity activeRole;
+        SpaceRoleEntity deletedRole;
+        await using (var seedScope = CreateScope())
+        {
+            activeRole = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Member, createdAt).Value);
+            deletedRole = SpaceRoleEntity.FromDomain(
+                SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Viewer, createdAt).Value);
+            deletedRole.DeletedAt = createdAt;
+            currentMembership = CreateMembershipEntity(space.Id, member.Id, membershipStatus, createdAt);
+            var leftHistory = CreateMembershipEntity(
+                space.Id, member.Id, SpaceMembershipStatus.Left, createdAt);
+            seedScope.Context.SpaceRoles.AddRange(activeRole, deletedRole);
+            seedScope.Context.SpaceMemberships.AddRange(leftHistory, currentMembership);
+            await seedScope.Context.SaveChangesAsync();
+            seedScope.Context.SpaceMembershipRoles.AddRange(
+                SpaceMembershipRoleEntity.FromDomain(
+                    currentMembership,
+                    MembershipRoleAssignment.Create(activeRole.Id, owner.Id, createdAt)),
+                SpaceMembershipRoleEntity.FromDomain(
+                    currentMembership,
+                    MembershipRoleAssignment.Create(deletedRole.Id, owner.Id, createdAt)));
+            await seedScope.Context.SaveChangesAsync();
+        }
+
+        var actor = CurrentActor.ForSession(member.Id, member.PublicId, SystemRole.User, Guid.CreateVersion7());
+        await using var scope = CreateScope();
+        var candidates = await ReadAllCandidatesAsync(scope, actor, descending: true, batchSize: 5);
+
+        var candidate = candidates.Single(item => item.Authorization.Space.Id == space.Id);
+        var membership = candidate.Authorization.Membership;
+        Assert.That(membership, Is.Not.Null);
+        Assert.Multiple(() =>
+        {
+            Assert.That(candidate.OwnerUserPublicId, Is.EqualTo(owner.PublicId));
+            Assert.That(membership!.Id, Is.EqualTo(currentMembership.Id));
+            Assert.That(membership.PublicId, Is.EqualTo(currentMembership.PublicId));
+            Assert.That(membership.Status, Is.EqualTo(membershipStatus));
+            Assert.That(membership.RoleAssignments.Select(assignment => assignment.RoleId),
+                Is.EquivalentTo(new[] { activeRole.Id, deletedRole.Id }));
+            Assert.That(candidate.Authorization.Roles.Select(role => role.Id),
+                Is.EquivalentTo(new[] { activeRole.Id, deletedRole.Id }));
+            Assert.That(candidate.Authorization.Roles.Single(role => role.Id == deletedRole.Id).DeletedAt,
+                Is.EqualTo(createdAt));
+        });
+    }
+
+    [Test]
+    public async Task BootstrapAddAsync_ShouldStageAndCommitManagedRolePermissionMasks()
+    {
+        var space = await SeedSpaceAsync();
+        var roles = new[]
+        {
+            SpaceRoleSystemKey.Admin,
+            SpaceRoleSystemKey.Member,
+            SpaceRoleSystemKey.Viewer,
+        }.Select(key => SpaceRole.CreateManaged(space.Id, key, space.CreatedAt).Value).ToArray();
+        await using var scope = CreateScope();
+
+        var stagedResult = await scope.BootstrapWriter.AddAsync(space.Id, roles, space.CreatedAt);
+
+        Assert.That(stagedResult.IsSuccess, Is.True, stagedResult.ToString());
+        var staged = scope.Context.SpaceRoles.Local.Where(role => role.SpaceId == space.Id).ToArray();
+        Assert.Multiple(() =>
+        {
+            Assert.That(staged, Has.Length.EqualTo(3));
+            Assert.That(staged.Select(role => scope.Context.Entry(role).State), Is.All.EqualTo(EntityState.Added));
+            Assert.That(staged.Single(role => role.SystemKey == SpaceRoleSystemKey.Admin).PermissionMask,
+                Is.EqualTo(8191L));
+            Assert.That(staged.Single(role => role.SystemKey == SpaceRoleSystemKey.Member).PermissionMask,
+                Is.EqualTo(765L));
+            Assert.That(staged.Single(role => role.SystemKey == SpaceRoleSystemKey.Viewer).PermissionMask,
+                Is.EqualTo(21L));
+            Assert.That(roles.Select(role => role.Id), Is.All.Zero);
+        });
+        await using (var probe = CreateScope())
+        {
+            Assert.That(await probe.Context.SpaceRoles.CountAsync(role => role.SpaceId == space.Id), Is.Zero);
+        }
+
+        var committed = await scope.Executor.ExecuteAsync(ct => scope.UnitOfWork.SaveChangesAsync(ct));
+
+        Assert.That(committed.IsSuccess, Is.True, committed.ToString());
+        await using var committedProbe = CreateScope();
+        var saved = await committedProbe.Context.SpaceRoles.AsNoTracking()
+            .Where(role => role.SpaceId == space.Id)
+            .ToArrayAsync();
+        Assert.Multiple(() =>
+        {
+            Assert.That(saved, Has.Length.EqualTo(3));
+            Assert.That(saved.Single(role => role.SystemKey == SpaceRoleSystemKey.Admin).PermissionMask,
+                Is.EqualTo(8191L));
+            Assert.That(saved.Single(role => role.SystemKey == SpaceRoleSystemKey.Member).PermissionMask,
+                Is.EqualTo(765L));
+            Assert.That(saved.Single(role => role.SystemKey == SpaceRoleSystemKey.Viewer).PermissionMask,
+                Is.EqualTo(21L));
+            Assert.That(roles.Select(role => role.Id), Is.All.Zero);
+        });
+    }
+
+    [Test]
+    public async Task BootstrapAddAsync_ShouldRejectMismatchedRolesWithoutStaging()
+    {
+        var space = await SeedSpaceAsync();
+        var otherSpaceRole = SpaceRole.CreateManaged(space.Id + 1, SpaceRoleSystemKey.Admin, space.CreatedAt).Value;
+        var otherTimeRole = SpaceRole.CreateManaged(
+            space.Id, SpaceRoleSystemKey.Member, space.CreatedAt.AddSeconds(1)).Value;
+        await using var scope = CreateScope();
+
+        var spaceMismatch = await scope.BootstrapWriter.AddAsync(
+            space.Id, [otherSpaceRole], space.CreatedAt);
+        var timeMismatch = await scope.BootstrapWriter.AddAsync(
+            space.Id, [otherTimeRole], space.CreatedAt);
+
+        AssertError(spaceMismatch, ErrorCodes.SpaceRole.InvalidState);
+        AssertError(timeMismatch, ErrorCodes.SpaceRole.InvalidState);
+        Assert.That(scope.Context.SpaceRoles.Local, Is.Empty);
+    }
+
+    [Test]
+    public async Task CreateSpace_ShouldRollbackSpaceWhenSecondSaveFails()
+    {
+        var owner = await SeedUserAsync();
+        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
+        var name = $"Rollback {Guid.NewGuid():N}";
+        await using var scope = CreateScope();
+        var failingUnitOfWork = new FailSecondSaveUnitOfWork(scope.UnitOfWork);
+        var useCase = new CreateSpaceUseCase(
+            scope.UserRepository,
+            scope.SpaceRepository,
+            scope.BootstrapWriter,
+            failingUnitOfWork,
+            scope.Executor,
+            new FakeClock(Timestamp.AddDays(120)));
+
+        var result = await useCase.ExecuteAsync(new CreateSpaceCommand(actor, name, null, 1024));
+
+        AssertError(result, ErrorCodes.Common.DependencyUnavailable);
+        Assert.That(failingUnitOfWork.CallCount, Is.EqualTo(2));
+        await using var probe = CreateScope();
+        Assert.That(await probe.Context.Spaces.AnyAsync(space => space.OwnerUserId == owner.Id && space.Name == name),
+            Is.False);
+    }
+
+    private static async Task<List<SpaceListCandidate>> ReadAllCandidatesAsync(
+        RepositoryScope scope,
+        CurrentActor actor,
+        bool descending,
+        int batchSize)
+    {
+        var candidates = new List<SpaceListCandidate>();
+        var traversedCursors = new HashSet<string>(StringComparer.Ordinal);
+        string? cursor = null;
+        while (true)
+        {
+            var result = await scope.ListCandidateReader.ReadAsync(
+                actor, cursor, batchSize, null, descending);
+            Assert.That(result.IsSuccess, Is.True, result.ToString());
+            var page = result.Value;
+            Assert.That(page.Candidates.Count, Is.LessThanOrEqualTo(batchSize));
+            Assert.That(page.Candidates.Select(candidate => candidate.CursorAfter),
+                Is.All.Not.Null.And.Not.Empty);
+            candidates.AddRange(page.Candidates);
+            if (!page.HasMore)
+            {
+                return candidates;
+            }
+
+            Assert.That(page.Candidates, Is.Not.Empty);
+            cursor = page.Candidates[^1].CursorAfter;
+            Assert.That(traversedCursors.Add(cursor), Is.True, "Space cursor did not advance.");
+        }
+    }
+
     private RepositoryScope CreateScope() => new(services!.CreateAsyncScope());
 
     private async Task<long> SeedOwnerAsync()
@@ -374,11 +757,28 @@ public sealed class SpaceRepositoryIntegrationTests
         return await SaveOwnerAsync(scope.Context);
     }
 
-    private async Task<Space> SeedSpaceAsync(string? description = "Initial description")
+    private async Task<User> SeedUserAsync()
     {
         await using var scope = CreateScope();
-        var ownerId = await SaveOwnerAsync(scope.Context);
-        var space = Space.Create(ownerId, $"Space {Guid.NewGuid():N}", description, 4_096, Timestamp).Value;
+        var user = UserEntity.FromDomain(CreateUser());
+        scope.Context.Users.Add(user);
+        await scope.Context.SaveChangesAsync();
+        return user.ToDomain();
+    }
+
+    private async Task<Space> SeedSpaceAsync(
+        string? description = "Initial description",
+        long? ownerId = null,
+        DateTimeOffset? createdAt = null)
+    {
+        await using var scope = CreateScope();
+        var actualOwnerId = ownerId ?? await SaveOwnerAsync(scope.Context);
+        var space = Space.Create(
+            actualOwnerId,
+            $"Space {Guid.NewGuid():N}",
+            description,
+            4_096,
+            createdAt ?? Timestamp).Value;
         scope.Context.Spaces.Add(SpaceEntity.FromDomain(space));
         await scope.Context.SaveChangesAsync();
 
@@ -458,21 +858,72 @@ public sealed class SpaceRepositoryIntegrationTests
             $"pbkdf2-sha256$iterations=100000${Guid.NewGuid():N}",
             Timestamp).Value;
 
-    private static void AssertError(ResultBase result, string expectedCode)
+    private static SpaceMembershipEntity CreateMembershipEntity(
+        long spaceId,
+        long userId,
+        SpaceMembershipStatus status,
+        DateTimeOffset timestamp) =>
+        new()
+        {
+            PublicId = Guid.CreateVersion7(),
+            SpaceId = spaceId,
+            UserId = userId,
+            Status = status,
+            Version = 1,
+            JoinedAt = timestamp,
+            UpdatedAt = timestamp,
+            SuspendedAt = status == SpaceMembershipStatus.Suspended ? timestamp : null,
+            LeftAt = status == SpaceMembershipStatus.Left ? timestamp : null,
+        };
+
+    private static void AssertError(
+        ResultBase result,
+        string expectedCode,
+        string? metadataKey = null,
+        object? expectedMetadataValue = null)
     {
         Assert.That(result.IsFailed, Is.True, result.ToString());
-        var hasCode = result.Errors.Any(error =>
+        var matchingErrors = result.Errors.Where(error =>
             error.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var code)
-            && code is string value && value == expectedCode);
-        Assert.That(hasCode, Is.True, $"Expected error code {expectedCode} in metadata.");
+            && code is string value && value == expectedCode).ToArray();
+        Assert.That(matchingErrors, Is.Not.Empty, $"Expected error code {expectedCode} in metadata.");
+        if (metadataKey is not null)
+        {
+            Assert.That(matchingErrors[0].Metadata[metadataKey], Is.EqualTo(expectedMetadataValue));
+        }
+    }
+
+    private sealed class FailSecondSaveUnitOfWork(IUnitOfWork inner) : IUnitOfWork
+    {
+        public int CallCount { get; private set; }
+
+        public Task<Result<int>> SaveChangesAsync(CancellationToken cancellationToken = default)
+        {
+            CallCount++;
+            return CallCount == 2
+                ? Task.FromResult(Result.Fail<int>(CommonError.DependencyUnavailable()))
+                : inner.SaveChangesAsync(cancellationToken);
+        }
     }
 
     private sealed class RepositoryScope(AsyncServiceScope serviceScope) : IAsyncDisposable
     {
         public AppDbContext Context => serviceScope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        public IUserRepository UserRepository =>
+            serviceScope.ServiceProvider.GetRequiredService<IUserRepository>();
+
         public ISpaceRepository SpaceRepository =>
             serviceScope.ServiceProvider.GetRequiredService<ISpaceRepository>();
+
+        public ISpaceDetailsReader DetailsReader =>
+            serviceScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
+
+        public ISpaceListCandidateReader ListCandidateReader =>
+            serviceScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
+
+        public ISpaceBootstrapWriter BootstrapWriter =>
+            serviceScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
 
         public IUnitOfWork UnitOfWork => serviceScope.ServiceProvider.GetRequiredService<IUnitOfWork>();
 

@@ -1,5 +1,7 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
+using CloudSharp.Core.Common.Tokens;
+using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.Infrastructure.Persistence.Transactions;
@@ -124,6 +126,46 @@ public sealed class PersistenceServiceCollectionExtensionsTests
             Assert.That(sameScope, Is.SameAs(first));
             Assert.That(otherScope, Is.Not.SameAs(first));
             Assert.That(first, Is.TypeOf<SpaceRepository>());
+        });
+    }
+
+    [Test]
+    public void AddPostgreSqlPersistence_ShouldRegisterSpaceReadersAndBootstrapWriterAsScoped()
+    {
+        var configuration = CreateConfiguration(
+            "Host=localhost;Database=cloudsharp;Username=cloudsharp");
+        var services = new ServiceCollection();
+        services.AddSingleton<ITokenHasher>(new HmacSha256TokenHasher(new TokenHashingOptions
+        {
+            ActiveKey = Convert.ToBase64String(new byte[32]),
+        }));
+        services.AddPostgreSqlPersistence(configuration);
+
+        using var provider = services.BuildServiceProvider();
+        using var firstScope = provider.CreateScope();
+        using var secondScope = provider.CreateScope();
+
+        var firstDetails = firstScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
+        var firstList = firstScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
+        var firstBootstrap = firstScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
+        var sameDetails = firstScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
+        var sameList = firstScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
+        var sameBootstrap = firstScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
+        var otherDetails = secondScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
+        var otherList = secondScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
+        var otherBootstrap = secondScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(sameDetails, Is.SameAs(firstDetails));
+            Assert.That(sameList, Is.SameAs(firstList));
+            Assert.That(sameBootstrap, Is.SameAs(firstBootstrap));
+            Assert.That(otherDetails, Is.Not.SameAs(firstDetails));
+            Assert.That(otherList, Is.Not.SameAs(firstList));
+            Assert.That(otherBootstrap, Is.Not.SameAs(firstBootstrap));
+            Assert.That(firstDetails, Is.TypeOf<SpaceDetailsReader>());
+            Assert.That(firstList, Is.TypeOf<SpaceListCandidateReader>());
+            Assert.That(firstBootstrap, Is.TypeOf<SpaceBootstrapWriter>());
         });
     }
 

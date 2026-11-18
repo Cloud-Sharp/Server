@@ -23,7 +23,7 @@ public sealed class CreateSpaceUseCase : IUseCase<CreateSpaceCommand, SpaceResul
 
     public CreateSpaceUseCase() { }
 
-    internal CreateSpaceUseCase(
+    public CreateSpaceUseCase(
         IUserRepository userRepository,
         ISpaceRepository spaceRepository,
         ISpaceBootstrapWriter bootstrapWriter,

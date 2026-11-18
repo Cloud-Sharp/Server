@@ -14,7 +14,7 @@ public sealed class GetSpaceUseCase : IUseCase<GetSpaceQuery, SpaceResultDto>
 
     public GetSpaceUseCase() { }
 
-    internal GetSpaceUseCase(ISpaceDetailsReader detailsReader) => DetailsReader = detailsReader;
+    public GetSpaceUseCase(ISpaceDetailsReader detailsReader) => DetailsReader = detailsReader;
 
     public async Task<Result<SpaceResultDto>> ExecuteAsync(
         GetSpaceQuery query,
