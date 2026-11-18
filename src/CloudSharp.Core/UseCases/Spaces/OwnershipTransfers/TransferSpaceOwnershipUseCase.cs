@@ -251,7 +251,6 @@ public sealed class TransferSpaceOwnershipUseCase : IUseCase<TransferSpaceOwners
             space.Description,
             space.Status,
             new SpaceAccessDto(authorizationSource, permissions),
-            snapshot.RootFolderPublicId,
             space.CreatedAt,
             space.UpdatedAt);
         return new SpaceResultDto(dto, space.Version);

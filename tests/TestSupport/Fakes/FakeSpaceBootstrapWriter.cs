@@ -18,14 +18,13 @@ public sealed class FakeSpaceBootstrapWriter : ISpaceBootstrapWriter
 
     public Task<Result> AddAsync(
         long spaceId,
-        Guid rootFolderPublicId,
         IReadOnlyList<SpaceRole> roles,
         DateTimeOffset createdAt,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(roles);
         cancellationToken.ThrowIfCancellationRequested();
-        var bootstrap = new FakeSpaceBootstrap(spaceId, rootFolderPublicId, roles.ToArray(), createdAt);
+        var bootstrap = new FakeSpaceBootstrap(spaceId, roles.ToArray(), createdAt);
         added.Add(bootstrap);
         if (AddResult.IsSuccess)
         {
@@ -46,6 +45,5 @@ public sealed class FakeSpaceBootstrapWriter : ISpaceBootstrapWriter
 
 public sealed record FakeSpaceBootstrap(
     long SpaceId,
-    Guid RootFolderPublicId,
     IReadOnlyList<SpaceRole> Roles,
     DateTimeOffset CreatedAt);

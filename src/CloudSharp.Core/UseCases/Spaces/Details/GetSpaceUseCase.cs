@@ -14,7 +14,7 @@ public sealed class GetSpaceUseCase : IUseCase<GetSpaceQuery, SpaceResultDto>
 
     public GetSpaceUseCase() { }
 
-    internal GetSpaceUseCase(ISpaceDetailsReader detailsReader) => DetailsReader = detailsReader;
+    public GetSpaceUseCase(ISpaceDetailsReader detailsReader) => DetailsReader = detailsReader;
 
     public async Task<Result<SpaceResultDto>> ExecuteAsync(
         GetSpaceQuery query,
@@ -63,7 +63,6 @@ public sealed class GetSpaceUseCase : IUseCase<GetSpaceQuery, SpaceResultDto>
             space.Description,
             space.Status,
             new SpaceAccessDto(query.Space.AuthorizationSource, query.Space.EffectivePermissions),
-            snapshot.RootFolderPublicId,
             space.CreatedAt,
             space.UpdatedAt);
         return Result.Ok(new SpaceResultDto(dto, space.Version));

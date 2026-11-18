@@ -1,5 +1,8 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
+using CloudSharp.Core.Domain.Invites;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.Infrastructure.Persistence.Transactions;
@@ -42,10 +45,18 @@ public static class PersistenceServiceCollectionExtensions
                 npgsql => npgsql
                     .MigrationsAssembly(typeof(AppDbContext).Assembly.FullName)
                     .MapEnum<SystemRole>(SystemRoleEnumName, nameTranslator: EnumNameTranslator)
-                    .MapEnum<UserStatus>(UserStatusEnumName, nameTranslator: EnumNameTranslator)));
+                    .MapEnum<UserStatus>(UserStatusEnumName, nameTranslator: EnumNameTranslator)
+                    .MapEnum<SpaceStatus>(SpaceStatusEnumName, nameTranslator: EnumNameTranslator)
+                    .MapEnum<SpaceMembershipStatus>(MembershipStatusEnumName, nameTranslator: EnumNameTranslator)
+                    .MapEnum<SpaceInviteStatus>(InviteStatusEnumName, nameTranslator: EnumNameTranslator)));
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
+        services.AddScoped<ISpaceRepository, SpaceRepository>();
+        services.AddScoped<ISpaceDetailsReader, SpaceDetailsReader>();
+        services.AddScoped<ISpaceListCandidateReader, SpaceListCandidateReader>();
+        services.AddScoped<ISpaceAuthorizationReader, SpaceAuthorizationReader>();
+        services.AddScoped<ISpaceBootstrapWriter, SpaceBootstrapWriter>();
         services.AddScoped<ISpaceInviteTargetReader, SpaceInviteTargetReader>();
         services.AddScoped<DapperDbSession>();
 
@@ -56,4 +67,7 @@ public static class PersistenceServiceCollectionExtensions
 
     internal const string SystemRoleEnumName = "system_role_t";
     internal const string UserStatusEnumName = "user_status_t";
+    internal const string SpaceStatusEnumName = "space_status_t";
+    internal const string MembershipStatusEnumName = "membership_status_t";
+    internal const string InviteStatusEnumName = "invite_status_t";
 }

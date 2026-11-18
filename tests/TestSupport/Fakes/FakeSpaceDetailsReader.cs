@@ -21,8 +21,7 @@ public sealed class FakeSpaceDetailsReader : ISpaceDetailsReader
             ? null
             : new SpaceDetailsSnapshot(
                 FakeSpaceRepository.Copy(Snapshot.Space),
-                Snapshot.OwnerUserPublicId,
-                Snapshot.RootFolderPublicId);
+                Snapshot.OwnerUserPublicId);
         return Task.FromResult(Result.Ok<SpaceDetailsSnapshot?>(snapshot));
     }
 }

@@ -21,7 +21,7 @@ Space가 소유자, 메타데이터, 상태, 용량 집계를 관리한다. quot
 |---|---|---|---|---|
 | SP-01 | [접근 가능한 Space 목록 조회](../../src/CloudSharp.Core/UseCases/Spaces/Listings/ListSpacesUseCase.cs) | `GET /api/v2/spaces` | Session/MCP, 접근 가능한 `ACTIVE`·`ARCHIVED` | 200, 접근 가능한 항목을 cursor로 반환한다. |
 | SP-02 | [Space 생성](../../src/CloudSharp.Core/UseCases/Spaces/Creations/CreateSpaceUseCase.cs) | `POST /api/v2/spaces` | Session, `Idempotency-Key` | 201, 이름·설명·허용 용량으로 새 `ACTIVE` Space를 생성하고 요청자를 OWNER로 지정한다. |
-| SP-03 | [Space 상세 조회](../../src/CloudSharp.Core/UseCases/Spaces/Details/GetSpaceUseCase.cs) | `GET S` | Session/MCP, `SPACE_VIEW`, `ACTIVE`·`ARCHIVED` | 200, Space 정보와 루트 폴더 ID, 요청자의 `myAccess`, ETag를 반환한다. |
+| SP-03 | [Space 상세 조회](../../src/CloudSharp.Core/UseCases/Spaces/Details/GetSpaceUseCase.cs) | `GET S` | Session/MCP, `SPACE_VIEW`, `ACTIVE`·`ARCHIVED` | 200, Space 정보와 소유자 PublicId, 요청자의 `myAccess`, ETag를 반환한다. |
 | SP-04 | [Space 정보 수정](../../src/CloudSharp.Core/UseCases/Spaces/MetadataUpdates/UpdateSpaceUseCase.cs) | `PATCH S` | `SPACE_UPDATE`, `ACTIVE`, `If-Match` | 200, 이름과 설명을 갱신한다. |
 | SP-05 | [Space 보관](../../src/CloudSharp.Core/UseCases/Spaces/Archives/ArchiveSpaceUseCase.cs) | `POST S/archive` | `SPACE_UPDATE`, `ACTIVE`, `If-Match` | 200, `ARCHIVED`로 전환해 조회를 유지하고 일반 변경을 막는다. |
 | SP-06 | [Space 재활성화](../../src/CloudSharp.Core/UseCases/Spaces/Reactivations/ReactivateSpaceUseCase.cs) | `POST S/reactivate` | `SPACE_UPDATE`, `ARCHIVED`, `If-Match` | 200, `ACTIVE`로 전환해 쓰기 가능한 상태로 되돌린다. |
@@ -30,7 +30,7 @@ Space가 소유자, 메타데이터, 상태, 용량 집계를 관리한다. quot
 | SP-09 | [Space quota 변경](../../src/CloudSharp.Core/UseCases/Spaces/QuotaChanges/ChangeSpaceQuotaUseCase.cs) | `PATCH S/quota` | OWNER, `ACTIVE`, Space `If-Match` | 200, 허용 용량을 변경한다. `null`은 무제한이다. 사용량과 예약량의 합보다 낮으면 409 `SPACE_QUOTA_TOO_SMALL`이다. |
 | SP-10 | [Space 소유권 이전](../../src/CloudSharp.Core/UseCases/Spaces/OwnershipTransfers/TransferSpaceOwnershipUseCase.cs) | `POST S/ownership-transfers` | OWNER, `ACTIVE`, Space `If-Match` | 200, 같은 Space의 활성 Membership을 가진 활성 계정으로 소유권을 이전한다. |
 
-- **생성.** 사용량과 예약량은 0으로 시작한다. Space, 루트 DirectoryEntry·Folder, 기본 ADMIN·MEMBER·VIEWER Role과 Permission 연결을 한 트랜잭션에 저장한다. OWNER는 `Space.OwnerUserId`에 기록한다.
+- **생성.** 사용량과 예약량은 0으로 시작한다. Space와 권한을 포함한 기본 ADMIN·MEMBER·VIEWER Role을 한 트랜잭션에 저장한다. OWNER는 `Space.OwnerUserId`에 기록한다.
 - **삭제.** 202 응답 이후 종속 리소스를 정리한다. 정리가 끝나고 사용량과 예약량이 모두 0인 경우에만 `DELETED`로 전환한다. 이 후속 처리는 별도의 사용자 API 없이 수행한다.
 - **소유권 이전.** 대상이 현재 OWNER이면 변경 없이 성공한다. 다른 사용자에게 이전할 때는 새 OWNER의 Membership과 Role 연결 제거, 기존 OWNER의 ADMIN Membership 생성, Space 소유자 변경을 한 트랜잭션에서 처리한다.
 

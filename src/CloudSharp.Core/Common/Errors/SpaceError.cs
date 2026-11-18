@@ -1,3 +1,5 @@
+using FluentResults;
+
 namespace CloudSharp.Core.Common.Errors;
 
 /// <summary>
@@ -33,4 +35,12 @@ public sealed class SpaceError : CloudSharpError
 
     public static SpaceError TransferTargetInvalid() =>
         new(ErrorCodes.Space.TransferTargetInvalid, "New owner id must be positive.");
+
+    public static Error ListCursorInvalid() =>
+        new SpaceError(ErrorCodes.Space.ListCursorInvalid, "Space list cursor is invalid.")
+            .WithMetadata("PropertyName", "Cursor");
+
+    public static Error ListSortInvalid() =>
+        new SpaceError(ErrorCodes.Space.ListSortInvalid, "Space list sort is not supported.")
+            .WithMetadata("PropertyName", "Sort");
 }

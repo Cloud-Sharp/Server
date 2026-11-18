@@ -16,7 +16,6 @@ namespace CloudSharp.Core.Tests.UseCases.Spaces.Details;
 public class GetSpaceUseCaseTests
 {
     private static readonly Guid OwnerUserPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec099");
-    private static readonly Guid RootFolderPublicId = Guid.Parse("01977b58-7dcb-78a2-bf2b-f5aad30ec100");
 
     private sealed class Harness
     {
@@ -40,8 +39,7 @@ public class GetSpaceUseCaseTests
         var harness = new Harness();
         harness.DetailsReader.Snapshot = new SpaceDetailsSnapshot(
             persistedSpace,
-            OwnerUserPublicId,
-            RootFolderPublicId);
+            OwnerUserPublicId);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(new GetSpaceQuery(context));
@@ -56,7 +54,6 @@ public class GetSpaceUseCaseTests
             Assert.That(space.Name, Is.EqualTo("Product"));
             Assert.That(space.Description, Is.EqualTo("Product documents"));
             Assert.That(space.Status, Is.EqualTo(status));
-            Assert.That(space.RootFolderPublicId, Is.EqualTo(RootFolderPublicId));
             Assert.That(space.CreatedAt, Is.EqualTo(persistedSpace.CreatedAt));
             Assert.That(space.UpdatedAt, Is.EqualTo(persistedSpace.UpdatedAt));
             Assert.That(space.MyAccess.Source, Is.EqualTo(context.AuthorizationSource));
@@ -96,8 +93,7 @@ public class GetSpaceUseCaseTests
         var harness = new Harness();
         harness.DetailsReader.Snapshot = new SpaceDetailsSnapshot(
             persistedSpace,
-            OwnerUserPublicId,
-            RootFolderPublicId);
+            OwnerUserPublicId);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(new GetSpaceQuery(context));

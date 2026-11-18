@@ -15,7 +15,7 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
 
     public ListSpacesUseCase() { }
 
-    internal ListSpacesUseCase(ISpaceListCandidateReader candidateReader) => CandidateReader = candidateReader;
+    public ListSpacesUseCase(ISpaceListCandidateReader candidateReader) => CandidateReader = candidateReader;
 
     public async Task<Result<SpacePageDto>> ExecuteAsync(
         ListSpacesQuery query,
@@ -132,7 +132,6 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
             space.Description,
             space.Status,
             new SpaceAccessDto(authorization.AuthorizationSource, authorization.EffectivePermissions),
-            candidate.RootFolderPublicId,
             space.CreatedAt,
             space.UpdatedAt);
     }

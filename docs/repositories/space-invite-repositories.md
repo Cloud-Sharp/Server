@@ -10,6 +10,6 @@
 
 - **수락 잠금.** RP-19는 같은 연결과 현재 트랜잭션을 사용한다. 활성 트랜잭션이 없거나 저장된 상태를 변환할 수 없으면 `InvalidOperationException`을 던진다. 알려진 가용성 장애는 `DEPENDENCY_UNAVAILABLE`이다. 잠금은 트랜잭션 종료까지 해당 Space 행의 변경·삭제와 충돌한다. IN-05는 최신 상태와 소유자로 수락 여부를 판단한다. [DapperDbSession](../../src/CloudSharp.Infrastructure/Persistence/Transactions/DapperDbSession.cs)
 - **통합 테스트.** 잠금 중 별도 연결의 UPDATE가 실패하고 트랜잭션 종료 뒤에는 변경된 소유자·상태를 읽는지 PostgreSQL에서 검증한다. 테스트는 필요한 `spaces` 테이블을 직접 구성한다. [SpaceInviteTargetReaderIntegrationTests](../../tests/CloudSharp.Infrastructure.Tests/Persistence/Repositories/SpaceInviteTargetReaderIntegrationTests.cs)
-- **후속 영속성 계약.** Core 초대 갱신은 버전을 전달하지만 현재 DB 설계의 컬럼 표에는 `version`이 없다. DB 설계의 `granted_role_id`와 Core의 고정 VIEWER 정책을 연결하는 방식도 정해야 한다. [Space·접근제어 스키마](../../.llm/database/spaces-access.md#space_invites) · [Space Invite 도메인](../../.llm/domains/space-invite.md)
+- **초대 영속성 계약.** `space_invites.version`은 Core가 관리하는 동시성 토큰이다. 초대로 신규 가입할 때 IN-05가 같은 Space의 관리형 VIEWER Role을 조회해 부여한다. [Space·접근제어 스키마](../../.llm/database/spaces-access.md#space_invites) · [Space Invite 도메인](../../.llm/domains/space-invite.md)
 
 [공통 Repository 계약](persistence-repositories.md#공통-계약)
