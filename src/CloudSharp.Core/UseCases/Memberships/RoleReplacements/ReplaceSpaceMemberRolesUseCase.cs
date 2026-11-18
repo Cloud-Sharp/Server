@@ -23,7 +23,7 @@ public sealed class ReplaceSpaceMemberRolesUseCase : IUseCase<ReplaceSpaceMember
 
     public ReplaceSpaceMemberRolesUseCase() { }
 
-    internal ReplaceSpaceMemberRolesUseCase(
+    public ReplaceSpaceMemberRolesUseCase(
         ISpaceRepository spaceRepository,
         ISpaceMembershipReader membershipReader,
         ISpaceRoleReader roleReader,

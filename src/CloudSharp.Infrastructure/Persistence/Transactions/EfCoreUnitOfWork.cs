@@ -1,6 +1,7 @@
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Infrastructure.Persistence.DbContext;
+using CloudSharp.Infrastructure.Persistence.Entities;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 
@@ -27,13 +28,34 @@ internal sealed class EfCoreUnitOfWork(AppDbContext dbContext) : IUnitOfWork
         }
     }
 
-    private static IError TranslateConstraintError(IError error) =>
-        error is DbConstraintViolationError { Kind: DbConstraintKind.Unique } constraintError
-            ? constraintError.ConstraintName switch
-            {
-                "ux_users_normalized_email" => UserError.EmailConflict(),
-                "ux_users_normalized_user_name" => UserError.NameConflict(),
-                _ => error,
-            }
-            : error;
+    private IError TranslateConstraintError(IError error) => error switch
+    {
+        DbConstraintViolationError { Kind: DbConstraintKind.Unique, ConstraintName: "ux_users_normalized_email" }
+            => UserError.EmailConflict(),
+        DbConstraintViolationError { Kind: DbConstraintKind.Unique, ConstraintName: "ux_users_normalized_user_name" }
+            => UserError.NameConflict(),
+        DbConstraintViolationError constraintError when IsMembershipRoleWriteConflict(constraintError)
+            => CommonError.PreconditionFailed(),
+        _ => error,
+    };
+
+    private bool IsMembershipRoleWriteConflict(DbConstraintViolationError error)
+    {
+        if (error is not ({ Kind: DbConstraintKind.Unique, ConstraintName: "pk_space_membership_roles" }
+            or { Kind: DbConstraintKind.ForeignKey, ConstraintName: "fk_space_membership_roles_membership" }))
+        {
+            return false;
+        }
+
+        // A role insert can lose to a concurrent update or delete before the parent version check runs.
+        var updatedMemberships = dbContext.ChangeTracker.Entries<SpaceMembershipEntity>()
+            .Where(entry => entry.State == EntityState.Modified && entry.Property(member => member.Version).IsModified)
+            .Select(entry => (entry.Entity.Id, entry.Entity.SpaceId))
+            .ToHashSet();
+
+        return error.OriginalException.Entries.Any(entry =>
+            entry.State == EntityState.Added
+            && entry.Entity is SpaceMembershipRoleEntity link
+            && updatedMemberships.Contains((link.MembershipId, link.SpaceId)));
+    }
 }
