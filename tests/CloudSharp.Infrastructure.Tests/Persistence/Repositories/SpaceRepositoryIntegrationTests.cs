@@ -649,6 +649,84 @@ public sealed class SpaceRepositoryIntegrationTests
     }
 
     [Test]
+    public async Task RoleReadAsync_ShouldReturnRequestedSpaceRoleSnapshots()
+    {
+        var createdAt = Timestamp.AddDays(33);
+        var space = await SeedSpaceAsync(createdAt: createdAt);
+        var otherSpace = await SeedSpaceAsync(createdAt: createdAt);
+        var customPermissions = new[] { SpacePermission.MembersView, SpacePermission.FilesWrite };
+        var admin = SpaceRoleEntity.FromDomain(SpaceRole.Reconstitute(
+            0, Guid.CreateVersion7(), space.Id, "Admin", "ADMIN", SpaceRoleSystemKey.Admin,
+            null, 2, true, 1, createdAt, createdAt, null, [SpacePermission.SpaceView]));
+        var custom = SpaceRoleEntity.FromDomain(SpaceRole.Reconstitute(
+            0, Guid.CreateVersion7(), space.Id, "Custom", "CUSTOM", null,
+            "#A1B2C3", 10, false, 1, createdAt, createdAt, null, customPermissions));
+        var deleted = SpaceRoleEntity.FromDomain(
+            SpaceRole.CreateManaged(space.Id, SpaceRoleSystemKey.Viewer, createdAt).Value);
+        deleted.DeletedAt = createdAt;
+        var other = SpaceRoleEntity.FromDomain(
+            SpaceRole.CreateManaged(otherSpace.Id, SpaceRoleSystemKey.Member, createdAt).Value);
+        await using (var seedScope = CreateScope())
+        {
+            seedScope.Context.SpaceRoles.AddRange(admin, custom, deleted, other);
+            await seedScope.Context.SaveChangesAsync();
+        }
+
+        await using var scope = CreateScope();
+        var first = await scope.RoleReader.ReadAsync(space.Id);
+        var second = await scope.RoleReader.ReadAsync(space.Id);
+
+        Assert.That(first.IsSuccess, Is.True, first.ToString());
+        Assert.That(second.IsSuccess, Is.True, second.ToString());
+        Assert.That(first.Value.Select(role => role.PublicId),
+            Is.EquivalentTo(new[] { admin.PublicId, custom.PublicId, deleted.PublicId }));
+        Assert.That(second.Value.Select(role => role.PublicId),
+            Is.EquivalentTo(new[] { admin.PublicId, custom.PublicId, deleted.PublicId }));
+        var actualAdmin = first.Value.Single(role => role.PublicId == admin.PublicId);
+        var actualCustom = first.Value.Single(role => role.PublicId == custom.PublicId);
+        var actualDeleted = first.Value.Single(role => role.PublicId == deleted.PublicId);
+        Assert.Multiple(() =>
+        {
+            Assert.That(actualAdmin.IsManaged, Is.True);
+            Assert.That(actualAdmin.StoredPermissions, Is.EquivalentTo(new[] { SpacePermission.SpaceView }));
+            Assert.That(actualAdmin.Permissions, Is.EquivalentTo(Enum.GetValues<SpacePermission>()));
+            Assert.That(actualCustom.IsManaged, Is.False);
+            Assert.That(actualCustom.SystemKey, Is.Null);
+            Assert.That(actualCustom.StoredPermissions, Is.EquivalentTo(customPermissions));
+            Assert.That(actualCustom.Permissions, Is.EquivalentTo(customPermissions));
+            Assert.That(actualCustom.Color, Is.EqualTo("#A1B2C3"));
+            Assert.That(actualDeleted.IsManaged, Is.True);
+            Assert.That(actualDeleted.DeletedAt, Is.EqualTo(createdAt));
+            Assert.That(first.Value.Select(role => role.SpaceId), Is.All.EqualTo(space.Id));
+            Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
+            foreach (var persisted in new[] { admin, custom, deleted })
+            {
+                var firstRole = first.Value.Single(role => role.PublicId == persisted.PublicId);
+                var secondRole = second.Value.Single(role => role.PublicId == persisted.PublicId);
+                Assert.That(firstRole.Id, Is.EqualTo(persisted.Id));
+                Assert.That(secondRole, Is.Not.SameAs(firstRole));
+            }
+        });
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public async Task RoleReadAsync_ShouldReturnEmptySuccess(bool useMissingSpaceId)
+    {
+        var space = await SeedSpaceAsync(createdAt: Timestamp.AddDays(34));
+        await using var scope = CreateScope();
+
+        var result = await scope.RoleReader.ReadAsync(useMissingSpaceId ? -1 : space.Id);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.IsSuccess, Is.True, result.ToString());
+            Assert.That(result.Value, Is.Empty);
+            Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
+        });
+    }
+
+    [Test]
     public async Task ListReadAsync_ShouldPaginateBidirectionallyAcrossEqualTimestamps()
     {
         var owner = await SeedUserAsync();
@@ -1140,6 +1218,9 @@ public sealed class SpaceRepositoryIntegrationTests
 
         public ISpaceAuthorizationReader AuthorizationReader =>
             serviceScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationReader>();
+
+        public ISpaceRoleReader RoleReader =>
+            serviceScope.ServiceProvider.GetRequiredService<ISpaceRoleReader>();
 
         public ISpaceBootstrapWriter BootstrapWriter =>
             serviceScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();

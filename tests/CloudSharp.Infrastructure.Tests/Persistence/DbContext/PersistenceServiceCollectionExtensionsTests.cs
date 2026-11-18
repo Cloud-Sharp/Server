@@ -148,14 +148,17 @@ public sealed class PersistenceServiceCollectionExtensionsTests
         var firstDetails = firstScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
         var firstList = firstScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
         var firstAuthorization = firstScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationReader>();
+        var firstRole = firstScope.ServiceProvider.GetRequiredService<ISpaceRoleReader>();
         var firstBootstrap = firstScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
         var sameDetails = firstScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
         var sameList = firstScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
         var sameAuthorization = firstScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationReader>();
+        var sameRole = firstScope.ServiceProvider.GetRequiredService<ISpaceRoleReader>();
         var sameBootstrap = firstScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
         var otherDetails = secondScope.ServiceProvider.GetRequiredService<ISpaceDetailsReader>();
         var otherList = secondScope.ServiceProvider.GetRequiredService<ISpaceListCandidateReader>();
         var otherAuthorization = secondScope.ServiceProvider.GetRequiredService<ISpaceAuthorizationReader>();
+        var otherRole = secondScope.ServiceProvider.GetRequiredService<ISpaceRoleReader>();
         var otherBootstrap = secondScope.ServiceProvider.GetRequiredService<ISpaceBootstrapWriter>();
 
         Assert.Multiple(() =>
@@ -163,14 +166,17 @@ public sealed class PersistenceServiceCollectionExtensionsTests
             Assert.That(sameDetails, Is.SameAs(firstDetails));
             Assert.That(sameList, Is.SameAs(firstList));
             Assert.That(sameAuthorization, Is.SameAs(firstAuthorization));
+            Assert.That(sameRole, Is.SameAs(firstRole));
             Assert.That(sameBootstrap, Is.SameAs(firstBootstrap));
             Assert.That(otherDetails, Is.Not.SameAs(firstDetails));
             Assert.That(otherList, Is.Not.SameAs(firstList));
             Assert.That(otherAuthorization, Is.Not.SameAs(firstAuthorization));
+            Assert.That(otherRole, Is.Not.SameAs(firstRole));
             Assert.That(otherBootstrap, Is.Not.SameAs(firstBootstrap));
             Assert.That(firstDetails, Is.TypeOf<SpaceDetailsReader>());
             Assert.That(firstList, Is.TypeOf<SpaceListCandidateReader>());
             Assert.That(firstAuthorization, Is.TypeOf<SpaceAuthorizationReader>());
+            Assert.That(firstRole, Is.TypeOf<SpaceRoleReader>());
             Assert.That(firstBootstrap, Is.TypeOf<SpaceBootstrapWriter>());
         });
     }

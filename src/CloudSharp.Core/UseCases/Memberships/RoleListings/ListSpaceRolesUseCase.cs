@@ -16,7 +16,7 @@ public sealed class ListSpaceRolesUseCase : IUseCase<ListSpaceRolesQuery, IReadO
 
     public ListSpaceRolesUseCase() { }
 
-    internal ListSpaceRolesUseCase(ISpaceRepository spaceRepository, ISpaceRoleReader roleReader)
+    public ListSpaceRolesUseCase(ISpaceRepository spaceRepository, ISpaceRoleReader roleReader)
     {
         SpaceRepository = spaceRepository;
         RoleReader = roleReader;
