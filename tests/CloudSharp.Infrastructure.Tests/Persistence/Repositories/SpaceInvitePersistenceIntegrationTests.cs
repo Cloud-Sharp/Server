@@ -22,7 +22,6 @@ namespace CloudSharp.Infrastructure.Tests.Persistence.Repositories;
 [TestFixture]
 [Category("Integration")]
 [NonParallelizable]
-[Explicit("RP-17 and RP-18 port registrations are pending.")]
 public sealed class SpaceInvitePersistenceIntegrationTests
 {
     private static readonly DateTimeOffset Timestamp = new(2026, 11, 18, 1, 2, 3, TimeSpan.Zero);
@@ -213,7 +212,8 @@ public sealed class SpaceInvitePersistenceIntegrationTests
         await using var verify = await OpenConnectionAsync();
         var persisted = await verify.QuerySingleAsync<InviteUsageRow>(
             """
-            SELECT use_count AS UseCount, status::text AS Status, version AS Version, revoked_at AS RevokedAt
+            SELECT use_count AS UseCount, status::text AS Status, version AS Version,
+                   (revoked_at IS NULL) AS RevokedAtIsNull
             FROM space_invites
             WHERE public_id = @PublicId
             """,
@@ -223,7 +223,7 @@ public sealed class SpaceInvitePersistenceIntegrationTests
             Assert.That(persisted.UseCount, Is.EqualTo(1));
             Assert.That(persisted.Status, Is.EqualTo("EXPIRED"));
             Assert.That(persisted.Version, Is.EqualTo(winningObservedVersion + 1));
-            Assert.That(persisted.RevokedAt, Is.Null);
+            Assert.That(persisted.RevokedAtIsNull, Is.True);
         });
     }
 
@@ -274,6 +274,146 @@ public sealed class SpaceInvitePersistenceIntegrationTests
         });
     }
 
+    [TestCase(null, 20)]
+    [TestCase("createdAt", 30)]
+    [TestCase("CrEaTeDaT", 40)]
+    public async Task ReadPageAsync_WithDefaultOrCaseInsensitiveSort_ShouldOrderByCreatedAtBeforePublicId(
+        string? sort,
+        int sequence)
+    {
+        var owner = await SeedUserAsync();
+        var space = await SeedSpaceAsync(owner.Id);
+        var oldest = await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(sequence + 3), createdAt: Timestamp.AddHours(1));
+        var middle = await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(sequence + 1), createdAt: Timestamp.AddHours(2));
+        var newest = await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(sequence + 2), createdAt: Timestamp.AddHours(3));
+
+        await using var scope = CreateScope();
+        var result = await scope.InviteReader.ReadPageAsync(
+            space.Id, cursor: null, limit: 10, sort, descending: false);
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.Items.Select(invite => invite.PublicId), Is.EqualTo(new[]
+            {
+                oldest.PublicId,
+                middle.PublicId,
+                newest.PublicId,
+            }));
+            Assert.That(result.Value.NextCursor, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task ReadPageAsync_ShouldExcludeTerminalRowsAndKeepPastExpiryActiveRows()
+    {
+        var owner = await SeedUserAsync();
+        var space = await SeedSpaceAsync(owner.Id);
+        var firstActive = await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(51), createdAt: Timestamp);
+        await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(52), status: SpaceInviteStatus.Revoked,
+            createdAt: Timestamp.AddHours(1));
+        var pastExpiryActive = await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(53), createdAt: Timestamp.AddHours(2),
+            expiresAt: Timestamp.AddHours(3));
+        await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(54), status: SpaceInviteStatus.Expired,
+            createdAt: Timestamp.AddHours(4));
+        var lastActive = await SeedInviteAsync(
+            space.Id, owner.Id, PublicId(55), createdAt: Timestamp.AddHours(5));
+
+        await using var scope = CreateScope();
+        var result = await scope.InviteReader.ReadPageAsync(
+            space.Id, cursor: null, limit: 10, sort: null, descending: false);
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.Multiple(() =>
+        {
+            Assert.That(pastExpiryActive.ExpiresAt, Is.LessThan(lastActive.CreatedAt));
+            Assert.That(result.Value.Items.Select(invite => invite.PublicId), Is.EqualTo(new[]
+            {
+                firstActive.PublicId,
+                pastExpiryActive.PublicId,
+                lastActive.PublicId,
+            }));
+            Assert.That(result.Value.NextCursor, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task ReadPageAsync_WithoutActiveInvites_ShouldReturnEmptyPageWithoutCursor()
+    {
+        var owner = await SeedUserAsync();
+        var space = await SeedSpaceAsync(owner.Id);
+        await SeedInviteAsync(space.Id, owner.Id, status: SpaceInviteStatus.Revoked);
+        await SeedInviteAsync(space.Id, owner.Id, status: SpaceInviteStatus.Expired);
+
+        await using var scope = CreateScope();
+        var result = await scope.InviteReader.ReadPageAsync(
+            space.Id, cursor: null, limit: 2, sort: null, descending: true);
+
+        Assert.That(result.IsSuccess, Is.True, result.ToString());
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.Items, Is.Empty);
+            Assert.That(result.Value.NextCursor, Is.Null);
+        });
+    }
+
+    [TestCase("updatedAt")]
+    [TestCase("expiresAt")]
+    [TestCase("created_at")]
+    public async Task ReadPageAsync_WithUnsupportedSort_ShouldReturnSortInvalid(string sort)
+    {
+        var owner = await SeedUserAsync();
+        var space = await SeedSpaceAsync(owner.Id);
+        await using var scope = CreateScope();
+
+        var result = await scope.InviteReader.ReadPageAsync(
+            space.Id, cursor: null, limit: 10, sort, descending: true);
+
+        AssertError(result, ErrorCodes.Space.ListSortInvalid);
+    }
+
+    [Test]
+    public async Task ReadPageAsync_WithMalformedTamperedOrMismatchedCursor_ShouldReturnCursorInvalid()
+    {
+        var owner = await SeedUserAsync();
+        var space = await SeedSpaceAsync(owner.Id);
+        var otherSpace = await SeedSpaceAsync(owner.Id);
+        for (var index = 0; index < 3; index++)
+        {
+            await SeedInviteAsync(space.Id, owner.Id, PublicId(61 + index));
+        }
+
+        await using var scope = CreateScope();
+        var first = await scope.InviteReader.ReadPageAsync(
+            space.Id, cursor: null, limit: 1, sort: null, descending: false);
+        Assert.That(first.IsSuccess, Is.True, first.ToString());
+        Assert.That(first.Value.NextCursor, Is.Not.Null.And.Not.Empty);
+        var cursor = first.Value.NextCursor!;
+        var last = cursor[^1] == 'A' ? 'B' : 'A';
+        var tampered = cursor[..^1] + last;
+
+        var malformedResult = await scope.InviteReader.ReadPageAsync(
+            space.Id, "not-a-cursor", limit: 1, sort: null, descending: false);
+        var tamperedResult = await scope.InviteReader.ReadPageAsync(
+            space.Id, tampered, limit: 1, sort: null, descending: false);
+        var directionMismatch = await scope.InviteReader.ReadPageAsync(
+            space.Id, cursor, limit: 1, sort: null, descending: true);
+        var spaceMismatch = await scope.InviteReader.ReadPageAsync(
+            otherSpace.Id, cursor, limit: 1, sort: null, descending: false);
+
+        foreach (var result in new[] { malformedResult, tamperedResult, directionMismatch, spaceMismatch })
+        {
+            AssertError(result, ErrorCodes.Space.ListCursorInvalid);
+        }
+    }
+
     private RepositoryScope CreateScope() => new(services!.CreateAsyncScope());
 
     private async Task<NpgsqlConnection> OpenConnectionAsync(CancellationToken cancellationToken = default)
@@ -317,23 +457,27 @@ public sealed class SpaceInvitePersistenceIntegrationTests
         long spaceId,
         long createdByUserId,
         Guid? publicId = null,
-        int? maxUses = null)
+        int? maxUses = null,
+        SpaceInviteStatus status = SpaceInviteStatus.Active,
+        DateTimeOffset? createdAt = null,
+        DateTimeOffset? expiresAt = null)
     {
         await using var scope = CreateScope();
+        var created = createdAt ?? Timestamp;
         var invite = new SpaceInviteEntity
         {
             PublicId = publicId ?? Guid.CreateVersion7(),
             SpaceId = spaceId,
             CreatedByUserId = createdByUserId,
             TokenHash = $"invite-hash-{Guid.NewGuid():N}",
-            Status = SpaceInviteStatus.Active,
+            Status = status,
             UseCount = 0,
             MaxUses = maxUses,
-            ExpiresAt = Timestamp.AddDays(7),
+            ExpiresAt = expiresAt ?? created.AddDays(7),
             Version = 1,
-            CreatedAt = Timestamp,
-            UpdatedAt = Timestamp,
-            RevokedAt = null,
+            CreatedAt = created,
+            UpdatedAt = created,
+            RevokedAt = status == SpaceInviteStatus.Revoked ? created : null,
         };
         scope.Context.SpaceInvites.Add(invite);
         await scope.Context.SaveChangesAsync();
@@ -358,7 +502,7 @@ public sealed class SpaceInvitePersistenceIntegrationTests
         int UseCount,
         string Status,
         long Version,
-        DateTimeOffset? RevokedAt);
+        bool RevokedAtIsNull);
 
     private sealed class RepositoryScope(AsyncServiceScope serviceScope) : IAsyncDisposable
     {

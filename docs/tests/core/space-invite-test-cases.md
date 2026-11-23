@@ -31,12 +31,13 @@
 
 | 케이스 | 조건·실행 | 기대 결과 |
 |---|---|---|
-| IN-01-01 | 인가된 `ACTIVE`와 `ARCHIVED` Space에서 각각 목록을 조회한다. 다른 Space의 초대도 준비한다. | 요청한 Space의 항목만 반환한다. DTO의 PublicId, 상태, 만료 시각, 최대·현재 사용 횟수, 생성·수정·폐기 시각을 확인한다. 토큰, URL, 해시, 항목 버전은 응답에 없다. |
+| IN-01-01 | 인가된 `ACTIVE`와 `ARCHIVED` Space에서 각각 목록을 조회한다. 다른 Space, `REVOKED`·`EXPIRED`, 만료 시각이 지난 `ACTIVE` 초대도 준비한다. | 요청한 Space의 저장 상태가 `ACTIVE`인 항목만 반환한다. 만료 시각이 지났어도 저장 상태가 `ACTIVE`이면 포함한다. DTO의 PublicId, 상태, 만료 시각, 최대·현재 사용 횟수, 생성·수정·폐기 시각을 확인한다. 토큰, URL, 해시, 항목 버전은 응답에 없다. |
 | IN-01-02 | 결과가 없는 Space를 조회하고, 결과가 있는 Space의 마지막 페이지를 조회한다. | 빈 페이지는 `items=[]`, `nextCursor=null`이다. 마지막 페이지도 `nextCursor=null`이다. |
-| IN-01-03 | 기본 요청과 `Limit=1`, `Limit=100`을 사용한다. 같은 정렬 키를 가진 항목을 페이지 경계에 두고 다음 커서로 이어서 조회한다. | Core는 기본 한도 50·내림차순과 요청 한도를 읽기 포트에 전달한다. 페이지 검증에서는 각 페이지가 한도를 지키고 같은 정렬 키는 PublicId로 순서를 정해 중복·누락 없이 이어지는지 확인한다. |
-| IN-01-04 | 서명을 변조한 커서를 보내거나 다른 Space·행위자 범위·정렬에 재사용한다. | API 400 `CURSOR_INVALID`다. 응답에 타 Space 데이터가 없다. |
+| IN-01-03 | 기본 요청과 `Limit=1`, `Limit=100`을 사용한다. 같은 정렬 키를 가진 항목을 페이지 경계에 두고 다음 커서로 이어서 조회한다. | Core는 기본 한도 50·내림차순과 요청 한도를 읽기 포트에 전달한다. 페이지 검증에서는 각 페이지가 한도를 지키고 요청 방향을 `CreatedAt`과 PublicId에 모두 적용해 중복·누락 없이 이어지는지 확인한다. |
+| IN-01-04 | 서명을 변조한 커서를 보내거나 다른 Space·행위자 범위·정렬·방향에 재사용한다. | 읽기 포트는 `SPACE_LIST_CURSOR_INVALID`, API는 400 `CURSOR_INVALID`다. 응답에 타 Space 데이터가 없다. |
 | IN-01-05 | `Space=null`, `Limit=0/101`, 빈 문자열·공백인 `Cursor` 또는 `Sort`를 각각 전달한다. | 차례로 `SPACE_AUTHORIZATION_CONTEXT_REQUIRED` / `Space`, `SPACE_LIST_LIMIT_INVALID` / `Limit`, `SPACE_LIST_CURSOR_INVALID` / `Cursor`, `SPACE_LIST_SORT_INVALID` / `Sort`다. |
 | IN-01-06 | 목록 조회 포트의 실패를 주입한다. | 실패가 빈 페이지로 바뀌지 않는다. 초대 상태와 버전은 유지된다. |
+| IN-01-07 | `Sort`를 생략하거나 `createdAt`, `CREATEDAT`로 조회한다. `CreatedAt`과 PublicId 순서가 다른 항목과 지원하지 않는 정렬도 준비한다. | 허용 정렬은 대소문자를 구분하지 않는 `createdAt`뿐이며 생략 시 기본 필드도 `createdAt`이다. 먼저 `CreatedAt`, 같은 시각은 PublicId로 요청 방향에 따라 정렬한다. 다른 정렬은 `SPACE_LIST_SORT_INVALID` / `Sort`다. |
 
 ## IN-02 초대 링크 생성
 
@@ -108,7 +109,6 @@
 
 ## 기대값 확정이 필요한 항목
 
-- IN-01의 정렬 필드 허용 목록과 기본 정렬 필드, 초대 상태별 목록 포함 정책.
 - IN-03에서 생성 후 초대 버전이 바뀐 경우 최신 ETag를 얻는 경로, 만료 시각이 지났지만 저장 상태는 `ACTIVE`인 초대의 폐기 정책.
 - IN-04에서 유효 토큰이 가리키는 `ARCHIVED` Space의 공개 조회 성공을 HTTP 계약에도 명시할지, 마스킹 응답의 외부 오류 코드를 무엇으로 정할지.
 - IN-05에서 기존 OWNER의 `membershipPublicId`를 HTTP에서 `null`로 보낼지 생략할지, `SUSPENDED` 멤버와 VIEWER 누락의 외부 오류, 초대 실패 사유의 HTTP 매핑. 새 멱등 키로 유효하지 않은 초대를 수락하는 기존 참여자의 HTTP 응답도 이 매핑에 포함한다.
