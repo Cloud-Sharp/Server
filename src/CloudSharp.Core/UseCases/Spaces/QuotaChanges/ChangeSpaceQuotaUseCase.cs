@@ -19,7 +19,7 @@ public sealed class ChangeSpaceQuotaUseCase : IUseCase<ChangeSpaceQuotaCommand, 
 
     public ChangeSpaceQuotaUseCase() { }
 
-    internal ChangeSpaceQuotaUseCase(
+    public ChangeSpaceQuotaUseCase(
         ISpaceRepository spaceRepository,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,

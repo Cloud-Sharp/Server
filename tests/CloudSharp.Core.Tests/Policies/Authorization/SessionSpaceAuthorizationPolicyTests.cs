@@ -57,6 +57,39 @@ public class SessionSpaceAuthorizationPolicyTests
     }
 
     [Test]
+    public void Evaluate_SystemAdministratorWithoutBypass_ShouldUseOwnerAccess()
+    {
+        var query = TestSpaceAuthorizationSnapshots.Query(
+            actor: TestSpaceAuthorizationSnapshots.Session(21, SystemRole.SystemAdmin),
+            allowSystemAdminBypass: false);
+        var snapshot = new SpaceAuthorizationSnapshot(TestSpaceAuthorizationSnapshots.Space(), null, []);
+
+        var result = SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot);
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.AuthorizationSource, Is.EqualTo(SpaceAuthorizationSource.Owner));
+            Assert.That(result.Value.EffectivePermissions.SetEquals(Enum.GetValues<SpacePermission>()), Is.True);
+        });
+    }
+
+    [Test]
+    public void Evaluate_SystemAdministratorWithoutBypass_ShouldEnforceMembershipPermissions()
+    {
+        var query = TestSpaceAuthorizationSnapshots.Query(
+            actor: TestSpaceAuthorizationSnapshots.Session(systemRole: SystemRole.SystemAdmin),
+            permissions: [SpacePermission.SpaceUpdate],
+            allowSystemAdminBypass: false);
+        var snapshot = TestSpaceAuthorizationSnapshots.MemberSnapshot(
+            permissions: [SpacePermission.SpaceView]);
+
+        var result = SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot);
+
+        AssertCode(result, ErrorCodes.Auth.SpacePermissionDenied);
+    }
+
+    [Test]
     public void Evaluate_ShouldUnionAssignedRolePermissions()
     {
         var query = TestSpaceAuthorizationSnapshots.Query(

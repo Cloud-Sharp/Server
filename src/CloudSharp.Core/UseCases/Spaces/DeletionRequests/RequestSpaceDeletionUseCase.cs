@@ -20,7 +20,7 @@ public sealed class RequestSpaceDeletionUseCase : IUseCase<RequestSpaceDeletionC
 
     public RequestSpaceDeletionUseCase() { }
 
-    internal RequestSpaceDeletionUseCase(
+    public RequestSpaceDeletionUseCase(
         ISpaceRepository spaceRepository,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,

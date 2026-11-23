@@ -12,12 +12,14 @@ public sealed class SpaceAuthorizationQuery
     public Guid SpacePublicId { get; }
     public IReadOnlySet<SpacePermission> RequiredPermissions { get; }
     public IReadOnlySet<SpaceStatus> AllowedSpaceStatuses { get; }
+    public bool AllowSystemAdminBypass { get; }
 
     public SpaceAuthorizationQuery(
         CurrentActor actor,
         Guid spacePublicId,
         IEnumerable<SpacePermission> requiredPermissions,
-        IEnumerable<SpaceStatus> allowedSpaceStatuses)
+        IEnumerable<SpaceStatus> allowedSpaceStatuses,
+        bool allowSystemAdminBypass = true)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(requiredPermissions);
@@ -52,5 +54,6 @@ public sealed class SpaceAuthorizationQuery
         SpacePublicId = spacePublicId;
         RequiredPermissions = permissions;
         AllowedSpaceStatuses = statuses;
+        AllowSystemAdminBypass = allowSystemAdminBypass;
     }
 }

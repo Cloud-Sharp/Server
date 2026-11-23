@@ -1,5 +1,6 @@
 using CloudSharp.Api.DependencyInjection;
 using CloudSharp.Api.Endpoints.Auth;
+using CloudSharp.Api.Endpoints.Spaces;
 using CloudSharp.Api.Endpoints.Users;
 using CloudSharp.Api.Middleware;
 
@@ -27,5 +28,6 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
+app.MapSpaceEndpoints();
 
 app.Run();

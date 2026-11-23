@@ -44,6 +44,7 @@ public static class ErrorCodes
         public const string PublicIdInvalid = "SPACE_PUBLIC_ID_INVALID";
         public const string NameInvalid = "SPACE_NAME_INVALID";
         public const string OwnerInvalid = "SPACE_OWNER_INVALID";
+        public const string Archived = "SPACE_ARCHIVED";
         public const string Inactive = "SPACE_INACTIVE";
         public const string InvalidState = "SPACE_INVALID_STATE";
         public const string QuotaInvalid = "SPACE_QUOTA_INVALID";

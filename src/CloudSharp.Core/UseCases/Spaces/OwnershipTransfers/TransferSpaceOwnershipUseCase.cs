@@ -227,9 +227,10 @@ public sealed class TransferSpaceOwnershipUseCase : IUseCase<TransferSpaceOwners
             return Result.Fail<SpaceResultDto>(saveResult.Errors);
         }
 
-        var accessSource = currentOwner.SystemRole == SystemRole.SystemAdmin
-            ? SpaceAuthorizationSource.SystemAdminBypass
-            : SpaceAuthorizationSource.Membership;
+        var accessSource = context.AuthorizationSource == SpaceAuthorizationSource.SystemAdminBypass
+            && currentOwner.SystemRole == SystemRole.SystemAdmin
+                ? SpaceAuthorizationSource.SystemAdminBypass
+                : SpaceAuthorizationSource.Membership;
         return Result.Ok(CreateResult(
             snapshot,
             newOwner.PublicId,

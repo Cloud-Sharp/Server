@@ -93,7 +93,8 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
                         query.Actor,
                         candidate.Authorization.Space.PublicId,
                         Array.Empty<SpacePermission>(),
-                        allowedStatuses),
+                        allowedStatuses,
+                        query.AllowSystemAdminBypass),
                     candidate.Authorization);
                 if (authorization.IsSuccess)
                 {

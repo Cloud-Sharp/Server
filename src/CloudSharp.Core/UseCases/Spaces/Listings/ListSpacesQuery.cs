@@ -10,7 +10,8 @@ public sealed record ListSpacesQuery(
     string? Cursor = null,
     int Limit = 50,
     string? Sort = null,
-    bool Descending = true);
+    bool Descending = true,
+    bool AllowSystemAdminBypass = true);
 
 internal sealed class ListSpacesQueryValidator : AbstractValidator<ListSpacesQuery>
 {

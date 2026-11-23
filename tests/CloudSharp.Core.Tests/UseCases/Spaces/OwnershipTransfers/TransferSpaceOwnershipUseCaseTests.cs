@@ -274,6 +274,27 @@ public class TransferSpaceOwnershipUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_SystemAdministratorOwnerWithoutBypass_ShouldReturnMembershipAccess()
+    {
+        // Arrange
+        var scenario = ValidTransfer(
+            ownerSystemRole: SystemRole.SystemAdmin,
+            allowSystemAdminBypass: false);
+
+        // Act
+        var result = await scenario.Harness.UseCase.ExecuteAsync(scenario.Command);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(scenario.Context.AuthorizationSource, Is.EqualTo(SpaceAuthorizationSource.Owner));
+            Assert.That(result.Value.Space.MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Membership));
+            Assert.That(result.Value.Space.OwnerUserPublicId, Is.EqualTo(scenario.NewOwner.PublicId));
+        });
+    }
+
+    [Test]
     public async Task ExecuteAsync_ShouldReturnCurrentSpaceForExistingOwnerWithoutWrites()
     {
         // Arrange
@@ -668,7 +689,8 @@ public class TransferSpaceOwnershipUseCaseTests
     private static TransferScenario ValidTransfer(
         SystemRole ownerSystemRole = SystemRole.User,
         UserStatus ownerStatus = UserStatus.Active,
-        UserStatus newOwnerStatus = UserStatus.Active)
+        UserStatus newOwnerStatus = UserStatus.Active,
+        bool allowSystemAdminBypass = true)
     {
         var space = StoredSpace(SpaceStatus.Active);
         var currentOwner = Account(OwnerUserId, OwnerUserPublicId, ownerStatus, ownerSystemRole);
@@ -676,7 +698,7 @@ public class TransferSpaceOwnershipUseCaseTests
         var membership = TargetMembership(space.Id, newOwner.Id);
         var managedAdminRole = ManagedAdminRole(space.Id);
         var actor = TestSpaceAuthorizationSnapshots.Session(currentOwner.Id, ownerSystemRole);
-        var context = Authorize(space, actor);
+        var context = Authorize(space, actor, allowSystemAdminBypass);
         var harness = new Harness(space, currentOwner, newOwner, membership, managedAdminRole);
         var command = new TransferSpaceOwnershipCommand(context, space.Version, newOwner.PublicId);
         return new TransferScenario(
@@ -757,9 +779,15 @@ public class TransferSpaceOwnershipUseCaseTests
             null,
             []);
 
-    private static AuthorizedSpaceContext Authorize(Space space, CurrentActor actor)
+    private static AuthorizedSpaceContext Authorize(
+        Space space,
+        CurrentActor actor,
+        bool allowSystemAdminBypass = true)
     {
-        var query = TestSpaceAuthorizationSnapshots.Query(actor: actor, spacePublicId: space.PublicId);
+        var query = TestSpaceAuthorizationSnapshots.Query(
+            actor: actor,
+            spacePublicId: space.PublicId,
+            allowSystemAdminBypass: allowSystemAdminBypass);
         var snapshot = new SpaceAuthorizationSnapshot(space, null, []);
         return SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot).Value;
     }

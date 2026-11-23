@@ -3,6 +3,7 @@ using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
+using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.Tests.TestSupport.Builders;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
@@ -58,6 +59,32 @@ public class ListSpacesUseCaseTests
             Assert.That(
                 result.Value.Items[1].MyAccess.Permissions,
                 Is.EquivalentTo(new[] { SpacePermission.SpaceView, SpacePermission.FilesRead }));
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_SystemAdministratorWithoutBypass_ShouldFilterOutsideSpaces()
+    {
+        // Arrange
+        var actor = TestSpaceAuthorizationSnapshots.Session(UserId, SystemRole.SystemAdmin);
+        var candidates = new[] { Owned(40), WithoutAccess(41), Member(42) };
+        var reader = new FakeSpaceListCandidateReader(candidates, maxBatchSize: 3);
+        var useCase = new ListSpacesUseCase(reader);
+
+        // Act
+        var result = await useCase.ExecuteAsync(
+            new ListSpacesQuery(actor, AllowSystemAdminBypass: false));
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                result.Value.Items.Select(item => item.SpacePublicId),
+                Is.EqualTo(new[] { PublicId(40), PublicId(42) }));
+            Assert.That(result.Value.Items[0].MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Owner));
+            Assert.That(result.Value.Items[1].MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Membership));
+            Assert.That(result.Value.NextCursor, Is.Null);
         });
     }
 
