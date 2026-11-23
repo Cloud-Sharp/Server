@@ -14,6 +14,13 @@
 - [Auth API](api/auth-api.md) — 계정 등록, 로그인
 - [User API](api/user-api.md) — 내 프로필 조회, 비밀번호 변경
 
+## API 설계
+
+- [Space API](api/space-api.md) — Space 목록·생성·상세·수정, 보관·재활성화·삭제, quota와 소유권 이전
+- [Space Invite API](api/space-invite-api.md) — 초대 목록·생성·폐기·관리 상세, 공개 조회와 수락
+- [Space Membership API](api/space-membership-api.md) — 멤버 목록·상세, Role 교체, 정지·활성화·제거와 본인 탈퇴
+- [Space Role API](api/space-role-api.md) — 관리형 Role 목록과 유효 Permission
+
 ## Core 테스트
 
 - [Auth 테스트 케이스](tests/core/auth-test-cases.md) — User·Session 도메인 모델, Session 발급·인증, 등록·로그인·내 계정
