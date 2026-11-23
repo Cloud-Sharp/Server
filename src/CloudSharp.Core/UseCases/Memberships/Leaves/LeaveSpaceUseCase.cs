@@ -59,9 +59,13 @@ public sealed class LeaveSpaceUseCase : IUseCase<LeaveSpaceCommand, LeaveSpaceRe
             return Result.Fail<LeaveSpaceResultDto>(CommonError.DependencyUnavailable());
         }
 
-        return await TransactionExecutor.ExecuteAsync(
+        var result = await TransactionExecutor.ExecuteAsync(
             ct => LeaveInTransactionAsync(command, ct),
             cancellationToken: cancellationToken);
+
+        return result.Errors.OfType<LeaveConcurrencyError>().SingleOrDefault() is { } conflict
+            ? await ResolveConcurrencyAsync(conflict, command.Actor.UserId, cancellationToken)
+            : result;
     }
 
     private async Task<Result<LeaveSpaceResultDto>> LeaveInTransactionAsync(
@@ -130,15 +134,61 @@ public sealed class LeaveSpaceUseCase : IUseCase<LeaveSpaceCommand, LeaveSpaceRe
             cancellationToken);
         if (updateResult.IsFailed)
         {
-            return Result.Fail<LeaveSpaceResultDto>(updateResult.Errors);
+            return MapWriteFailure(updateResult.Errors, membership);
         }
 
         var saveResult = await UnitOfWork.SaveChangesAsync(cancellationToken);
         if (saveResult.IsFailed)
         {
-            return Result.Fail<LeaveSpaceResultDto>(saveResult.Errors);
+            return MapWriteFailure(saveResult.Errors, membership);
         }
 
         return Result.Ok(new LeaveSpaceResultDto());
+    }
+
+    private async Task<Result<LeaveSpaceResultDto>> ResolveConcurrencyAsync(
+        LeaveConcurrencyError conflict,
+        long userId,
+        CancellationToken cancellationToken)
+    {
+        var result = await MembershipRepository.FindByPublicIdAsync(
+            conflict.SpaceId,
+            conflict.MembershipPublicId,
+            cancellationToken);
+        if (result.IsFailed)
+        {
+            return Result.Fail<LeaveSpaceResultDto>(result.Errors);
+        }
+
+        var membership = result.Value;
+        return membership is { Status: SpaceMembershipStatus.Left }
+            && membership.SpaceId == conflict.SpaceId
+            && membership.Id == conflict.MembershipId
+            && membership.PublicId == conflict.MembershipPublicId
+            && membership.UserId == userId
+            ? Result.Ok(new LeaveSpaceResultDto())
+            : Result.Fail<LeaveSpaceResultDto>(CommonError.RequestConflict());
+    }
+
+    private static Result<LeaveSpaceResultDto> MapWriteFailure(
+        IReadOnlyList<IError> errors,
+        SpaceMembership membership)
+    {
+        if (errors is [var error]
+            && error.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var code)
+            && code is ErrorCodes.Common.PreconditionFailed)
+        {
+            return Result.Fail<LeaveSpaceResultDto>(new LeaveConcurrencyError(membership));
+        }
+
+        return Result.Fail<LeaveSpaceResultDto>(errors);
+    }
+
+    private sealed class LeaveConcurrencyError(SpaceMembership membership)
+        : Error("The Membership changed while saving the departure.")
+    {
+        internal long SpaceId { get; } = membership.SpaceId;
+        internal long MembershipId { get; } = membership.Id;
+        internal Guid MembershipPublicId { get; } = membership.PublicId;
     }
 }

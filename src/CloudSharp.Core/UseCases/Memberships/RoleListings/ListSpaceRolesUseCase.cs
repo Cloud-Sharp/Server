@@ -78,11 +78,7 @@ public sealed class ListSpaceRolesUseCase : IUseCase<ListSpaceRolesQuery, IReadO
         }
 
         IReadOnlyList<SpaceRoleDto> roles = readResult.Value
-            .Where(role => role.SpaceId == space.Id
-                && role.IsManaged
-                && role.SystemKey is { } systemKey
-                && Enum.IsDefined(systemKey)
-                && role.DeletedAt is null)
+            .Where(role => role.IsActiveManagedIn(space.Id))
             .Select(role => new SpaceRoleDto(
                 role.PublicId,
                 role.SystemKey!.Value,

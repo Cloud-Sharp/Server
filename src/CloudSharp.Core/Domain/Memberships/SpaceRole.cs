@@ -83,6 +83,10 @@ public sealed class SpaceRole
     public IReadOnlySet<SpacePermission> Permissions =>
         SystemKey == SpaceRoleSystemKey.Admin ? AllPermissions : _storedPermissions;
 
+    internal bool IsActiveManagedIn(long spaceId) =>
+        Id > 0 && SpaceId == spaceId && DeletedAt is null && IsManaged
+        && SystemKey is { } systemKey && Enum.IsDefined(systemKey);
+
     private SpaceRole() { }
 
     /// <summary>

@@ -11,6 +11,7 @@ public static class ErrorCodes
         public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
         public const string PreconditionFailed = "PRECONDITION_FAILED";
         public const string PreconditionRequired = "PRECONDITION_REQUIRED";
+        public const string RequestConflict = "REQUEST_CONFLICT";
     }
 
     public static class Auth

@@ -92,7 +92,7 @@ internal static class SpaceResultHttpMapper
         };
     }
 
-    private static IResult NotFound() =>
+    internal static IResult NotFound() =>
         ErrorHttpResults.FromCode(ResourceNotFoundCode, "Resource not found.");
 
     private static string? GetCode(IError? error) =>

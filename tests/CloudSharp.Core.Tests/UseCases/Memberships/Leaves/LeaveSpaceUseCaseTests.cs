@@ -171,6 +171,77 @@ public class LeaveSpaceUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_ShouldConfirmConcurrentDepartureAfterRollback()
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var original = Membership(space.Id, Actor.UserId, SpaceMembershipStatus.Active);
+        var departed = Membership(space.Id, Actor.UserId, SpaceMembershipStatus.Left);
+        var harness = new Harness(space, original);
+        harness.UnitOfWork.SaveChangesFailureFactory = _ => CommonError.PreconditionFailed();
+        harness.Memberships.ExactRead = () =>
+        {
+            Assert.That(harness.Transactions.RollbackCount, Is.EqualTo(1));
+            return Result.Ok<SpaceMembership?>(departed);
+        };
+
+        var result = await harness.UseCase.ExecuteAsync(new LeaveSpaceCommand(Actor, space.PublicId));
+
+        Assert.That(result.IsSuccess, Is.True);
+        AssertOriginalMembershipRechecked(harness, original);
+    }
+
+    [TestCase(SpaceMembershipStatus.Active)]
+    [TestCase(SpaceMembershipStatus.Suspended)]
+    [TestCase(null)]
+    public async Task ExecuteAsync_ShouldReturnRequestConflict(SpaceMembershipStatus? currentStatus)
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var original = Membership(space.Id, Actor.UserId, SpaceMembershipStatus.Active);
+        var harness = new Harness(space, original);
+        var current = currentStatus is { } status ? Membership(space.Id, Actor.UserId, status) : null;
+        harness.UnitOfWork.SaveChangesFailureFactory = _ => CommonError.PreconditionFailed();
+        harness.Memberships.ExactRead = () => Result.Ok(current);
+
+        var result = await harness.UseCase.ExecuteAsync(new LeaveSpaceCommand(Actor, space.PublicId));
+
+        AssertError(result, ErrorCodes.Common.RequestConflict);
+        AssertOriginalMembershipRechecked(harness, original);
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldPropagateMembershipRecheckFailure()
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var original = Membership(space.Id, Actor.UserId, SpaceMembershipStatus.Active);
+        var harness = new Harness(space, original);
+        var failure = CommonError.DependencyUnavailable();
+        harness.UnitOfWork.SaveChangesFailureFactory = _ => CommonError.PreconditionFailed();
+        harness.Memberships.ExactRead = () => Result.Fail<SpaceMembership?>(failure);
+
+        var result = await harness.UseCase.ExecuteAsync(new LeaveSpaceCommand(Actor, space.PublicId));
+
+        Assert.That(result.IsFailed, Is.True);
+        Assert.That(result.Errors.Single(), Is.SameAs(failure));
+        AssertOriginalMembershipRechecked(harness, original);
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldPropagateTransactionCommitFailure()
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var original = Membership(space.Id, Actor.UserId, SpaceMembershipStatus.Active);
+        var harness = new Harness(space, original);
+        var failure = CommonError.PreconditionFailed();
+        harness.Transactions.CommitFailure = failure;
+
+        var result = await harness.UseCase.ExecuteAsync(new LeaveSpaceCommand(Actor, space.PublicId));
+
+        Assert.That(result.IsFailed, Is.True);
+        Assert.That(result.Errors.Single(), Is.SameAs(failure));
+        Assert.That(harness.Memberships.PublicIdLookups, Is.Empty);
+    }
+
+    [Test]
     public async Task ExecuteAsync_ShouldRejectInvalidSpacePublicIdWithoutDependencyCalls()
     {
         var harness = new Harness();
@@ -217,6 +288,19 @@ public class LeaveSpaceUseCaseTests
         }
     }
 
+    private static void AssertOriginalMembershipRechecked(Harness harness, SpaceMembership original)
+    {
+        using (Assert.EnterMultipleScope())
+        {
+            Assert.That(harness.Memberships.UserLookups, Is.EqualTo(new[] { (original.SpaceId, original.UserId) }));
+            Assert.That(harness.Memberships.PublicIdLookups, Is.EqualTo(new[] { (original.SpaceId, original.PublicId) }));
+            Assert.That(harness.Memberships.Updates, Has.Count.EqualTo(1));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+            Assert.That(harness.Transactions.CommitCount, Is.Zero);
+            Assert.That(harness.Transactions.RollbackCount, Is.EqualTo(1));
+        }
+    }
+
     private sealed class Harness
     {
         public Harness(Space? space = null, SpaceMembership? membership = null)
@@ -243,8 +327,10 @@ public class LeaveSpaceUseCaseTests
     private sealed class MembershipRepository(SpaceMembership? membership) : ISpaceMembershipRepository
     {
         public List<(long SpaceId, long UserId)> UserLookups { get; } = [];
+        public List<(long SpaceId, Guid PublicId)> PublicIdLookups { get; } = [];
         public List<(SpaceMembership Membership, long ExpectedVersion)> Updates { get; } = [];
         public SpaceMembership? ReadMembership { get; private set; }
+        public Func<Result<SpaceMembership?>>? ExactRead { get; set; }
 
         public Task<Result<SpaceMembership?>> FindLatestByUserIdAsync(
             long spaceId,
@@ -264,8 +350,12 @@ public class LeaveSpaceUseCaseTests
         public Task<Result<SpaceMembership?>> FindByPublicIdAsync(
             long spaceId,
             Guid membershipPublicId,
-            CancellationToken cancellationToken = default) =>
-            throw new InvalidOperationException("Self leave must look up the authenticated user's membership.");
+            CancellationToken cancellationToken = default)
+        {
+            PublicIdLookups.Add((spaceId, membershipPublicId));
+            var exactRead = ExactRead ?? throw new InvalidOperationException("Unexpected Membership recheck.");
+            return Task.FromResult(exactRead());
+        }
 
         public Task<Result> AddAsync(
             SpaceMembership membership, CancellationToken cancellationToken = default) =>

@@ -18,11 +18,13 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
     private readonly SpacePermission[] _requiredPermissions;
     private readonly SpaceStatus[] _allowedSpaceStatuses;
     private readonly bool _maskPermissionDenied;
+    private readonly bool _allowSystemAdminBypass;
 
     internal SpaceAuthorizationFilter(
         IEnumerable<SpacePermission> requiredPermissions,
         IEnumerable<SpaceStatus> allowedSpaceStatuses,
-        bool maskPermissionDenied)
+        bool maskPermissionDenied,
+        bool allowSystemAdminBypass = false)
     {
         ArgumentNullException.ThrowIfNull(requiredPermissions);
         ArgumentNullException.ThrowIfNull(allowedSpaceStatuses);
@@ -34,6 +36,7 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
         }
 
         _maskPermissionDenied = maskPermissionDenied;
+        _allowSystemAdminBypass = allowSystemAdminBypass;
     }
 
     public async ValueTask<object?> InvokeAsync(
@@ -42,14 +45,9 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
     {
         var httpContext = context.HttpContext;
         var rawPublicId = httpContext.Request.RouteValues[RouteParameterName] as string;
-        if (!Guid.TryParseExact(rawPublicId, "D", out var spacePublicId)
-            || spacePublicId.Version != 7
-            || !(spacePublicId.Variant is >= 8 and <= 11))
+        if (!PublicIdParser.TryParse(rawPublicId, out var spacePublicId))
         {
-            return ErrorHttpResults.Validation(
-                RouteParameterName,
-                ErrorCodes.Space.PublicIdInvalid,
-                "Space public ID must be an RFC-variant UUIDv7.");
+            return InvalidSpacePublicId();
         }
 
         var actor = httpContext.RequestServices.GetRequiredService<ICurrentActorAccessor>().CurrentActor
@@ -62,7 +60,7 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
                 spacePublicId,
                 _requiredPermissions,
                 _allowedSpaceStatuses,
-                allowSystemAdminBypass: false),
+                allowSystemAdminBypass: _allowSystemAdminBypass),
             httpContext.RequestAborted);
         if (authorization.IsFailed)
         {
@@ -76,4 +74,9 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
     internal static AuthorizedSpaceContext GetRequiredContext(HttpContext httpContext) =>
         httpContext.Items[AuthorizedContextKey] as AuthorizedSpaceContext
         ?? throw new InvalidOperationException("An authorized Space context is required.");
+
+    internal static IResult InvalidSpacePublicId() => ErrorHttpResults.Validation(
+        RouteParameterName,
+        ErrorCodes.Space.PublicIdInvalid,
+        "Space public ID must be an RFC-variant UUIDv7.");
 }

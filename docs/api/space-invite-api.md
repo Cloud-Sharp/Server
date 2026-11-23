@@ -4,14 +4,14 @@ Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다
 
 `S`는 `/api/v2/spaces/{spacePublicId}`, `I`는 `S/invites/{invitePublicId}`다.
 
-| ID | API | 메서드·경로 | 인증·권한 | 허용 Space 상태 | 요청 | 성공 응답 |
-|---|---|---|---|---|---|---|
-| IN-01 | [초대 목록 조회](#in-01-초대-목록-조회) | `GET S/invites` | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | cursor query | 200, `items`와 `nextCursor` |
-| IN-02 | [초대 링크 생성](#in-02-초대-링크-생성) | `POST S/invites` | Session, `INVITES_MANAGE` | `ACTIVE` | `Idempotency-Key`, JSON | 201, 발급 정보, Invite `ETag`, `Location` |
-| IN-03 | [초대 폐기](#in-03-초대-폐기) | `DELETE I` | Session, `INVITES_MANAGE` | `ACTIVE` | Invite `If-Match` | 204, 새 Invite `ETag` |
-| IN-04 | [공개 초대 정보 조회](#in-04-공개-초대-정보-조회) | `GET /public/v2/invites/{inviteToken}` | 유효한 초대 토큰, 익명 가능 | `ACTIVE`, `ARCHIVED` | — | 200, Space 이름·Role 이름·만료 시각 |
-| IN-05 | [초대 수락](#in-05-초대-수락) | `POST /api/v2/invites/{inviteToken}/accept` | Session, 유효한 초대 토큰 | `ACTIVE` | `Idempotency-Key` | 200, 가입 결과 |
-| IN-06 | [관리용 초대 상세 조회](#in-06-관리용-초대-상세-조회) | `GET I` | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | — | 200, 초대 관리 정보, Invite `ETag` |
+| ID    | API                                 | 메서드·경로                                      | 인증·권한                     | 허용 Space 상태          | 요청                      | 성공 응답                                 |
+| ----- | ----------------------------------- | ------------------------------------------- | ------------------------- | -------------------- | ----------------------- | ------------------------------------- |
+| IN-01 | [초대 목록 조회](#in-01-초대-목록-조회)         | `GET S/invites`                             | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | cursor query            | 200, `items`와 `nextCursor`            |
+| IN-02 | [초대 링크 생성](#in-02-초대-링크-생성)         | `POST S/invites`                            | Session, `INVITES_MANAGE` | `ACTIVE`             | `Idempotency-Key`, JSON | 201, 발급 정보, Invite `ETag`, `Location` |
+| IN-03 | [초대 폐기](#in-03-초대-폐기)               | `DELETE I`                                  | Session, `INVITES_MANAGE` | `ACTIVE`             | Invite `If-Match`       | 204, 새 Invite `ETag`                  |
+| IN-04 | [공개 초대 정보 조회](#in-04-공개-초대-정보-조회)   | `GET /public/v2/invites/{inviteToken}`      | 유효한 초대 토큰, 익명 가능          | `ACTIVE`, `ARCHIVED` | —                       | 200, Space 이름·Role 이름·만료 시각           |
+| IN-05 | [초대 수락](#in-05-초대-수락)               | `POST /api/v2/invites/{inviteToken}/accept` | Session, 유효한 초대 토큰        | `ACTIVE`             | `Idempotency-Key`       | 200, 가입 결과                            |
+| IN-06 | [관리용 초대 상세 조회](#in-06-관리용-초대-상세-조회) | `GET I`                                     | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | —                       | 200, 초대 관리 정보, Invite `ETag`          |
 
 ## 공통 계약
 

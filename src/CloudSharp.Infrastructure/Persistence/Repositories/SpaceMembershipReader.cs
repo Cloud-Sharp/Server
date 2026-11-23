@@ -30,6 +30,7 @@ internal sealed class SpaceMembershipReader(
     public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
         long spaceId,
         long ownerUserId,
+        long requesterUserId,
         string? cursor,
         int limit,
         string? sort,
@@ -43,7 +44,7 @@ internal sealed class SpaceMembershipReader(
             return Task.FromResult(Result.Fail<SpaceMembershipReadPage>(SpaceError.ListSortInvalid()));
         }
 
-        var filterScope = CreateFilterScope(spaceId, ownerUserId);
+        var filterScope = CreateFilterScope(spaceId, ownerUserId, requesterUserId);
         CursorPosition? position = null;
         if (cursor is not null
             && !TryReadCursor(cursor, normalizedSort, descending, filterScope, out position))
@@ -259,8 +260,8 @@ internal sealed class SpaceMembershipReader(
     private static string SigningInput(CursorClaims claims) =>
         CursorSigningPrefix + Base64Url.Encode(JsonSerializer.SerializeToUtf8Bytes(claims, CursorJsonOptions));
 
-    private string CreateFilterScope(long spaceId, long ownerUserId) =>
-        tokenHasher.Hash($"{FilterScopePrefix}{spaceId}:{ownerUserId}");
+    private string CreateFilterScope(long spaceId, long ownerUserId, long requesterUserId) =>
+        tokenHasher.Hash(FormattableString.Invariant($"{FilterScopePrefix}{spaceId}:{ownerUserId}:{requesterUserId}"));
 
     private static bool TryNormalizeSort(string? sort, out string normalizedSort)
     {

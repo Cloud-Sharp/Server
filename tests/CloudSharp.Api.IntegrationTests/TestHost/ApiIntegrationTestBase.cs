@@ -17,18 +17,32 @@ public abstract class ApiIntegrationTestBase
     internal MutableClock Clock => _environment.Clock;
 
     [OneTimeSetUp]
-    public async Task StartSharedEnvironmentAsync() =>
-        _environment = await SharedApiEnvironment.StartAsync();
+    public async Task StartTestEnvironmentAsync() =>
+        _environment = await StartEnvironmentAsync();
+
+    [OneTimeTearDown]
+    public async Task StopTestEnvironmentAsync()
+    {
+        if (_environment is not null)
+        {
+            await DisposeEnvironmentAsync();
+        }
+    }
+
+    internal virtual Task<ApiIntegrationEnvironment> StartEnvironmentAsync() =>
+        SharedApiEnvironment.StartAsync();
+
+    internal virtual ValueTask DisposeEnvironmentAsync() => ValueTask.CompletedTask;
 
     [SetUp]
-    public async Task ResetSharedStateAsync()
+    public async Task ResetStateAsync()
     {
         await _environment.ResetAsync();
         _api = _environment.CreateClient();
     }
 
     [TearDown]
-    public void DisposeClient() => _api.Dispose();
+    public void DisposeClient() => _api?.Dispose();
 
     internal async Task<AuthSessionWireResponse> RegisterAsync(RegistrationWireRequest request)
     {

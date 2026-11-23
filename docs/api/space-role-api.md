@@ -2,8 +2,8 @@
 
 Space 생성 시 등록되는 관리형 ADMIN·MEMBER·VIEWER Role의 조회 계약이다. [Space·접근제어 설계](../../.llm/api/spaces-access.md) · [Role 유즈케이스](../use-cases/space-use-cases.md#2-space-role) · [Role 저장소](../repositories/space-role-repositories.md)
 
-| ID | API | 메서드·경로 | 인증·권한 | 허용 Space 상태 | 성공 응답 |
-|---|---|---|---|---|---|
+| ID    | API                                         | 메서드·경로                                     | 인증·권한                   | 허용 Space 상태          | 성공 응답        |
+| ----- | ------------------------------------------- | ------------------------------------------ | ----------------------- | -------------------- | ------------ |
 | RL-01 | [Space Role 목록 조회](#rl-01-space-role-목록-조회) | `GET /api/v2/spaces/{spacePublicId}/roles` | Session, `MEMBERS_VIEW` | `ACTIVE`, `ARCHIVED` | 200, Role 배열 |
 
 ## RL-01 Space Role 목록 조회

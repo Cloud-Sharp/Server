@@ -106,6 +106,7 @@ public class ReplaceSpaceMemberRolesUseCaseTests : SpaceMembershipMutationTests
     [TestCase(RequestedRoleState.Missing)]
     [TestCase(RequestedRoleState.OtherSpace)]
     [TestCase(RequestedRoleState.Deleted)]
+    [TestCase(RequestedRoleState.Custom)]
     public async Task ExecuteAsync_ShouldRejectIneligibleRequestedRole(RequestedRoleState state)
     {
         // Arrange
@@ -115,6 +116,7 @@ public class ReplaceSpaceMemberRolesUseCaseTests : SpaceMembershipMutationTests
             RequestedRoleState.Missing => harness.OriginalRoles,
             RequestedRoleState.OtherSpace => [harness.KeptRole, CopyRole(harness.AddedRole, SpaceId + 1, null)],
             RequestedRoleState.Deleted => [harness.KeptRole, CopyRole(harness.AddedRole, SpaceId, Now)],
+            RequestedRoleState.Custom => [harness.KeptRole, CopyRole(harness.AddedRole, SpaceId, null, asCustom: true)],
             _ => throw new ArgumentOutOfRangeException(nameof(state)),
         };
 
@@ -167,6 +169,7 @@ public class ReplaceSpaceMemberRolesUseCaseTests : SpaceMembershipMutationTests
         Missing,
         OtherSpace,
         Deleted,
+        Custom,
     }
 
     private static IEnumerable<TestCaseData> InvalidRolePublicIds()
@@ -190,7 +193,8 @@ public class ReplaceSpaceMemberRolesUseCaseTests : SpaceMembershipMutationTests
     private static ReplaceSpaceMemberRolesCommand ReorderedCommand(Harness harness) =>
         ValidCommand(harness) with { RolePublicIds = [harness.RemovedRole.PublicId, harness.KeptRole.PublicId] };
 
-    private static SpaceRole CopyRole(SpaceRole role, long spaceId, DateTimeOffset? deletedAt) =>
-        SpaceRole.Reconstitute(role.Id, role.PublicId, spaceId, role.Name, role.NormalizedName, role.SystemKey,
-            role.Color, role.Position, role.IsManaged, role.Version, role.CreatedAt, Now, deletedAt, role.Permissions);
+    private static SpaceRole CopyRole(SpaceRole role, long spaceId, DateTimeOffset? deletedAt, bool asCustom = false) =>
+        SpaceRole.Reconstitute(role.Id, role.PublicId, spaceId, role.Name, role.NormalizedName,
+            asCustom ? null : role.SystemKey, role.Color, role.Position, role.IsManaged && !asCustom, role.Version,
+            role.CreatedAt, Now, deletedAt, role.Permissions);
 }

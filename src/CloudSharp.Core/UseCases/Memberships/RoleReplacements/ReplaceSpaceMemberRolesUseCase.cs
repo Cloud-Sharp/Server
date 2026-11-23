@@ -110,12 +110,10 @@ public sealed class ReplaceSpaceMemberRolesUseCase : IUseCase<ReplaceSpaceMember
             }
 
             var role = matches[0];
-            if (role.Id <= 0
-                || role.SpaceId != snapshot.Membership.SpaceId
-                || role.DeletedAt is not null)
+            if (!role.IsActiveManagedIn(snapshot.Membership.SpaceId))
             {
                 return Result.Fail<SpaceMembershipReadSnapshot>(
-                    SpaceMembershipError.RoleInvalid("Only persisted, non-deleted roles in the target space can be assigned."));
+                    SpaceMembershipError.RoleInvalid("Only active managed roles in the target space can be assigned."));
             }
 
             resolvedRoles.Add(role);

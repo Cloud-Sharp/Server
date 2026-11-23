@@ -278,7 +278,7 @@ public abstract class SpaceIntegrationTestBase : ApiIntegrationTestBase
         }
     }
 
-    private static async Task<string> ReadSuccessBodyAsync(
+    internal static async Task<string> ReadSuccessBodyAsync(
         HttpResponseMessage response,
         HttpStatusCode expectedStatus)
     {
@@ -288,7 +288,7 @@ public abstract class SpaceIntegrationTestBase : ApiIntegrationTestBase
         return await TestApiClient.ReadBodyAsync(response);
     }
 
-    private static T Deserialize<T>(string body) =>
+    internal static T Deserialize<T>(string body) =>
         JsonSerializer.Deserialize<T>(body, TestApiClient.JsonOptions)
         ?? throw new InvalidOperationException("The successful response body must contain JSON.");
 
