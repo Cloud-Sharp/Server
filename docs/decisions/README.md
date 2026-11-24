@@ -2,4 +2,4 @@
 
 Non-architectural decision records (product / process).
 
-- [Space 생성 멱등성 도입 시점](space-creation-idempotency.md)
+- [API 요청 멱등성과 관리자 우회 감사](api-idempotency-and-admin-audit.md)
