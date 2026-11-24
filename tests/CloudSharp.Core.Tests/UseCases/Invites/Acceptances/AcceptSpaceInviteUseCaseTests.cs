@@ -389,6 +389,47 @@ public sealed class AcceptSpaceInviteUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_WithWriteConflict_ShouldReevaluateLatestMembership()
+    {
+        var harness = ValidHarness(StoredInvite());
+        var competingMembership = StoredMembership(SpaceMembershipStatus.Active);
+        harness.UnitOfWork.SaveChangesFailureFactory = _ =>
+        {
+            harness.Memberships.Current = competingMembership;
+            return CommonError.PreconditionFailed();
+        };
+
+        var result = await harness.UseCase.ExecuteAsync(ValidCommand());
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.AlreadyMember, Is.True);
+            Assert.That(result.Value.MembershipPublicId, Is.EqualTo(competingMembership.PublicId));
+            Assert.That(harness.Transaction.RollbackCount, Is.EqualTo(1));
+            Assert.That(harness.Transaction.CommitCount, Is.EqualTo(1));
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(1));
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_WithRepeatedWriteConflict_ShouldReturnRequestConflict()
+    {
+        var harness = ValidHarness(StoredInvite());
+        harness.UnitOfWork.SaveChangesFailureFactory = _ => CommonError.PreconditionFailed();
+
+        var result = await harness.UseCase.ExecuteAsync(ValidCommand());
+
+        AssertError(result, ErrorCodes.Common.RequestConflict);
+        Assert.Multiple(() =>
+        {
+            Assert.That(harness.Transaction.RollbackCount, Is.EqualTo(2));
+            Assert.That(harness.Transaction.CommitCount, Is.Zero);
+            Assert.That(harness.UnitOfWork.SaveChangesCallCount, Is.EqualTo(2));
+        });
+    }
+
+    [Test]
     public async Task ExecuteAsync_ShouldRollbackCommitFailure()
     {
         var harness = ValidHarness(StoredInvite());

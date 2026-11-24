@@ -21,7 +21,7 @@ public sealed class RevokeSpaceInviteUseCase : IUseCase<RevokeSpaceInviteCommand
 
     public RevokeSpaceInviteUseCase() { }
 
-    internal RevokeSpaceInviteUseCase(
+    public RevokeSpaceInviteUseCase(
         ISpaceRepository spaceRepository,
         ISpaceInviteRepository inviteRepository,
         IUnitOfWork unitOfWork,

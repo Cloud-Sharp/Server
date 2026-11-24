@@ -27,6 +27,7 @@ internal static class ErrorHttpStatusCodeCatalog
             [ErrorCodes.SpaceMembership.Inactive] = HttpStatusCode.Conflict,
             [ErrorCodes.SpaceMembership.InvalidState] = HttpStatusCode.Conflict,
             [ErrorCodes.SpaceMembership.RoleInvalid] = HttpStatusCode.Conflict,
+            [ErrorCodes.SpaceInvite.InvalidState] = HttpStatusCode.Conflict,
             ["CURSOR_INVALID"] = HttpStatusCode.BadRequest,
             [ErrorCodes.Session.AuthInvalidCredentials] = HttpStatusCode.Unauthorized,
             [ErrorCodes.Session.AuthSessionInvalid] = HttpStatusCode.Unauthorized,

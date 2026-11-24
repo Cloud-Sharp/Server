@@ -2,6 +2,7 @@ using CloudSharp.Api.Auth.Authentication;
 using CloudSharp.Api.Auth.CurrentUser;
 using CloudSharp.Api.Contracts.Mapping;
 using CloudSharp.Api.Contracts.ProblemDetails;
+using CloudSharp.Api.Endpoints.Invites;
 using CloudSharp.Api.Endpoints.Memberships;
 using CloudSharp.Api.Endpoints.Spaces.Mapping;
 using CloudSharp.Api.Endpoints.Spaces.Requests;
@@ -177,6 +178,7 @@ public static class SpaceEndpoints
             .Produces<ErrorResponse>(StatusCodes.Status503ServiceUnavailable, JsonMediaType);
 
         group.MapMembershipEndpoints();
+        group.MapInviteManagementEndpoints();
         return endpoints;
     }
 

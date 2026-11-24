@@ -11,7 +11,6 @@ internal static class SpaceResultHttpMapper
 {
     private const string CursorInvalidCode = "CURSOR_INVALID";
     private const string PermissionDeniedCode = "PERMISSION_DENIED";
-    private const string ResourceNotFoundCode = "RESOURCE_NOT_FOUND";
     private const string PropertyNameMetadataKey = "PropertyName";
 
     internal static IResult ToSpaceHttpResult<T>(this Result<T> result, Func<T, IResult> onSuccess)
@@ -92,8 +91,7 @@ internal static class SpaceResultHttpMapper
         };
     }
 
-    internal static IResult NotFound() =>
-        ErrorHttpResults.FromCode(ResourceNotFoundCode, "Resource not found.");
+    internal static IResult NotFound() => ErrorHttpResults.ResourceNotFound();
 
     private static string? GetCode(IError? error) =>
         error is not null

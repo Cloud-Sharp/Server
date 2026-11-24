@@ -2,6 +2,8 @@
 
 Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다. IN-01~IN-05는 구현된 유즈케이스에 대응하며 IN-06은 폐기에 필요한 최신 ETag를 제공하는 추가 조회 계약이다. [Space·접근제어 설계](../../.llm/api/spaces-access.md) · [Invite 유즈케이스](../use-cases/space-use-cases.md#4-space-invite) · [Invite 저장소](../repositories/space-invite-repositories.md)
 
+현재 구현에서 IN-02·IN-05는 `Idempotency-Key`의 필수 여부와 형식을 검증한다. 키 저장, 중복 감지, 응답 재생, 커밋 후 복구는 후속 작업이다. 초대 관리에서 `SYSTEM_ADMIN`에도 일반 Space 접근·관리 권한을 적용한다. 감사 Outbox와 권한 우회는 함께 도입할 예정이다.
+
 `S`는 `/api/v2/spaces/{spacePublicId}`, `I`는 `S/invites/{invitePublicId}`다.
 
 | ID    | API                                 | 메서드·경로                                      | 인증·권한                     | 허용 Space 상태          | 요청                      | 성공 응답                                 |
@@ -85,5 +87,5 @@ Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다
 ## 엔드포인트 구현 시 연결할 계약
 
 - IN-01~IN-03·IN-06은 `ISpaceAuthorizationService`에서 관리 권한을 확인한다. IN-04에는 익명 정책을 적용하고 IN-05에는 세션 인증을 적용한다. IN-05에서 사용할 수 없는 토큰이 보관 상태를 드러내지 않도록 초대 유효성을 확인한 뒤 `SPACE_ARCHIVED`를 매핑한다. 수락 저장에서 발생한 초대 버전·활성 Membership 등록 경합은 롤백 후 새 트랜잭션에서 최신 상태를 평가한다. [인가 필터 설계](../../.llm/auth/aspnet-filters.md)
-- IN-01 cursor 서명에는 행위자 범위를 연결한다. 현재 Invite 목록 저장소는 Space·조회 상태·정렬·방향을 검증한다. IN-06은 저장소의 단건 조회 결과에서 별도 관리 응답과 ETag를 생성한다. [Invite 목록 저장소](../../src/CloudSharp.Infrastructure/Persistence/Repositories/SpaceInviteReader.cs)
+- IN-01 유즈케이스는 cursor가 현재 행위자에게 발급됐는지 확인한다. Invite 목록 저장소는 전달받은 저장소 cursor의 Space·조회 상태·정렬·방향을 검증한다. IN-06은 저장소의 단건 조회 결과에서 별도 관리 응답과 ETag를 생성한다. [목록 유즈케이스](../../src/CloudSharp.Core/UseCases/Invites/Listings/ListSpaceInvitesUseCase.cs) · [Invite 목록 저장소](../../src/CloudSharp.Infrastructure/Persistence/Repositories/SpaceInviteReader.cs)
 - IN-01~IN-04는 포트를 받는 생성자가 `internal`이다. 라우트를 연결할 때 DI가 필요한 포트를 공급하는 생성자를 사용하도록 등록을 맞춘다. [Invite DI 등록](../../src/CloudSharp.Api/DependencyInjection/InviteServiceCollectionExtensions.cs) · [Invite 테스트 케이스](../tests/core/space-invite-test-cases.md)

@@ -8,6 +8,8 @@ internal static class ErrorHttpResults
 {
     internal const string InvalidDetailCode = "INVALID";
 
+    internal static IResult ResourceNotFound() => FromCode("RESOURCE_NOT_FOUND", "Resource not found.");
+
     internal static IResult FromCode(string code, string message) =>
         new FailureResult(new[]
         {

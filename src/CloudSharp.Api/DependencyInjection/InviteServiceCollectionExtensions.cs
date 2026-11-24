@@ -1,5 +1,6 @@
 using CloudSharp.Core.UseCases.Invites.Acceptances;
 using CloudSharp.Core.UseCases.Invites.Creations;
+using CloudSharp.Core.UseCases.Invites.Details;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using CloudSharp.Core.UseCases.Invites.Listings;
 using CloudSharp.Core.UseCases.Invites.PublicInfo;
@@ -17,5 +18,6 @@ internal static class InviteServiceCollectionExtensions
         services.AddLoggedUseCase<RevokeSpaceInviteCommand, RevokeSpaceInviteResultDto, RevokeSpaceInviteUseCase>();
         services.AddLoggedUseCase<GetPublicSpaceInviteQuery, PublicSpaceInviteDto, GetPublicSpaceInviteUseCase>();
         services.AddLoggedUseCase<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto, AcceptSpaceInviteUseCase>();
+        services.AddLoggedUseCase<GetSpaceInviteQuery, SpaceInviteResultDto, GetSpaceInviteUseCase>();
     }
 }

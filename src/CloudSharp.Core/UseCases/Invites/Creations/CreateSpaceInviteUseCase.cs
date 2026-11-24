@@ -24,7 +24,7 @@ public sealed class CreateSpaceInviteUseCase : IUseCase<CreateSpaceInviteCommand
 
     public CreateSpaceInviteUseCase(IClock clock) => Clock = clock;
 
-    internal CreateSpaceInviteUseCase(
+    public CreateSpaceInviteUseCase(
         ISpaceRepository spaceRepository,
         ISpaceInviteRepository inviteRepository,
         ITokenIssuer tokenIssuer,

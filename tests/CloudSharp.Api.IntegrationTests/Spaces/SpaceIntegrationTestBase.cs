@@ -15,9 +15,12 @@ public abstract class SpaceIntegrationTestBase : ApiIntegrationTestBase
 {
     internal const string SpacesPath = "/api/v2/spaces";
 
-    internal async Task<SpaceTestUser> RegisterSpaceUserAsync()
+    internal Task<SpaceTestUser> RegisterSpaceUserAsync() =>
+        RegisterSpaceUserAsync(TestData.NewRegistration());
+
+    internal async Task<SpaceTestUser> RegisterSpaceUserAsync(RegistrationWireRequest registration)
     {
-        var session = await RegisterAsync(TestData.NewRegistration());
+        var session = await RegisterAsync(registration);
         var userId = await GetUserIdAsync(session.User.UserPublicId);
         return new SpaceTestUser(session.User.UserPublicId, userId, session.AccessToken);
     }
@@ -310,7 +313,7 @@ public abstract class SpaceIntegrationTestBase : ApiIntegrationTestBase
             "permissions");
     }
 
-    private static DateTimeOffset ToPersistencePrecision(DateTimeOffset value)
+    internal static DateTimeOffset ToPersistencePrecision(DateTimeOffset value)
     {
         var utc = value.ToUniversalTime();
         return new DateTimeOffset(utc.Ticks - utc.Ticks % 10, TimeSpan.Zero);

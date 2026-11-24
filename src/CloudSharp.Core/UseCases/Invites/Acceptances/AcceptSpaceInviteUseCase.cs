@@ -69,7 +69,19 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
             return Result.Fail<AcceptSpaceInviteResultDto>(CommonError.DependencyUnavailable());
         }
 
-        return await TransactionExecutor.ExecuteAsync(
+        var result = await AttemptAsync();
+        if (!IsWriteConflict(result))
+        {
+            return result;
+        }
+
+        // A losing write has rolled back before retrying against current Invite and Membership state.
+        var retried = await AttemptAsync();
+        return IsWriteConflict(retried)
+            ? Result.Fail<AcceptSpaceInviteResultDto>(CommonError.RequestConflict())
+            : retried;
+
+        Task<Result<AcceptSpaceInviteResultDto>> AttemptAsync() => TransactionExecutor.ExecuteAsync(
             ct => AcceptInTransactionAsync(command, ct),
             cancellationToken: cancellationToken);
     }
@@ -125,16 +137,16 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
             throw new InvalidOperationException("Invite target reader returned a different space.");
         }
 
-        if (space.Status != SpaceStatus.Active)
-        {
-            return Result.Fail<AcceptSpaceInviteResultDto>(SpaceAuthorizationError.StateNotAllowed(space.Status));
-        }
-
         var now = Clock.UtcNow;
         var availability = invite.CanAccept(now);
         if (availability.IsFailed)
         {
             return Result.Fail<AcceptSpaceInviteResultDto>(availability.Errors);
+        }
+
+        if (space.Status != SpaceStatus.Active)
+        {
+            return Result.Fail<AcceptSpaceInviteResultDto>(SpaceAuthorizationError.StateNotAllowed(space.Status));
         }
 
         if (space.OwnerUserId == user.Id)
@@ -226,4 +238,9 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
 
         return Result.Ok(new AcceptSpaceInviteResultDto(space.PublicId, membership.PublicId, false));
     }
+
+    private static bool IsWriteConflict(Result<AcceptSpaceInviteResultDto> result) =>
+        result.Errors.OfType<CommonError>().Any(error =>
+            error.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var code)
+            && code is ErrorCodes.Common.PreconditionFailed);
 }
