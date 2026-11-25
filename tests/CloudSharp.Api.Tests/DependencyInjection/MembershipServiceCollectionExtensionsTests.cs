@@ -135,7 +135,7 @@ public class MembershipServiceCollectionExtensionsTests
         {
             Assert.That(useCase, Is.TypeOf<LoggingUseCaseDecorator<ListSpaceMembershipsQuery, SpaceMembershipPageDto>>());
             Assert.That(repository.SearchedIds, Is.EqualTo(new[] { space.Id }));
-            Assert.That(reader.RequestedSpaces, Is.EqualTo(new[] { (space.Id, space.OwnerUserId) }));
+            Assert.That(reader.RequestedScopes, Is.EqualTo(new[] { (space.Id, space.OwnerUserId, actor.UserId) }));
             Assert.That(result.Value.Items, Is.Empty);
             Assert.That(result.Value.NextCursor, Is.Null);
         });
@@ -177,11 +177,12 @@ public class MembershipServiceCollectionExtensionsTests
 
     private sealed class MembershipReader : ISpaceMembershipReader
     {
-        public List<(long SpaceId, long OwnerUserId)> RequestedSpaces { get; } = [];
+        public List<(long SpaceId, long OwnerUserId, long RequesterUserId)> RequestedScopes { get; } = [];
 
         public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
             long spaceId,
             long ownerUserId,
+            long requesterUserId,
             string? cursor,
             int limit,
             string? sort,
@@ -189,7 +190,7 @@ public class MembershipServiceCollectionExtensionsTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            RequestedSpaces.Add((spaceId, ownerUserId));
+            RequestedScopes.Add((spaceId, ownerUserId, requesterUserId));
             return Task.FromResult(Result.Ok(new SpaceMembershipReadPage([], null)));
         }
 

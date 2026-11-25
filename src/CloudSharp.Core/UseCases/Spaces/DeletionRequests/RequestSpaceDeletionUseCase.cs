@@ -1,6 +1,5 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
@@ -20,7 +19,7 @@ public sealed class RequestSpaceDeletionUseCase : IUseCase<RequestSpaceDeletionC
 
     public RequestSpaceDeletionUseCase() { }
 
-    internal RequestSpaceDeletionUseCase(
+    public RequestSpaceDeletionUseCase(
         ISpaceRepository spaceRepository,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
@@ -42,11 +41,6 @@ public sealed class RequestSpaceDeletionUseCase : IUseCase<RequestSpaceDeletionC
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<SpaceDeletionAcceptedDto>();
-        }
-
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceDeletionAcceptedDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
         }
 
         if (SpaceRepository is null || UnitOfWork is null || TransactionExecutor is null || Clock is null)

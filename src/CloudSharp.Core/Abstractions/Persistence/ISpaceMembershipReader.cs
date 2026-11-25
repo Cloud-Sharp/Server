@@ -6,9 +6,11 @@ namespace CloudSharp.Core.Abstractions.Persistence;
 public interface ISpaceMembershipReader
 {
     /// <summary>현재 OWNER를 제외한 뒤 정렬과 cursor 페이지 제한을 적용한다.</summary>
+    /// <remarks>Cursor는 요청자, Space, 현재 OWNER, 정렬과 방향에 묶인다.</remarks>
     Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
         long spaceId,
         long ownerUserId,
+        long requesterUserId,
         string? cursor,
         int limit,
         string? sort,

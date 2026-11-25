@@ -1,3 +1,5 @@
+using CloudSharp.Api.Auth.Authorization;
+using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.UseCases.Spaces.Archives;
 using CloudSharp.Core.UseCases.Spaces.Creations;
 using CloudSharp.Core.UseCases.Spaces.DeletionRequests;
@@ -17,6 +19,7 @@ internal static class SpaceServiceCollectionExtensions
 {
     internal static void AddSpaceServices(this IServiceCollection services)
     {
+        services.AddSingleton<ISpaceListAccessPolicy, SessionSpaceListAccessPolicy>();
         services.AddLoggedUseCase<ListSpacesQuery, SpacePageDto, ListSpacesUseCase>();
         services.AddLoggedUseCase<CreateSpaceCommand, SpaceResultDto, CreateSpaceUseCase>();
         services.AddLoggedUseCase<GetSpaceQuery, SpaceResultDto, GetSpaceUseCase>();

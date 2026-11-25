@@ -8,7 +8,7 @@
 - 필드 검증 실패는 `ErrorCode`와 `PropertyName`을 함께 단언한다. 입력 객체 자체가 `null`이면 `ArgumentNullException`이 발생한다. 입력 검증과 행위자 유형 검사에서 거부되면 업무 조회, 토큰 발급, 쓰기를 시작하지 않는다.
 - 쓰기 성공은 등록한 변경, 관찰한 이전 버전, 저장과 커밋을 각각 확인한다. 등록·저장·커밋 중 실패하면 성공 DTO 없이 실패를 반환하고, 시작한 트랜잭션의 롤백을 확인한다. 이 호출은 Core에서 테스트 더블로 검증한다. 실제 데이터의 원자성과 경합은 PostgreSQL 통합 테스트 시나리오다.
 - 표의 HTTP 상태·헤더·커서 서명·멱등성·요청 관측 항목은 API 검증 시나리오다. 토큰과 URL이 포함된 Core DTO의 문자열 마스킹은 유닛 테스트에서 확인한다.
-- IN-01~IN-03에서 유효한 Session과 `INVITES_MANAGE`가 있는 OWNER·활성 멤버를 허용한다. 기본 접근 자격은 있으나 관리 권한이 없으면 Core `AUTH_SPACE_PERMISSION_DENIED`, API 403이다. 비멤버와 미존재 Space는 동일한 404다. Session이 없거나 MCP로 호출하면 401이다. Core에 직접 MCP 인가 컨텍스트를 전달하면 `AUTH_TOKEN_TYPE_NOT_ALLOWED`를 반환한다.
+- IN-01·IN-02·IN-03·IN-06의 API 인가 테스트는 유효한 Session과 `INVITES_MANAGE`가 있는 OWNER·활성 멤버를 허용하는지 확인한다. 기본 접근 자격은 있으나 관리 권한이 없으면 403이다. 비멤버와 미존재 Space는 동일한 404다. Session이 없거나 MCP로 호출하면 401이다. 관리 유즈케이스 테스트는 API에서 인가를 마친 컨텍스트를 사용한다.
 - IN-01~IN-03의 인가 직후 Space가 사라지면 Core는 `AUTH_SPACE_NOT_FOUND`, 허용하지 않는 상태로 바뀌면 `AUTH_SPACE_STATE_NOT_ALLOWED`를 검증한다. API는 `DELETING`·`DELETED`를 404로 마스킹하고, `ARCHIVED`에서 IN-02·IN-03을 호출하면 409 `SPACE_ARCHIVED`를 반환한다.
 
 ## 도메인 모델

@@ -1,10 +1,8 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Memberships.Dtos;
 using FluentResults;
@@ -45,16 +43,6 @@ public sealed class RemoveSpaceMemberUseCase : IUseCase<RemoveSpaceMemberCommand
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<RemoveSpaceMemberResultDto>();
-        }
-
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<RemoveSpaceMemberResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!command.Space.EffectivePermissions.Contains(SpacePermission.MembersManage))
-        {
-            return Result.Fail<RemoveSpaceMemberResultDto>(SpaceAuthorizationError.PermissionDenied());
         }
 
         if (SpaceRepository is null || MembershipRepository is null || UnitOfWork is null

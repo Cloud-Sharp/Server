@@ -39,7 +39,7 @@ public class ListSpaceMembershipsUseCaseTests
         {
             Assert.That(reader.Requests, Is.EqualTo(new[]
             {
-                new PageRequest(persistedSpace.Id, persistedSpace.OwnerUserId, query.Cursor, query.Limit,
+                new PageRequest(persistedSpace.Id, persistedSpace.OwnerUserId, query.Space.UserId, query.Cursor, query.Limit,
                     query.Sort, query.Descending),
             }));
             Assert.That(result.Value.NextCursor, Is.EqualTo("next-page"));
@@ -148,7 +148,14 @@ public class ListSpaceMembershipsUseCaseTests
         Assert.That(result.Errors.Single().Metadata[CloudSharpError.ErrorCodeMetadataKey], Is.EqualTo(code));
     }
 
-    private sealed record PageRequest(long SpaceId, long OwnerUserId, string? Cursor, int Limit, string? Sort, bool Descending);
+    private sealed record PageRequest(
+        long SpaceId,
+        long OwnerUserId,
+        long RequesterUserId,
+        string? Cursor,
+        int Limit,
+        string? Sort,
+        bool Descending);
 
     private sealed class MembershipReader(Result<SpaceMembershipReadPage> result) : ISpaceMembershipReader
     {
@@ -157,13 +164,14 @@ public class ListSpaceMembershipsUseCaseTests
         public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
             long spaceId,
             long ownerUserId,
+            long requesterUserId,
             string? cursor,
             int limit,
             string? sort,
             bool descending,
             CancellationToken cancellationToken = default)
         {
-            Requests.Add(new PageRequest(spaceId, ownerUserId, cursor, limit, sort, descending));
+            Requests.Add(new PageRequest(spaceId, ownerUserId, requesterUserId, cursor, limit, sort, descending));
             return Task.FromResult(result);
         }
 

@@ -52,7 +52,7 @@ public static class SessionSpaceAuthorizationPolicy
 
         var actor = query.Actor;
         var membership = snapshot.Membership;
-        var isSystemAdmin = actor.SystemRole == SystemRole.SystemAdmin;
+        var isSystemAdmin = actor.SystemRole == SystemRole.SystemAdmin && query.AllowSystemAdminBypass;
         var isOwner = space.OwnerUserId == actor.UserId;
         var isActiveMember = membership is not null
             && membership.Id > 0

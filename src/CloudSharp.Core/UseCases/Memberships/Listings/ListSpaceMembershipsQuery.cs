@@ -30,8 +30,10 @@ internal sealed class ListSpaceMembershipsQueryValidator : AbstractValidator<Lis
             .WithMessage("Cursor must not be empty or whitespace.");
 
         RuleFor(query => query.Sort)
-            .Must(sort => sort is null || !string.IsNullOrWhiteSpace(sort))
+            .Must(sort => sort is null
+                || string.Equals(sort, "joinedAt", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(sort, "updatedAt", StringComparison.OrdinalIgnoreCase))
             .WithErrorCode(ErrorCodes.Space.ListSortInvalid)
-            .WithMessage("Sort must not be empty or whitespace.");
+            .WithMessage("Sort must be joinedAt or updatedAt.");
     }
 }

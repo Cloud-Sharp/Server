@@ -1,6 +1,9 @@
+using System.Buffers.Text;
+using System.Security.Cryptography;
+using System.Text;
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Invites;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
@@ -17,6 +20,8 @@ namespace CloudSharp.Core.Tests.UseCases.Invites.Listings;
 [TestFixture]
 public sealed class ListSpaceInvitesUseCaseTests
 {
+    private const string RepositoryCursor = "cmVhZGVyLW5leHQtcGFnZQ";
+
     [TestCase(SpaceStatus.Active, false)]
     [TestCase(SpaceStatus.Archived, false)]
     [TestCase(SpaceStatus.Active, true)]
@@ -28,8 +33,8 @@ public sealed class ListSpaceInvitesUseCaseTests
         var invite = TestSpaceInvites.Stored(spaceId: persistedSpace.Id);
         var otherSpaceInvite = TestSpaceInvites.Stored(id: 101, publicId: TestSpaceInvites.PublicId(101), spaceId: 8);
         var harness = new Harness(persistedSpace, invite, otherSpaceInvite);
-        harness.Invites.NextCursor = "next-page";
-        var query = new ListSpaceInvitesQuery(Authorize(authorizedSpace, owner: owner), "current-page", 1, "CreatedAt", false);
+        harness.Invites.NextCursor = RepositoryCursor;
+        var query = new ListSpaceInvitesQuery(Authorize(authorizedSpace, owner: owner), Limit: 1, Sort: "CreatedAt", Descending: false);
 
         var result = await harness.UseCase.ExecuteAsync(query);
 
@@ -39,9 +44,10 @@ public sealed class ListSpaceInvitesUseCaseTests
         {
             Assert.That(harness.Invites.Requests, Is.EqualTo(new[]
             {
-                new PageRequest(persistedSpace.Id, query.Cursor, query.Limit, query.Sort, query.Descending),
+                new PageRequest(persistedSpace.Id, null, query.Limit, query.Sort, query.Descending),
             }));
-            Assert.That(result.Value.NextCursor, Is.EqualTo("next-page"));
+            Assert.That(result.Value.NextCursor, Does.Match("^[A-Za-z0-9_-]+$"));
+            Assert.That(result.Value.NextCursor, Is.Not.EqualTo(RepositoryCursor));
             Assert.That(item.InvitePublicId, Is.EqualTo(invite.PublicId));
             Assert.That(item.Status, Is.EqualTo(invite.Status));
             Assert.That(item.ExpiresAt, Is.EqualTo(invite.ExpiresAt));
@@ -59,6 +65,59 @@ public sealed class ListSpaceInvitesUseCaseTests
                     nameof(SpaceInviteDto.UpdatedAt), nameof(SpaceInviteDto.RevokedAt),
                 }));
         });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldPassOriginalCursorForSameRequester()
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var harness = new Harness(space);
+        var query = new ListSpaceInvitesQuery(Authorize(space));
+        harness.Invites.NextCursor = RepositoryCursor;
+        var firstPage = await harness.UseCase.ExecuteAsync(query);
+        Assert.That(firstPage.IsSuccess, Is.True);
+        Assert.That(firstPage.Value.NextCursor, Is.Not.Null.And.Not.Empty);
+        harness.Invites.NextCursor = null;
+
+        var result = await harness.UseCase.ExecuteAsync(query with { Cursor = firstPage.Value.NextCursor });
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.That(harness.Invites.Requests, Is.EqualTo(new[]
+        {
+            new PageRequest(space.Id, null, query.Limit, query.Sort, query.Descending),
+            new PageRequest(space.Id, RepositoryCursor, query.Limit, query.Sort, query.Descending),
+        }));
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldRejectCursorForDifferentAuthorizedRequester()
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var harness = new Harness(space);
+        harness.Invites.NextCursor = RepositoryCursor;
+        var firstPage = await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(Authorize(space)));
+        Assert.That(firstPage.IsSuccess, Is.True);
+        Assert.That(firstPage.Value.NextCursor, Is.Not.Null.And.Not.Empty);
+        harness.Invites.Requests.Clear();
+        var otherRequester = Authorize(space, requesterUserId: 43);
+
+        var result = await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(otherRequester, firstPage.Value.NextCursor));
+
+        AssertValidationError(result, ErrorCodes.Space.ListCursorInvalid, nameof(ListSpaceInvitesQuery.Cursor));
+        Assert.That(harness.Invites.Requests, Is.Empty);
+    }
+
+    [TestCase(RepositoryCursor)]
+    [TestCase("!malformed!")]
+    public async Task ExecuteAsync_ShouldRejectUnsignedOrMalformedCursor(string cursor)
+    {
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var harness = new Harness(space);
+
+        var result = await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(Authorize(space), cursor));
+
+        AssertValidationError(result, ErrorCodes.Space.ListCursorInvalid, nameof(ListSpaceInvitesQuery.Cursor));
+        Assert.That(harness.Invites.Requests, Is.Empty);
     }
 
     [TestCase(true)]
@@ -86,7 +145,8 @@ public sealed class ListSpaceInvitesUseCaseTests
         var space = TestSpaceAuthorizationSnapshots.Space();
         var harness = new Harness(space);
 
-        await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(Authorize(space)));
+        var context = Authorize(space);
+        await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(context));
 
         Assert.That(harness.Invites.Requests, Is.EqualTo(new[]
         {
@@ -100,12 +160,12 @@ public sealed class ListSpaceInvitesUseCaseTests
     {
         var space = TestSpaceAuthorizationSnapshots.Space();
         var harness = new Harness(space);
-        var query = new ListSpaceInvitesQuery(Authorize(space), "next-cursor", limit, "PublicId", false);
+        var query = new ListSpaceInvitesQuery(Authorize(space), Limit: limit, Sort: "createdAt", Descending: false);
 
         await harness.UseCase.ExecuteAsync(query);
 
         Assert.That(harness.Invites.Requests.Single(),
-            Is.EqualTo(new PageRequest(space.Id, query.Cursor, limit, query.Sort, false)));
+            Is.EqualTo(new PageRequest(space.Id, null, limit, query.Sort, false)));
     }
 
     [Test]
@@ -141,31 +201,6 @@ public sealed class ListSpaceInvitesUseCaseTests
 
         AssertError(result, errorCode);
         Assert.That(harness.Invites.Requests, Is.Empty);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldRejectMissingManagePermission()
-    {
-        var space = TestSpaceAuthorizationSnapshots.Space();
-        var harness = new Harness(space);
-        var context = Authorize(space, SpacePermission.MembersView, requirePermission: false);
-
-        var result = await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(context));
-
-        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldRejectMcpContext()
-    {
-        var space = TestSpaceAuthorizationSnapshots.Space();
-        var harness = new Harness(space);
-
-        var result = await harness.UseCase.ExecuteAsync(new ListSpaceInvitesQuery(McpContext(space)));
-
-        AssertError(result, ErrorCodes.Auth.TokenTypeNotAllowed);
-        AssertNoDependencyCalls(harness);
     }
 
     [Test]
@@ -214,26 +249,21 @@ public sealed class ListSpaceInvitesUseCaseTests
 
     private static AuthorizedSpaceContext Authorize(
         Space space,
-        SpacePermission permission = SpacePermission.InvitesManage,
-        bool requirePermission = true,
-        bool owner = false)
+        bool owner = false,
+        long? requesterUserId = null)
     {
-        var actor = TestSpaceAuthorizationSnapshots.Session(userId: owner ? space.OwnerUserId : 42);
+        var actor = TestSpaceAuthorizationSnapshots.Session(userId: requesterUserId ?? (owner ? space.OwnerUserId : 42));
         var membership = owner
             ? null
             : TestSpaceAuthorizationSnapshots.Membership(spaceId: space.Id, userId: actor.UserId);
-        var role = TestSpaceAuthorizationSnapshots.Role(spaceId: space.Id, permissions: [permission]);
-        SpacePermission[] required = requirePermission ? [SpacePermission.InvitesManage] : [];
+        var role = TestSpaceAuthorizationSnapshots.Role(
+            spaceId: space.Id, permissions: [SpacePermission.InvitesManage]);
         SpaceRole[] roles = owner ? [] : [role];
-        var query = new SpaceAuthorizationQuery(actor, space.PublicId, required,
+        var query = new SpaceAuthorizationQuery(actor, space.PublicId, [SpacePermission.InvitesManage],
             [SpaceStatus.Active, SpaceStatus.Archived]);
         return SessionSpaceAuthorizationPolicy.Evaluate(
             query, new SpaceAuthorizationSnapshot(space, membership, roles)).Value;
     }
-
-    private static AuthorizedSpaceContext McpContext(Space space) =>
-        new(space.Id, space.PublicId, ActorType.Mcp, 42, null,
-            [SpacePermission.InvitesManage], SpaceAuthorizationSource.Owner);
 
     private static void AssertError(Result<SpaceInvitePageDto> result, string errorCode)
     {
@@ -267,7 +297,7 @@ public sealed class ListSpaceInvitesUseCaseTests
             }
 
             Invites = new InviteReader(invites);
-            UseCase = new ListSpaceInvitesUseCase(Spaces, Invites);
+            UseCase = new ListSpaceInvitesUseCase(Spaces, Invites, new TokenHasher());
         }
 
         public FakeSpaceRepository Spaces { get; } = new();
@@ -309,5 +339,14 @@ public sealed class ListSpaceInvitesUseCaseTests
                 .ToArray();
             return Task.FromResult(Result.Ok(new SpaceInviteReadPage(page, NextCursor)));
         }
+    }
+
+    private sealed class TokenHasher : ITokenHasher
+    {
+        public string Hash(string plainToken) =>
+            Base64Url.EncodeToString(SHA256.HashData(Encoding.UTF8.GetBytes(plainToken)));
+
+        public bool Verify(string plainToken, string expectedHashedToken) =>
+            string.Equals(Hash(plainToken), expectedHashedToken, StringComparison.Ordinal);
     }
 }

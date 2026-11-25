@@ -16,4 +16,7 @@ public sealed class CommonError : CloudSharpError
 
     public static CommonError PreconditionRequired() =>
         new(new ErrorDefinition(ErrorCodes.Common.PreconditionRequired), "An If-Match header is required.");
+
+    public static CommonError RequestConflict() =>
+        new(new ErrorDefinition(ErrorCodes.Common.RequestConflict), "The request conflicts with the current resource state.");
 }

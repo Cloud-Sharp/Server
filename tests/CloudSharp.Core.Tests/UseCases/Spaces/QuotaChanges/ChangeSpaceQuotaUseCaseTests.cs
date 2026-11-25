@@ -141,24 +141,6 @@ public class ChangeSpaceQuotaUseCaseTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldRejectMcpActorBeforeLookup()
-    {
-        // Arrange
-        var space = StoredSpace(SpaceStatus.Active);
-        var context = McpContext(space);
-        var harness = new Harness(space);
-        var command = new ChangeSpaceQuotaCommand(context, space.Version, 60);
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(command);
-
-        // Assert
-        Assert.That(result.IsFailed, Is.True);
-        Assert.That(FirstErrorCode(result), Is.EqualTo(ErrorCodes.Auth.TokenTypeNotAllowed));
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
     public async Task ExecuteAsync_ShouldReturnSpaceNotFound()
     {
         // Arrange
@@ -397,16 +379,6 @@ public class ChangeSpaceQuotaUseCaseTests
         var snapshot = new SpaceAuthorizationSnapshot(space, null, []);
         return SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot).Value;
     }
-
-    private static AuthorizedSpaceContext McpContext(Space space) =>
-        new(
-            space.Id,
-            space.PublicId,
-            ActorType.Mcp,
-            space.OwnerUserId,
-            null,
-            [SpacePermission.SpaceView],
-            SpaceAuthorizationSource.Owner);
 
     private static void AssertSuccessfulWrite(
         Harness harness,

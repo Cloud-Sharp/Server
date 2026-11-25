@@ -20,7 +20,7 @@ public sealed class GetPublicSpaceInviteUseCase : IUseCase<GetPublicSpaceInviteQ
 
     public GetPublicSpaceInviteUseCase() { }
 
-    internal GetPublicSpaceInviteUseCase(
+    public GetPublicSpaceInviteUseCase(
         ITokenHasher tokenHasher,
         ISpaceInviteRepository inviteRepository,
         ISpaceRepository spaceRepository,

@@ -10,4 +10,15 @@ public sealed record SpaceInviteDto(
     int UseCount,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
-    DateTimeOffset? RevokedAt);
+    DateTimeOffset? RevokedAt)
+{
+    internal static SpaceInviteDto FromInvite(SpaceInvite invite) => new(
+        invite.PublicId,
+        invite.Status,
+        invite.ExpiresAt,
+        invite.MaxUses,
+        invite.UseCount,
+        invite.CreatedAt,
+        invite.UpdatedAt,
+        invite.RevokedAt);
+}

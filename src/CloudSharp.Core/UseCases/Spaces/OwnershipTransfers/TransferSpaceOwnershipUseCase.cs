@@ -1,6 +1,5 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
@@ -53,11 +52,6 @@ public sealed class TransferSpaceOwnershipUseCase : IUseCase<TransferSpaceOwners
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<SpaceResultDto>();
-        }
-
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
         }
 
         if (DetailsReader is null || UserRepository is null || SpaceRepository is null
@@ -227,9 +221,10 @@ public sealed class TransferSpaceOwnershipUseCase : IUseCase<TransferSpaceOwners
             return Result.Fail<SpaceResultDto>(saveResult.Errors);
         }
 
-        var accessSource = currentOwner.SystemRole == SystemRole.SystemAdmin
-            ? SpaceAuthorizationSource.SystemAdminBypass
-            : SpaceAuthorizationSource.Membership;
+        var accessSource = context.AuthorizationSource == SpaceAuthorizationSource.SystemAdminBypass
+            && currentOwner.SystemRole == SystemRole.SystemAdmin
+                ? SpaceAuthorizationSource.SystemAdminBypass
+                : SpaceAuthorizationSource.Membership;
         return Result.Ok(CreateResult(
             snapshot,
             newOwner.PublicId,

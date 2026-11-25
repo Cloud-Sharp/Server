@@ -126,28 +126,6 @@ public class ReactivateSpaceUseCaseTests
         });
     }
 
-    [Test]
-    public async Task ExecuteAsync_ShouldDenyInsufficientPermissionWithoutDependencyCalls()
-    {
-        // Arrange
-        var space = StoredSpace(SpaceStatus.Archived);
-        var context = MemberContext(
-            space,
-            grantedPermissions: [SpacePermission.SpaceView],
-            requiredPermissions: [SpacePermission.SpaceView]);
-        var harness = new Harness(space);
-        var command = new ReactivateSpaceCommand(context, space.Version);
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(command);
-
-        // Assert
-        Assert.That(context.EffectivePermissions, Does.Not.Contain(SpacePermission.SpaceUpdate));
-        Assert.That(result.IsFailed, Is.True);
-        Assert.That(FirstErrorCode(result), Is.EqualTo(ErrorCodes.Auth.SpacePermissionDenied));
-        AssertNoDependencyCalls(harness);
-    }
-
     [TestCase(SpaceStatus.Active)]
     [TestCase(SpaceStatus.Deleting)]
     [TestCase(SpaceStatus.Deleted)]
@@ -273,10 +251,7 @@ public class ReactivateSpaceUseCaseTests
             createdAt: Now.AddDays(-7),
             updatedAt: Now.AddDays(-1));
 
-    private static AuthorizedSpaceContext MemberContext(
-        Space space,
-        IEnumerable<SpacePermission>? grantedPermissions = null,
-        IEnumerable<SpacePermission>? requiredPermissions = null)
+    private static AuthorizedSpaceContext MemberContext(Space space)
     {
         var actor = TestSpaceAuthorizationSnapshots.Session(userId: 42);
         var membership = TestSpaceAuthorizationSnapshots.Membership(
@@ -284,11 +259,11 @@ public class ReactivateSpaceUseCaseTests
             spaceId: space.Id);
         var role = TestSpaceAuthorizationSnapshots.Role(
             spaceId: space.Id,
-            permissions: grantedPermissions ?? [SpacePermission.SpaceView, SpacePermission.SpaceUpdate]);
+            permissions: [SpacePermission.SpaceView, SpacePermission.SpaceUpdate]);
         var snapshot = new SpaceAuthorizationSnapshot(space, membership, [role]);
         var query = TestSpaceAuthorizationSnapshots.Query(
             actor: actor,
-            permissions: requiredPermissions ?? [SpacePermission.SpaceUpdate],
+            permissions: [SpacePermission.SpaceUpdate],
             statuses: [SpaceStatus.Archived],
             spacePublicId: space.PublicId);
         return SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot).Value;

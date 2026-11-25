@@ -1,11 +1,15 @@
 using CloudSharp.Api.DependencyInjection;
 using CloudSharp.Api.Endpoints.Auth;
+using CloudSharp.Api.Endpoints.Invites;
+using CloudSharp.Api.Endpoints.Spaces;
 using CloudSharp.Api.Endpoints.Users;
 using CloudSharp.Api.Middleware;
+using CloudSharp.Api.Observability;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+builder.Services.AddInviteCapabilityLogProtection();
 builder.Services.AddCloudSharpApplication(builder.Configuration);
 builder.Services.AddCloudSharpHttp();
 
@@ -19,6 +23,7 @@ if (app.Environment.IsDevelopment())
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<ErrorHandlingMiddleware>();
 app.UseStatusCodePages(UnsupportedMediaTypeStatusCodeHandler.HandleAsync);
+app.UseMiddleware<InviteCapabilityProtectionMiddleware>();
 app.UseHttpsRedirection();
 app.UseRouting();
 app.UseMiddleware<NoStoreResponseMiddleware>();
@@ -27,5 +32,7 @@ app.UseAuthorization();
 
 app.MapAuthEndpoints();
 app.MapUserEndpoints();
+app.MapSpaceEndpoints();
+app.MapInviteCapabilityEndpoints();
 
 app.Run();

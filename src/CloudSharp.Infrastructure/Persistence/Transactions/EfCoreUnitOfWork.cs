@@ -34,6 +34,9 @@ internal sealed class EfCoreUnitOfWork(AppDbContext dbContext) : IUnitOfWork
             => UserError.EmailConflict(),
         DbConstraintViolationError { Kind: DbConstraintKind.Unique, ConstraintName: "ux_users_normalized_user_name" }
             => UserError.NameConflict(),
+        DbConstraintViolationError { Kind: DbConstraintKind.Unique, ConstraintName: "ux_space_memberships_current_space_user" } conflict
+            when conflict.OriginalException.Entries.Any(entry => entry.State == EntityState.Added && entry.Entity is SpaceMembershipEntity)
+            => CommonError.PreconditionFailed(),
         DbConstraintViolationError constraintError when IsMembershipRoleWriteConflict(constraintError)
             => CommonError.PreconditionFailed(),
         _ => error,

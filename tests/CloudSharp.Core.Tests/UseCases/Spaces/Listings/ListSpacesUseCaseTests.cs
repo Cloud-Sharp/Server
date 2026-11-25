@@ -1,8 +1,10 @@
+using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
+using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.Tests.TestSupport.Builders;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
@@ -17,6 +19,7 @@ namespace CloudSharp.Core.Tests.UseCases.Spaces.Listings;
 public class ListSpacesUseCaseTests
 {
     private const long UserId = 42;
+    private static readonly ISpaceListAccessPolicy AccessPolicy = new TestSpaceListAccessPolicy();
 
     [Test]
     public async Task ExecuteAsync_ShouldFilterCandidatesBeforeApplyingPageLimit()
@@ -34,7 +37,7 @@ public class ListSpacesUseCaseTests
             Owned(8),
         };
         var reader = new FakeSpaceListCandidateReader(candidates, maxBatchSize: 2);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act
         var result = await useCase.ExecuteAsync(new ListSpacesQuery(Actor(), Limit: 2));
@@ -62,6 +65,31 @@ public class ListSpacesUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_SystemAdministratorWithoutBypass_ShouldFilterOutsideSpaces()
+    {
+        // Arrange
+        var actor = TestSpaceAuthorizationSnapshots.Session(UserId, SystemRole.SystemAdmin);
+        var candidates = new[] { Owned(40), WithoutAccess(41), Member(42) };
+        var reader = new FakeSpaceListCandidateReader(candidates, maxBatchSize: 3);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
+
+        // Act
+        var result = await useCase.ExecuteAsync(new ListSpacesQuery(actor));
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(
+                result.Value.Items.Select(item => item.SpacePublicId),
+                Is.EqualTo(new[] { PublicId(40), PublicId(42) }));
+            Assert.That(result.Value.Items[0].MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Owner));
+            Assert.That(result.Value.Items[1].MyAccess.Source, Is.EqualTo(SpaceAuthorizationSource.Membership));
+            Assert.That(result.Value.NextCursor, Is.Null);
+        });
+    }
+
+    [Test]
     public async Task ExecuteAsync_ShouldNotEmitCursorForInaccessibleRemainder()
     {
         // Arrange
@@ -72,7 +100,7 @@ public class ListSpacesUseCaseTests
             Owned(11, SpaceStatus.Deleting),
         };
         var reader = new FakeSpaceListCandidateReader(candidates, maxBatchSize: 1);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act
         var result = await useCase.ExecuteAsync(new ListSpacesQuery(Actor(), Limit: 1));
@@ -93,7 +121,7 @@ public class ListSpacesUseCaseTests
         // Arrange
         var candidates = new[] { Owned(10), Member(11), Owned(12) };
         var reader = new FakeSpaceListCandidateReader(candidates, maxBatchSize: 2);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act
         var firstPage = await useCase.ExecuteAsync(new ListSpacesQuery(Actor(), Limit: 2));
@@ -129,7 +157,7 @@ public class ListSpacesUseCaseTests
             Owned(22, SpaceStatus.Deleting),
         };
         var reader = new FakeSpaceListCandidateReader(candidates, maxBatchSize: 2);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act
         var result = await useCase.ExecuteAsync(new ListSpacesQuery(Actor(), Limit: 2));
@@ -166,7 +194,7 @@ public class ListSpacesUseCaseTests
     {
         // Arrange
         var reader = new ScriptedSpaceListCandidateReader(pages);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act & Assert
         Assert.ThrowsAsync<InvalidOperationException>(async () =>
@@ -179,7 +207,7 @@ public class ListSpacesUseCaseTests
     {
         // Arrange
         var reader = new FakeSpaceListCandidateReader([]);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act
         var result = await useCase.ExecuteAsync(new ListSpacesQuery(Actor(), Limit: limit));
@@ -195,7 +223,7 @@ public class ListSpacesUseCaseTests
     {
         // Arrange
         var reader = new FakeSpaceListCandidateReader([]);
-        var useCase = new ListSpacesUseCase(reader);
+        var useCase = new ListSpacesUseCase(reader, AccessPolicy);
 
         // Act
         var result = await useCase.ExecuteAsync(new ListSpacesQuery(Actor(), Cursor: cursor));
@@ -203,6 +231,17 @@ public class ListSpacesUseCaseTests
         // Assert
         AssertValidationError(result, ErrorCodes.Space.ListCursorInvalid, nameof(ListSpacesQuery.Cursor));
         Assert.That(reader.Reads, Is.Empty);
+    }
+
+    private sealed class TestSpaceListAccessPolicy : ISpaceListAccessPolicy
+    {
+        public AuthorizedSpaceContext? Evaluate(CurrentActor actor, SpaceAuthorizationSnapshot snapshot)
+        {
+            var query = new SpaceAuthorizationQuery(
+                actor, snapshot.Space.PublicId, [], [SpaceStatus.Active, SpaceStatus.Archived]);
+            var result = SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot);
+            return result.IsSuccess ? result.Value : null;
+        }
     }
 
     private sealed class ScriptedSpaceListCandidateReader(IReadOnlyList<SpaceListCandidatePage> pages)

@@ -1,5 +1,4 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
@@ -46,33 +45,6 @@ public abstract class SpaceMembershipMutationTests
 
         AssertError(result, errorCode);
         Assert.That(result.Errors.Single().Metadata["PropertyName"], Is.EqualTo(propertyName));
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldRequireSession()
-    {
-        var harness = new Harness(InitialStatus);
-        var session = harness.Context;
-        var mcp = new AuthorizedSpaceContext(
-            session.SpaceId, session.SpacePublicId, ActorType.Mcp, session.UserId,
-            session.MembershipId, session.EffectivePermissions, session.AuthorizationSource);
-
-        var result = await ExecuteAsync(harness, mcp, harness.Original.PublicId, harness.Original.Version);
-
-        AssertError(result, ErrorCodes.Auth.TokenTypeNotAllowed);
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldRequireMembersManage()
-    {
-        var harness = new Harness(InitialStatus);
-        var context = Authorize(SpacePermission.MembersView);
-
-        var result = await ExecuteAsync(harness, context, harness.Original.PublicId, harness.Original.Version);
-
-        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
         AssertNoDependencyCalls(harness);
     }
 
@@ -273,13 +245,14 @@ public abstract class SpaceMembershipMutationTests
         return membership;
     }
 
-    private static AuthorizedSpaceContext Authorize(SpacePermission permission)
+    private static AuthorizedSpaceContext Authorize()
     {
         var actor = TestSpaceAuthorizationSnapshots.Session();
         var space = TestSpaceAuthorizationSnapshots.Space(id: SpaceId, version: 8);
         var membership = TestSpaceAuthorizationSnapshots.Membership(userId: actor.UserId, spaceId: space.Id);
-        var role = TestSpaceAuthorizationSnapshots.Role(spaceId: space.Id, permissions: [permission]);
-        var query = TestSpaceAuthorizationSnapshots.Query(actor, [permission], [SpaceStatus.Active], space.PublicId);
+        var role = TestSpaceAuthorizationSnapshots.Role(spaceId: space.Id, permissions: [SpacePermission.MembersManage]);
+        var query = TestSpaceAuthorizationSnapshots.Query(actor, [SpacePermission.MembersManage],
+            [SpaceStatus.Active], space.PublicId);
         return SessionSpaceAuthorizationPolicy.Evaluate(query, new SpaceAuthorizationSnapshot(space, membership, [role])).Value;
     }
 
@@ -324,7 +297,7 @@ public abstract class SpaceMembershipMutationTests
             };
         }
 
-        public AuthorizedSpaceContext Context { get; } = Authorize(SpacePermission.MembersManage);
+        public AuthorizedSpaceContext Context { get; } = Authorize();
         public SpaceMembership Original { get; }
         public SpaceRole KeptRole { get; } = ManagedRole(101, "01977b5a-a709-7470-a957-1c707dbbc301", SpaceRoleSystemKey.Member);
         public SpaceRole RemovedRole { get; } = ManagedRole(102, "01977b5a-a709-7470-a957-1c707dbbc302", SpaceRoleSystemKey.Viewer);
@@ -363,7 +336,7 @@ public abstract class SpaceMembershipMutationTests
             }
 
             public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
-                long spaceId, long ownerUserId, string? cursor, int limit, string? sort, bool descending,
+                long spaceId, long ownerUserId, long requesterUserId, string? cursor, int limit, string? sort, bool descending,
                 CancellationToken cancellationToken = default) =>
                 throw new InvalidOperationException("Membership mutations read a single target.");
         }

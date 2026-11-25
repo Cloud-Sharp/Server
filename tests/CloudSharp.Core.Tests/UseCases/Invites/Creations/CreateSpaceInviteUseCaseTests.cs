@@ -1,5 +1,4 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Invites;
@@ -165,33 +164,6 @@ public sealed class CreateSpaceInviteUseCaseTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldRejectMissingManagePermission()
-    {
-        var space = TestSpaceAuthorizationSnapshots.Space();
-        var harness = new Harness(space);
-        var context = Authorize(space, SpacePermission.MembersView, requirePermission: false);
-
-        var result = await harness.UseCase.ExecuteAsync(
-            new CreateSpaceInviteCommand(context, Now.AddDays(1), 1));
-
-        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldRejectMcpContext()
-    {
-        var space = TestSpaceAuthorizationSnapshots.Space();
-        var harness = new Harness(space);
-
-        var result = await harness.UseCase.ExecuteAsync(
-            new CreateSpaceInviteCommand(McpContext(space), Now.AddDays(1), 1));
-
-        AssertError(result, ErrorCodes.Auth.TokenTypeNotAllowed);
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
     public void ExecuteAsync_ShouldThrowArgumentNullException()
     {
         var harness = new Harness(TestSpaceAuthorizationSnapshots.Space());
@@ -251,27 +223,20 @@ public sealed class CreateSpaceInviteUseCaseTests
         bool owner = false) =>
         new(Authorize(space, owner: owner), Now.AddDays(1), maxUses);
 
-    private static AuthorizedSpaceContext Authorize(
-        Space space,
-        SpacePermission permission = SpacePermission.InvitesManage,
-        bool requirePermission = true,
-        bool owner = false)
+    private static AuthorizedSpaceContext Authorize(Space space, bool owner = false)
     {
         var actor = TestSpaceAuthorizationSnapshots.Session(userId: owner ? space.OwnerUserId : 42);
         var membership = owner
             ? null
             : TestSpaceAuthorizationSnapshots.Membership(spaceId: space.Id, userId: actor.UserId);
-        var role = TestSpaceAuthorizationSnapshots.Role(spaceId: space.Id, permissions: [permission]);
-        SpacePermission[] required = requirePermission ? [SpacePermission.InvitesManage] : [];
-        var query = new SpaceAuthorizationQuery(actor, space.PublicId, required, [SpaceStatus.Active]);
+        var role = TestSpaceAuthorizationSnapshots.Role(
+            spaceId: space.Id, permissions: [SpacePermission.InvitesManage]);
+        var query = new SpaceAuthorizationQuery(
+            actor, space.PublicId, [SpacePermission.InvitesManage], [SpaceStatus.Active]);
         SpaceRole[] roles = owner ? [] : [role];
         return SessionSpaceAuthorizationPolicy.Evaluate(
             query, new SpaceAuthorizationSnapshot(space, membership, roles)).Value;
     }
-
-    private static AuthorizedSpaceContext McpContext(Space space) =>
-        new(space.Id, space.PublicId, ActorType.Mcp, 42, null,
-            [SpacePermission.InvitesManage], SpaceAuthorizationSource.Owner);
 
     private static void AssertError(Result<CreateSpaceInviteResultDto> result, string errorCode)
     {

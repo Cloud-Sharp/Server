@@ -1,6 +1,5 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
@@ -60,16 +59,6 @@ public sealed class ReplaceSpaceMemberRolesUseCase : IUseCase<ReplaceSpaceMember
             return validation.ToFailureResult<SpaceMembershipResultDto>();
         }
 
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!command.Space.EffectivePermissions.Contains(SpacePermission.MembersManage))
-        {
-            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.PermissionDenied());
-        }
-
         if (SpaceRepository is null || MembershipReader is null || RoleReader is null
             || MembershipRepository is null || UnitOfWork is null || TransactionExecutor is null || Clock is null)
         {
@@ -110,12 +99,10 @@ public sealed class ReplaceSpaceMemberRolesUseCase : IUseCase<ReplaceSpaceMember
             }
 
             var role = matches[0];
-            if (role.Id <= 0
-                || role.SpaceId != snapshot.Membership.SpaceId
-                || role.DeletedAt is not null)
+            if (!role.IsActiveManagedIn(snapshot.Membership.SpaceId))
             {
                 return Result.Fail<SpaceMembershipReadSnapshot>(
-                    SpaceMembershipError.RoleInvalid("Only persisted, non-deleted roles in the target space can be assigned."));
+                    SpaceMembershipError.RoleInvalid("Only active managed roles in the target space can be assigned."));
             }
 
             resolvedRoles.Add(role);

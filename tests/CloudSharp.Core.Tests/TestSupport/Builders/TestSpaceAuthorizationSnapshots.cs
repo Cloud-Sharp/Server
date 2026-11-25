@@ -19,9 +19,11 @@ public static class TestSpaceAuthorizationSnapshots
         CurrentActor? actor = null,
         IEnumerable<SpacePermission>? permissions = null,
         IEnumerable<SpaceStatus>? statuses = null,
-        Guid? spacePublicId = null) =>
+        Guid? spacePublicId = null,
+        bool allowSystemAdminBypass = true) =>
         new(actor ?? Session(), spacePublicId ?? SpacePublicId,
-            permissions ?? [SpacePermission.SpaceView], statuses ?? [SpaceStatus.Active, SpaceStatus.Archived]);
+            permissions ?? [SpacePermission.SpaceView], statuses ?? [SpaceStatus.Active, SpaceStatus.Archived],
+            allowSystemAdminBypass);
 
     public static Space Space(
         SpaceStatus status = SpaceStatus.Active,

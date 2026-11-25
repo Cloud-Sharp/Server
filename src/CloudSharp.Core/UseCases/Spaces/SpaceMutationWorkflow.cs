@@ -1,9 +1,7 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Time;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
@@ -40,16 +38,6 @@ internal sealed class SpaceMutationWorkflow
         Func<Space, DateTimeOffset, Result> domainOperation,
         CancellationToken cancellationToken = default)
     {
-        if (context.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!context.EffectivePermissions.Contains(SpacePermission.SpaceUpdate))
-        {
-            return Result.Fail<SpaceResultDto>(SpaceAuthorizationError.PermissionDenied());
-        }
-
         if (DetailsReader is null || SpaceRepository is null || UnitOfWork is null
             || TransactionExecutor is null || Clock is null)
         {

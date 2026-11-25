@@ -11,6 +11,7 @@ public static class ErrorCodes
         public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
         public const string PreconditionFailed = "PRECONDITION_FAILED";
         public const string PreconditionRequired = "PRECONDITION_REQUIRED";
+        public const string RequestConflict = "REQUEST_CONFLICT";
     }
 
     public static class Auth
@@ -44,6 +45,7 @@ public static class ErrorCodes
         public const string PublicIdInvalid = "SPACE_PUBLIC_ID_INVALID";
         public const string NameInvalid = "SPACE_NAME_INVALID";
         public const string OwnerInvalid = "SPACE_OWNER_INVALID";
+        public const string Archived = "SPACE_ARCHIVED";
         public const string Inactive = "SPACE_INACTIVE";
         public const string InvalidState = "SPACE_INVALID_STATE";
         public const string QuotaInvalid = "SPACE_QUOTA_INVALID";

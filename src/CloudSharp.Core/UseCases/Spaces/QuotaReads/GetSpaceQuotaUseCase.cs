@@ -13,7 +13,7 @@ public sealed class GetSpaceQuotaUseCase : IUseCase<GetSpaceQuotaQuery, SpaceQuo
 
     public GetSpaceQuotaUseCase() { }
 
-    internal GetSpaceQuotaUseCase(ISpaceRepository spaceRepository) => SpaceRepository = spaceRepository;
+    public GetSpaceQuotaUseCase(ISpaceRepository spaceRepository) => SpaceRepository = spaceRepository;
 
     public async Task<Result<SpaceQuotaDto>> ExecuteAsync(
         GetSpaceQuotaQuery query,
