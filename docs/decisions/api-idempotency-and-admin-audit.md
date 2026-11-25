@@ -19,7 +19,7 @@ HTTP 요청 멱등성, 최초 응답 재생, 커밋 후 복구와 관리자 우�
 
 Transactional Outbox는 업무 변경과 이벤트를 함께 커밋하고 발행을 재시도할 수 있게 한다. 이벤트 소비자는 `EventId`로 중복 전달을 처리한다. HTTP 재시도에도 요청 키 고유성, 지문 판정, 최초 응답 재생 계약을 적용한다. [Transactional Outbox 설계](../adr/use-case-logging-decorator.md#업무-이벤트와-transactional-outbox)
 
-최초 응답을 복구할 때 Outbox 행을 조회할지, 별도 요청 결과를 저장할지는 후속 설계에서 정한다. Redis 사용 여부도 함께 결정한다. 현재 목표 계약은 Redis에 멱등 정보를 24시간 보존하고, 저장소 장애 시 필수 멱등 요청을 실패 처리하는 방식이다. 저장 방식을 바꾸면 공통 계약에도 반영한다. [멱등성 저장 기준](../../.llm/api/common-contract.md#9-idempotency-key)
+HTTP 멱등성 기록은 PostgreSQL 전용 테이블에서 24시간 보존한다. 업무 변경과 완료 기록을 같은 트랜잭션에 저장한다. 완료 결과 조회의 성능 문제가 확인되면 Redis를 조회 캐시로 추가할 수 있다. [HTTP 요청 멱등성 공통 구조 기획](../http-request-idempotency-plan.md)
 
 ## 현재 적용 사례
 

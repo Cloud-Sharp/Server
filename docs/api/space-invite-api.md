@@ -81,8 +81,8 @@ Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다
 
 - `Idempotency-Key`는 16~128자의 ASCII 문자열 하나다. 누락·형식 오류는 400 `REQUEST_VALIDATION_FAILED`다. 인증된 사용자, HTTP 메서드, 표준 경로 범위에서 정규화한 요청 지문과 키를 24시간 관리한다. 수락 경로의 토큰 구간을 식별할 때는 토큰 해시를 사용한다.
 - 매 요청에 Session 인증을 적용하며, 생성 결과를 복구할 때도 현재 Space의 관리 권한을 확인한다. 완료된 요청의 결과는 생성 만료 시각이나 수락 가능 여부처럼 시간에 따라 달라지는 검증에 앞서 확인한다.
-- 같은 범위와 키의 다른 지문은 409 `IDEMPOTENCY_KEY_REUSED`, 같은 지문의 진행 중 요청은 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`다. Redis 장애는 503으로 처리한다.
-- 생성의 복구용 결과는 생성된 `invitePublicId`만 보관한다. 수락은 최초의 200 본문을 보관한다. PostgreSQL 커밋 직후 Redis 결과 기록에 실패해도 최초 결과를 복구할 수 있도록 키와 지문, 재생 가능한 결과를 도메인 변경과 같은 트랜잭션에 연결한다. 토큰과 토큰을 포함한 URL은 멱등 처리에 보관할 결과에서 제외한다. [멱등성 검증 기준](../../.llm/api/validation.md#5-멱등성)
+- 같은 범위와 키의 다른 지문은 409 `IDEMPOTENCY_KEY_REUSED`, 같은 지문의 진행 중 요청은 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`다. 멱등성 판정에 필요한 PostgreSQL을 사용할 수 없으면 503으로 처리한다. [공통 저장과 복구](../http-request-idempotency-plan.md#postgresql-저장과-복구)
+- 생성의 복구용 결과는 생성된 `invitePublicId`만 보관한다. 수락은 최초의 200 본문을 보관한다. 업무 변경과 완료 기록을 같은 PostgreSQL 트랜잭션에 저장해 커밋 후 응답이 유실되어도 최초 결과를 복구한다. 토큰과 토큰을 포함한 URL은 복구 결과에서 제외한다. [공통 저장과 복구](../http-request-idempotency-plan.md#postgresql-저장과-복구)
 
 ## 엔드포인트 구현 시 연결할 계약
 

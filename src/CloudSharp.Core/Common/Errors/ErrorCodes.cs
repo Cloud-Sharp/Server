@@ -14,6 +14,17 @@ public static class ErrorCodes
         public const string RequestConflict = "REQUEST_CONFLICT";
     }
 
+    public static class Idempotency
+    {
+        public const string ScopeInvalid = "INVALID_IDEMPOTENCY_SCOPE";
+        public const string KeyInvalid = "INVALID_IDEMPOTENCY_KEY";
+        public const string FingerprintInvalid = "INVALID_IDEMPOTENCY_FINGERPRINT";
+        public const string OperationIdInvalid = "INVALID_IDEMPOTENCY_OPERATION_ID";
+        public const string AttemptIdInvalid = "INVALID_IDEMPOTENCY_ATTEMPT_ID";
+        public const string KeyReused = "IDEMPOTENCY_KEY_REUSED";
+        public const string RequestInProgress = "IDEMPOTENCY_REQUEST_IN_PROGRESS";
+    }
+
     public static class Auth
     {
         public const string TokenRequired = "AUTH_TOKEN_REQUIRED";
