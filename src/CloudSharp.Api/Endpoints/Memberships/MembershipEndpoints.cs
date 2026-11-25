@@ -36,8 +36,7 @@ internal static class MembershipEndpoints
         var authorizeRead = new SpaceAuthorizationFilter(
             [SpacePermission.MembersView],
             [SpaceStatus.Active, SpaceStatus.Archived],
-            maskPermissionDenied: false,
-            allowSystemAdminBypass: true);
+            maskPermissionDenied: false);
         var reads = space.MapGroup("").AddEndpointFilter(authorizeRead);
         var member = space.MapGroup("/memberships/{membershipPublicId}")
             .AddEndpointFilter(ValidateMembershipRouteAsync);
@@ -45,8 +44,7 @@ internal static class MembershipEndpoints
             .AddEndpointFilter(new SpaceAuthorizationFilter(
                 [SpacePermission.MembersManage],
                 [SpaceStatus.Active],
-                maskPermissionDenied: false,
-                allowSystemAdminBypass: true));
+                maskPermissionDenied: false));
 
         reads.MapGet("/memberships", ListMembershipsAsync)
             .WithName("ListSpaceMemberships")

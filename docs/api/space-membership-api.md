@@ -16,7 +16,7 @@ Space 멤버 목록·상세 조회, Role 할당, 상태 변경과 본인 탈퇴�
 
 ## 공통 계약
 
-- 모든 요청에 `UserSessionOnly`를 적용한다. MB-01~MB-06은 Space 기본 접근 자격과 상태를 확인한 뒤 작업 권한을 평가한다. Session `SYSTEM_ADMIN`의 권한 우회와 실제 Role 할당 변경은 감사 대상이다. MB-07은 인증된 요청자와 Membership의 관계를 직접 확인한다. [Space API](space-api.md#공통-계약) · [권한 계약](../../contracts/permissions/README.md) · [인가 감사 계약](../../.llm/auth/authorization.md#11-auditevent)
+- 모든 요청에 `UserSessionOnly`를 적용한다. API에서 MB-01~MB-06과 Role 목록의 Space 접근 자격, 상태, 작업 권한을 확인한다. 영속 감사가 연결되기 전까지 `SYSTEM_ADMIN`도 OWNER 또는 활성 Membership의 권한으로 평가한다. MB-07은 인증된 요청자와 Membership의 관계를 직접 확인한다. [Space API](space-api.md#공통-계약) · [권한 계약](../../contracts/permissions/README.md) · [인가 감사 계약](../../.llm/auth/authorization.md#11-auditevent)
 - 경로와 JSON의 리소스 식별자는 RFC variant UUIDv7 PublicId다. JSON 필드는 `camelCase`, 상태는 `UPPER_SNAKE_CASE`, 시각은 UTC ISO 8601을 사용한다. 성공·오류 응답에 `Cache-Control: no-store`를 적용한다. 오류 본문은 공통 `requestId`·`error` 형식이며 `requestId`는 응답의 `X-Correlation-ID`와 같다. [공통 API 계약](../../.llm/api/common-contract.md)
 - MB-03~MB-06의 `If-Match`에는 MB-02에서 받은 Membership `ETag`를 사용한다. `"v7"`처럼 양수 버전을 담은 강한 ETag 하나를 받는다. 대상이 확인되면 현재 버전을 비교한 뒤 상태 전이를 평가한다. 실제 변경 성공 시 새 ETag를 반환한다. [ETag 파서](../../src/CloudSharp.Api/Contracts/Mapping/IfMatchETag.cs)
 
@@ -93,5 +93,5 @@ Space 멤버 목록·상세 조회, Role 할당, 상태 변경과 본인 탈퇴�
 
 ## 엔드포인트 구현 시 연결할 계약
 
-- MB-01~MB-06은 `ISpaceAuthorizationService`의 인가 결과를 유즈케이스에 전달한다. MB-07에는 인증된 `CurrentActor`와 요청 Space를 전달해 별도 관계 정책을 적용한다. 변경 응답에 `ETagFormatter`를 재사용하고 Space·Membership 인가 실패를 공통 계약에 따라 매핑한다. 관리자 권한 우회와 실제 Role 변경을 감사 기록에 연결한다. [인가 필터 설계](../../.llm/auth/aspnet-filters.md) · [Membership DI 등록](../../src/CloudSharp.Api/DependencyInjection/MembershipServiceCollectionExtensions.cs)
+- MB-01~MB-06과 Role 목록은 `ISpaceAuthorizationService`의 인가 결과를 유즈케이스에 전달한다. MB-07에는 인증된 `CurrentActor`와 요청 Space를 전달해 별도 관계 정책을 적용한다. 변경 응답에 `ETagFormatter`를 재사용하고 Space·Membership 인가 실패를 공통 계약에 따라 매핑한다. 관리자 권한 우회와 실제 Role 변경의 영속 감사 연결은 후속 범위다. [인가 필터 설계](../../.llm/auth/aspnet-filters.md) · [Membership DI 등록](../../src/CloudSharp.Api/DependencyInjection/MembershipServiceCollectionExtensions.cs)
 - 목록 cursor 서명에 요청자 범위를 추가한다. Role 교체에서 관리형 목록과 같은 Role 적격성을 검증하고, 배열 형식 오류와 Role 조회 실패의 외부 응답을 구분한다. MB-07의 저장 경합은 본인 탈퇴 계약에 따라 매핑한다. [Membership 테스트 케이스](../tests/core/space-membership-test-cases.md)

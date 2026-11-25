@@ -1,9 +1,7 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Tokens;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
@@ -38,16 +36,6 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<SpaceInvitePageDto>();
-        }
-
-        if (query.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!query.Space.EffectivePermissions.Contains(SpacePermission.InvitesManage))
-        {
-            return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.PermissionDenied());
         }
 
         if (SpaceRepository is null || InviteReader is null || TokenHasher is null)

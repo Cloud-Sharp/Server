@@ -349,33 +349,6 @@ public class TransferSpaceOwnershipUseCaseTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldRejectMcpActorBeforeLookup()
-    {
-        // Arrange
-        var scenario = ValidTransfer();
-        var harness = scenario.Harness;
-        var context = new AuthorizedSpaceContext(
-            scenario.Space.Id,
-            scenario.Space.PublicId,
-            ActorType.Mcp,
-            scenario.CurrentOwner.Id,
-            null,
-            [SpacePermission.SpaceView],
-            SpaceAuthorizationSource.Owner);
-        var command = new TransferSpaceOwnershipCommand(
-            context,
-            scenario.Space.Version,
-            scenario.NewOwner.PublicId);
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(command);
-
-        // Assert
-        AssertError(result, ErrorCodes.Auth.TokenTypeNotAllowed);
-        AssertNoDependencyCalls(harness);
-    }
-
-    [Test]
     public async Task ExecuteAsync_ShouldDenyFormerOwnerAfterOwnershipTransfer()
     {
         // Arrange

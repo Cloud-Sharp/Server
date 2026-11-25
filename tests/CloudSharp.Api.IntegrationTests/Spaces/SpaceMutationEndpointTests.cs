@@ -693,10 +693,13 @@ public sealed class SpaceMutationEndpointTests : SpaceIntegrationTestBase
         });
     }
 
-    [TestCase("delete")]
-    [TestCase("quota")]
-    [TestCase("transfer")]
-    public async Task OwnerOnlyOperations_ShouldRejectNonOwnerAdministrator(string operation)
+    [TestCase("delete", "\"v4\"")]
+    [TestCase("delete", null)]
+    [TestCase("quota", "\"v4\"")]
+    [TestCase("quota", null)]
+    [TestCase("transfer", "\"v4\"")]
+    [TestCase("transfer", null)]
+    public async Task OwnerOnlyOperations_ShouldRejectNonOwnerAdministrator(string operation, string? ifMatch)
     {
         var owner = await RegisterSpaceUserAsync();
         var administrator = await RegisterSpaceUserAsync();
@@ -715,21 +718,21 @@ public sealed class SpaceMutationEndpointTests : SpaceIntegrationTestBase
                 HttpMethod.Delete,
                 SpacePath(space.PublicId),
                 administrator,
-                "\"v4\""),
+                ifMatch),
             "quota" => await Api.SendRawAsync(
                 HttpMethod.Patch,
                 $"{SpacePath(space.PublicId)}/quota",
                 """{"allowedBytes":2000}""",
                 "application/json",
                 administrator.AccessToken,
-                ifMatch: "\"v4\""),
+                ifMatch: ifMatch),
             "transfer" => await Api.SendRawAsync(
                 HttpMethod.Post,
                 $"{SpacePath(space.PublicId)}/ownership-transfers",
                 $"{{\"newOwnerUserPublicId\":\"{target.PublicId:D}\"}}",
                 "application/json",
                 administrator.AccessToken,
-                ifMatch: "\"v4\""),
+                ifMatch: ifMatch),
             _ => throw new ArgumentOutOfRangeException(nameof(operation)),
         };
         await IntegrationAssert.AssertErrorAsync(

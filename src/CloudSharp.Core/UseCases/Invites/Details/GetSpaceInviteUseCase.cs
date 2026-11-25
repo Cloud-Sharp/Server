@@ -1,8 +1,6 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
@@ -25,16 +23,6 @@ public sealed class GetSpaceInviteUseCase(
         }
 
         var context = query.Space;
-        if (context.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceInviteResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!context.EffectivePermissions.Contains(SpacePermission.InvitesManage))
-        {
-            return Result.Fail<SpaceInviteResultDto>(SpaceAuthorizationError.PermissionDenied());
-        }
-
         var spaceResult = await spaceRepository.FindByIdAsync(context.SpaceId, cancellationToken);
         if (spaceResult.IsFailed)
         {

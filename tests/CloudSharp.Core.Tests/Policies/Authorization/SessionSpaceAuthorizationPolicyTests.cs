@@ -57,12 +57,12 @@ public class SessionSpaceAuthorizationPolicyTests
     }
 
     [Test]
-    public void Evaluate_SystemAdministratorWithoutBypass_ShouldUseOwnerAccess()
+    public void Evaluate_SystemAdministratorByDefault_ShouldUseOwnerAccess()
     {
-        var query = TestSpaceAuthorizationSnapshots.Query(
-            actor: TestSpaceAuthorizationSnapshots.Session(21, SystemRole.SystemAdmin),
-            allowSystemAdminBypass: false);
-        var snapshot = new SpaceAuthorizationSnapshot(TestSpaceAuthorizationSnapshots.Space(), null, []);
+        var actor = TestSpaceAuthorizationSnapshots.Session(21, SystemRole.SystemAdmin);
+        var space = TestSpaceAuthorizationSnapshots.Space();
+        var query = new SpaceAuthorizationQuery(actor, space.PublicId, [], [SpaceStatus.Active]);
+        var snapshot = new SpaceAuthorizationSnapshot(space, null, []);
 
         var result = SessionSpaceAuthorizationPolicy.Evaluate(query, snapshot);
 

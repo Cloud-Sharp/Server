@@ -1,12 +1,10 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Invites;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
@@ -50,16 +48,6 @@ public sealed class CreateSpaceInviteUseCase : IUseCase<CreateSpaceInviteCommand
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<CreateSpaceInviteResultDto>();
-        }
-
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<CreateSpaceInviteResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!command.Space.EffectivePermissions.Contains(SpacePermission.InvitesManage))
-        {
-            return Result.Fail<CreateSpaceInviteResultDto>(SpaceAuthorizationError.PermissionDenied());
         }
 
         if (SpaceRepository is null || InviteRepository is null || TokenIssuer is null

@@ -18,13 +18,13 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
     private readonly SpacePermission[] _requiredPermissions;
     private readonly SpaceStatus[] _allowedSpaceStatuses;
     private readonly bool _maskPermissionDenied;
-    private readonly bool _allowSystemAdminBypass;
+    private readonly bool _requireOwner;
 
     internal SpaceAuthorizationFilter(
         IEnumerable<SpacePermission> requiredPermissions,
         IEnumerable<SpaceStatus> allowedSpaceStatuses,
         bool maskPermissionDenied,
-        bool allowSystemAdminBypass = false)
+        bool requireOwner = false)
     {
         ArgumentNullException.ThrowIfNull(requiredPermissions);
         ArgumentNullException.ThrowIfNull(allowedSpaceStatuses);
@@ -36,7 +36,7 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
         }
 
         _maskPermissionDenied = maskPermissionDenied;
-        _allowSystemAdminBypass = allowSystemAdminBypass;
+        _requireOwner = requireOwner;
     }
 
     public async ValueTask<object?> InvokeAsync(
@@ -59,12 +59,16 @@ internal sealed class SpaceAuthorizationFilter : IEndpointFilter
                 actor,
                 spacePublicId,
                 _requiredPermissions,
-                _allowedSpaceStatuses,
-                allowSystemAdminBypass: _allowSystemAdminBypass),
+                _allowedSpaceStatuses),
             httpContext.RequestAborted);
         if (authorization.IsFailed)
         {
             return authorization.ToSpaceAuthorizationFailure(_maskPermissionDenied);
+        }
+
+        if (_requireOwner && authorization.Value.AuthorizationSource != SpaceAuthorizationSource.Owner)
+        {
+            return SpaceResultHttpMapper.PermissionDenied(_maskPermissionDenied);
         }
 
         httpContext.Items[AuthorizedContextKey] = authorization.Value;

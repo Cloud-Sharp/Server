@@ -1,8 +1,6 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Memberships.Dtos;
 using FluentResults;
@@ -32,16 +30,6 @@ public sealed class GetSpaceMembershipUseCase : IUseCase<GetSpaceMembershipQuery
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<SpaceMembershipResultDto>();
-        }
-
-        if (query.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!query.Space.EffectivePermissions.Contains(SpacePermission.MembersView))
-        {
-            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.PermissionDenied());
         }
 
         if (SpaceRepository is null || MembershipReader is null)

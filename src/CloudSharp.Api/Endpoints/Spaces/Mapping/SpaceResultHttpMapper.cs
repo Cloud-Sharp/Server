@@ -80,9 +80,7 @@ internal static class SpaceResultHttpMapper
         return GetCode(error) switch
         {
             ErrorCodes.Auth.SpaceNotFound or ErrorCodes.Auth.SpaceAccessDenied => NotFound(),
-            ErrorCodes.Auth.SpacePermissionDenied when maskPermissionDenied => NotFound(),
-            ErrorCodes.Auth.SpacePermissionDenied => ErrorHttpResults.FromCode(
-                PermissionDeniedCode, "Permission denied."),
+            ErrorCodes.Auth.SpacePermissionDenied => PermissionDenied(maskPermissionDenied),
             ErrorCodes.Auth.SpaceStateNotAllowed when error.ActualSpaceStatus == SpaceStatus.Archived =>
                 ErrorHttpResults.FromCode(ErrorCodes.Space.Archived, "Space is archived."),
             ErrorCodes.Auth.SpaceStateNotAllowed => ErrorHttpResults.FromCode(
@@ -92,6 +90,9 @@ internal static class SpaceResultHttpMapper
     }
 
     internal static IResult NotFound() => ErrorHttpResults.ResourceNotFound();
+
+    internal static IResult PermissionDenied(bool maskPermissionDenied) =>
+        maskPermissionDenied ? NotFound() : ErrorHttpResults.FromCode(PermissionDeniedCode, "Permission denied.");
 
     private static string? GetCode(IError? error) =>
         error is not null

@@ -134,6 +134,7 @@ public sealed class MembershipAuthorizationEndpointTests : MembershipIntegration
                      (deleting.PublicId, deletingMember.PublicId, deletingViewer.PublicId, owner),
                      (deleted.PublicId, deletedMember.PublicId, deletedViewer.PublicId, owner),
                      (missingSpaceId, member.PublicId, viewer.PublicId, administrator),
+                     (active.PublicId, member.PublicId, viewer.PublicId, administrator),
                      (deleting.PublicId, deletingMember.PublicId, deletingViewer.PublicId, administrator),
                      (deleted.PublicId, deletedMember.PublicId, deletedViewer.PublicId, administrator),
                  })
@@ -147,29 +148,24 @@ public sealed class MembershipAuthorizationEndpointTests : MembershipIntegration
     }
 
     [TestCaseSource(nameof(PermissionEndpoints))]
-    public async Task Request_AsSystemAdminWithoutMembership_ShouldBypassSpacePermissions(Endpoint endpoint)
+    public async Task Request_AsSystemAdminWithoutOperationPermission_ShouldReturn403(Endpoint endpoint)
     {
         var owner = await RegisterSpaceUserAsync();
         var administrator = await RegisterSpaceUserAsync();
         var target = await RegisterSpaceUserAsync();
         await ChangeSystemRoleAsync(administrator.PublicId, SystemRole.SystemAdmin);
         var space = await SeedSpaceAsync(owner);
+        var actorRole = endpoint is Endpoint.ListMembers or Endpoint.GetMember or Endpoint.ListRoles
+            ? SpaceRoleSystemKey.Viewer
+            : SpaceRoleSystemKey.Member;
+        await SeedMembershipAsync(space, administrator, owner, SpaceMembershipStatus.Active, actorRole);
         var member = await SeedMembershipAsync(space, target, owner, TargetStatus(endpoint));
         var viewer = (await GetSpaceRolesAsync(space.Id)).Single(role => role.SystemKey == SpaceRoleSystemKey.Viewer);
 
         using var response = await SendRequestAsync(
             endpoint, space.PublicId.ToString("D"), member.PublicId.ToString("D"), administrator.AccessToken, viewer.PublicId);
 
-        if (endpoint == Endpoint.RemoveMember)
-        {
-            await AssertNoContentAsync(response);
-        }
-        else
-        {
-            Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.OK));
-            IntegrationAssert.AssertJsonContentType(response);
-            IntegrationAssert.AssertNoStore(response);
-        }
+        await IntegrationAssert.AssertErrorAsync(response, HttpStatusCode.Forbidden, "PERMISSION_DENIED");
     }
 
     private static SpaceMembershipStatus TargetStatus(Endpoint endpoint) => endpoint == Endpoint.ActivateMember

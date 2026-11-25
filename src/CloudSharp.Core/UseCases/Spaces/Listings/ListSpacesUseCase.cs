@@ -1,8 +1,7 @@
+using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
-using CloudSharp.Core.Domain.Memberships;
-using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
 using FluentResults;
@@ -12,10 +11,15 @@ namespace CloudSharp.Core.UseCases.Spaces.Listings;
 public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
 {
     private ISpaceListCandidateReader CandidateReader { get; } = null!;
+    private ISpaceListAccessPolicy AccessPolicy { get; } = null!;
 
     public ListSpacesUseCase() { }
 
-    public ListSpacesUseCase(ISpaceListCandidateReader candidateReader) => CandidateReader = candidateReader;
+    public ListSpacesUseCase(ISpaceListCandidateReader candidateReader, ISpaceListAccessPolicy accessPolicy)
+    {
+        CandidateReader = candidateReader;
+        AccessPolicy = accessPolicy;
+    }
 
     public async Task<Result<SpacePageDto>> ExecuteAsync(
         ListSpacesQuery query,
@@ -29,13 +33,7 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
             return validation.ToFailureResult<SpacePageDto>();
         }
 
-        var actorValidation = SessionSpaceAuthorizationPolicy.ValidateActor(query.Actor);
-        if (actorValidation.IsFailed)
-        {
-            return Result.Fail<SpacePageDto>(actorValidation.Errors);
-        }
-
-        if (CandidateReader is null)
+        if (CandidateReader is null || AccessPolicy is null)
         {
             return Result.Fail<SpacePageDto>(CommonError.DependencyUnavailable());
         }
@@ -48,7 +46,6 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
             traversedCursors.Add(traversalCursor);
         }
 
-        var allowedStatuses = new[] { SpaceStatus.Active, SpaceStatus.Archived };
         while (true)
         {
             var readResult = await CandidateReader.ReadAsync(
@@ -88,17 +85,10 @@ public sealed class ListSpacesUseCase : IUseCase<ListSpacesQuery, SpacePageDto>
 
             foreach (var candidate in page.Candidates)
             {
-                var authorization = SessionSpaceAuthorizationPolicy.Evaluate(
-                    new SpaceAuthorizationQuery(
-                        query.Actor,
-                        candidate.Authorization.Space.PublicId,
-                        Array.Empty<SpacePermission>(),
-                        allowedStatuses,
-                        query.AllowSystemAdminBypass),
-                    candidate.Authorization);
-                if (authorization.IsSuccess)
+                var authorization = AccessPolicy.Evaluate(query.Actor, candidate.Authorization);
+                if (authorization is not null)
                 {
-                    accessible.Add((ToSpaceDto(candidate, authorization.Value), candidate.CursorAfter));
+                    accessible.Add((ToSpaceDto(candidate, authorization), candidate.CursorAfter));
                     if (accessible.Count > query.Limit)
                     {
                         break;

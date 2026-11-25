@@ -124,7 +124,7 @@ public static class SpaceEndpoints
             .WithName("RequestSpaceDeletion")
             .WithSummary("Space 삭제를 요청하고 DELETING 상태로 전환합니다.")
             .AddEndpointFilter(new SpaceAuthorizationFilter(
-                [], ReadStatuses, maskPermissionDenied: false))
+                [], ReadStatuses, maskPermissionDenied: false, requireOwner: true))
             .Produces<SpaceDeletionAcceptedResponse>(StatusCodes.Status202Accepted, JsonMediaType)
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest, JsonMediaType)
             .Produces<ErrorResponse>(StatusCodes.Status401Unauthorized, JsonMediaType)
@@ -149,7 +149,7 @@ public static class SpaceEndpoints
             .WithName("ChangeSpaceQuota")
             .WithSummary("OWNER가 Space quota를 변경합니다.")
             .AddEndpointFilter(new SpaceAuthorizationFilter(
-                [], ActiveOnly, maskPermissionDenied: false))
+                [], ActiveOnly, maskPermissionDenied: false, requireOwner: true))
             .Produces<SpaceQuotaResponse>(StatusCodes.Status200OK, JsonMediaType)
             .ProducesValidationProblem()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest, JsonMediaType)
@@ -165,7 +165,7 @@ public static class SpaceEndpoints
             .WithName("TransferSpaceOwnership")
             .WithSummary("OWNER가 활성 Membership 사용자에게 Space 소유권을 이전합니다.")
             .AddEndpointFilter(new SpaceAuthorizationFilter(
-                [], ActiveOnly, maskPermissionDenied: false))
+                [], ActiveOnly, maskPermissionDenied: false, requireOwner: true))
             .Produces<SpaceResponse>(StatusCodes.Status200OK, JsonMediaType)
             .ProducesValidationProblem()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest, JsonMediaType)
@@ -194,8 +194,7 @@ public static class SpaceEndpoints
             request.Cursor,
             request.Limit,
             request.Sort,
-            string.Equals(request.Direction, "ASC", StringComparison.Ordinal),
-            AllowSystemAdminBypass: false);
+            string.Equals(request.Direction, "ASC", StringComparison.Ordinal));
         var result = await useCase.ExecuteAsync(query, cancellationToken);
         return result.ToSpaceHttpResult(value => Results.Ok(SpaceResponseMapper.ToResponse(value)));
     }

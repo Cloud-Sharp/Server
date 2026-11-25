@@ -19,7 +19,7 @@ public sealed class SpaceAuthorizationQuery
         Guid spacePublicId,
         IEnumerable<SpacePermission> requiredPermissions,
         IEnumerable<SpaceStatus> allowedSpaceStatuses,
-        bool allowSystemAdminBypass = true)
+        bool allowSystemAdminBypass = false)
     {
         ArgumentNullException.ThrowIfNull(actor);
         ArgumentNullException.ThrowIfNull(requiredPermissions);

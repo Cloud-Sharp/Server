@@ -101,21 +101,6 @@ public class RemoveSpaceMemberUseCaseTests
         AssertNoWrites(harness);
     }
 
-    [Test]
-    public async Task ExecuteAsync_ShouldRejectInsufficientPermission()
-    {
-        // Arrange
-        var harness = new Harness(StoredMembership());
-        var command = ValidCommand() with { Space = MemberContext(SpacePermission.MembersView) };
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(command);
-
-        // Assert
-        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
-        AssertNoPersistenceCalls(harness);
-    }
-
     [TestCase(null, 88L)]
     [TestCase(OtherSpaceId, 88L)]
     [TestCase(SpaceId, 21L)]
@@ -254,13 +239,14 @@ public class RemoveSpaceMemberUseCaseTests
     private static Space StoredSpace(SpaceStatus status) =>
         TestSpaceAuthorizationSnapshots.Space(status, id: SpaceId, version: 9);
 
-    private static AuthorizedSpaceContext MemberContext(SpacePermission permission = SpacePermission.MembersManage)
+    private static AuthorizedSpaceContext MemberContext()
     {
         var actor = TestSpaceAuthorizationSnapshots.Session();
         var space = StoredSpace(SpaceStatus.Active);
         var membership = TestSpaceAuthorizationSnapshots.Membership(userId: actor.UserId, spaceId: space.Id);
-        var role = TestSpaceAuthorizationSnapshots.Role(spaceId: space.Id, permissions: [permission]);
-        var query = TestSpaceAuthorizationSnapshots.Query(actor, [permission], [SpaceStatus.Active], space.PublicId);
+        var role = TestSpaceAuthorizationSnapshots.Role(spaceId: space.Id, permissions: [SpacePermission.MembersManage]);
+        var query = TestSpaceAuthorizationSnapshots.Query(actor, [SpacePermission.MembersManage],
+            [SpaceStatus.Active], space.PublicId);
 
         return SessionSpaceAuthorizationPolicy.Evaluate(
             query, new SpaceAuthorizationSnapshot(space, membership, [role])).Value;

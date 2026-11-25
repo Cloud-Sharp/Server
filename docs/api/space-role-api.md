@@ -27,7 +27,7 @@ Space 생성 시 등록되는 관리형 ADMIN·MEMBER·VIEWER Role의 조회 계
 
 ## 인증과 오류
 
-`Authorization: Bearer {accessToken}`으로 Session을 전달한다. `spacePublicId`는 RFC variant UUIDv7이다. 성공·오류 응답에 `Cache-Control: no-store`를 적용하며, 오류의 `requestId`와 응답의 `X-Correlation-ID`는 같다. 기본 접근 자격을 확인한 뒤 Space 상태와 `MEMBERS_VIEW`를 평가한다. Session `SYSTEM_ADMIN`이 권한을 우회한 요청은 감사 대상이다. [Space API 공통 계약](space-api.md#공통-계약) · [인가 감사 계약](../../.llm/auth/authorization.md#11-auditevent)
+`Authorization: Bearer {accessToken}`으로 Session을 전달한다. `spacePublicId`는 RFC variant UUIDv7이다. 성공·오류 응답에 `Cache-Control: no-store`를 적용하며, 오류의 `requestId`와 응답의 `X-Correlation-ID`는 같다. API에서 기본 접근 자격을 확인한 뒤 Space 상태와 `MEMBERS_VIEW`를 평가한다. 영속 감사가 연결되기 전까지 `SYSTEM_ADMIN`도 OWNER 또는 활성 Membership의 권한으로 평가한다. [Space API 공통 계약](space-api.md#공통-계약) · [인가 감사 계약](../../.llm/auth/authorization.md#11-auditevent)
 
 | HTTP | 오류 코드 | 조건 |
 |---|---|---|

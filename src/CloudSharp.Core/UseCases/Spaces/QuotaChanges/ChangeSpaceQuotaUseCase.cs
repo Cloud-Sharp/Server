@@ -1,6 +1,5 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
@@ -41,11 +40,6 @@ public sealed class ChangeSpaceQuotaUseCase : IUseCase<ChangeSpaceQuotaCommand, 
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<SpaceQuotaDto>();
-        }
-
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceQuotaDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
         }
 
         if (SpaceRepository is null || UnitOfWork is null || TransactionExecutor is null || Clock is null)

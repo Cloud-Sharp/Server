@@ -1,6 +1,5 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
@@ -58,16 +57,6 @@ public sealed class ReplaceSpaceMemberRolesUseCase : IUseCase<ReplaceSpaceMember
         if (!validation.IsValid)
         {
             return validation.ToFailureResult<SpaceMembershipResultDto>();
-        }
-
-        if (command.Space.ActorType != ActorType.Session)
-        {
-            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.TokenTypeNotAllowed());
-        }
-
-        if (!command.Space.EffectivePermissions.Contains(SpacePermission.MembersManage))
-        {
-            return Result.Fail<SpaceMembershipResultDto>(SpaceAuthorizationError.PermissionDenied());
         }
 
         if (SpaceRepository is null || MembershipReader is null || RoleReader is null
