@@ -5,9 +5,9 @@ using FluentResults;
 
 namespace CloudSharp.Api.Tests.TestSupport;
 
-internal sealed class ApiTestIdempotencyStore(IdempotencyRecord? initialRecord = null) : IIdempotencyStore
+internal sealed class ApiTestIdempotencyStore : IIdempotencyStore
 {
-    private IdempotencyRecord? _record = initialRecord;
+    private IdempotencyRecord? _record;
 
     public Task<Result<IdempotencyRecord>> ReserveOrGetAsync(
         IdempotencyReservation candidate, DateTimeOffset now, CancellationToken cancellationToken = default)

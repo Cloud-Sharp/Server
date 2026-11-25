@@ -6,11 +6,11 @@ using CloudSharp.Api.Endpoints.Auth.Responses;
 using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Core.Common.Idempotency;
+using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Logins;
 using CloudSharp.Core.UseCases.Auth.Registrations;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
@@ -24,7 +24,7 @@ public static class AuthEndpoints
     internal const string RegistrationOperationId = "register-account";
     internal const int RegistrationResultVersion = 1;
 
-    private static readonly IdempotencyEndpointPolicy RegistrationIdempotency = new(
+    private static readonly IdempotencyEndpointPolicy RegistrationIdempotency = IdempotencyEndpointPolicy.Create<User>(
         RegistrationOperationId,
         RegistrationResultVersion,
         context => IdempotencyHttp.ForAnonymous(
@@ -43,6 +43,7 @@ public static class AuthEndpoints
                 request.Password,
             };
         },
+        user => new IdempotencyRecovery.SecretNotReplayable(user.PublicId),
         (_, completion) => completion.Recovery is IdempotencyRecovery.SecretNotReplayable secret
             ? IdempotencyHttp.SecretNotReplayable("userPublicId", secret.ResourcePublicId)
             : throw new InvalidOperationException("Registration requires a secret response recovery record."));
@@ -79,27 +80,15 @@ public static class AuthEndpoints
 
     internal static async Task<IResult> RegisterAsync(
         RegistrationRequest request,
-        RegistrationUseCase useCase,
-        IdempotentRequestExecutor executor,
+        IUseCase<RegistrationCommand, RegistrationResultDto> useCase,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         httpContext.Response.Headers["Cache-Control"] = CacheControlNoStore;
 
         var command = new RegistrationCommand(request.Email, request.UserName, request.DisplayName, request.Password);
-        var result = await IdempotencyHttp.ExecuteLoggedAsync<RegistrationCommand, RegistrationResultDto, RegistrationUseCase>(
-            httpContext,
-            ct => useCase.ExecuteIdempotentAsync(
-                command, IdempotencyHttp.TakeReservation(httpContext), RegistrationResultVersion, executor, ct),
-            cancellationToken);
-        return result.ToHttpResult(value => value switch
-        {
-            IdempotentExecutionResult<RegistrationResultDto>.Executed executed =>
-                Results.Created("/api/v2/me", AuthResponseMapper.ToResponse(executed.Value)),
-            IdempotentExecutionResult<RegistrationResultDto>.Recovered recovered =>
-                IdempotencyHttp.Replay(httpContext, recovered.Completion),
-            _ => throw new InvalidOperationException("Unknown idempotent registration result."),
-        });
+        var result = await useCase.ExecuteAsync(command, cancellationToken);
+        return result.ToHttpResult(value => Results.Created("/api/v2/me", AuthResponseMapper.ToResponse(value)));
     }
 
     internal static async Task<IResult> LoginAsync(

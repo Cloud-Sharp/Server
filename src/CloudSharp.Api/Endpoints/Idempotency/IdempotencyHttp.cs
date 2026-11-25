@@ -6,12 +6,8 @@ using System.Text.Json;
 using CloudSharp.Api.Auth.CurrentUser;
 using CloudSharp.Api.Contracts.Mapping;
 using CloudSharp.Api.Contracts.ProblemDetails;
-using CloudSharp.Api.Observability;
 using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Common.Tokens;
-using CloudSharp.Core.UseCases;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
-using FluentResults;
 
 namespace CloudSharp.Api.Endpoints.Idempotency;
 
@@ -66,21 +62,6 @@ internal static class IdempotencyHttp
         return context.RequestServices.GetRequiredService<ITokenHasher>()
             .Hash($"idempotency:fingerprint:{Encoding.UTF8.GetString(buffer.WrittenSpan)}");
     }
-
-    internal static IdempotencyReservation TakeReservation(HttpContext context) =>
-        (context.Features.Get<IdempotencyReservationFeature>()
-            ?? throw new InvalidOperationException("This handler requires an idempotency reservation.")).Take();
-
-    internal static Task<Result<IdempotentExecutionResult<TOutput>>> ExecuteLoggedAsync<TInput, TOutput, TUseCase>(
-        HttpContext context,
-        Func<CancellationToken, Task<Result<IdempotentExecutionResult<TOutput>>>> execute,
-        CancellationToken cancellationToken)
-        where TUseCase : IUseCase<TInput, TOutput> =>
-        LoggingUseCaseDecorator<TInput, TOutput>.ExecuteLoggedAsync(
-            typeof(TUseCase).Name,
-            execute,
-            context.RequestServices.GetRequiredService<ILogger<LoggingUseCaseDecorator<TInput, TOutput>>>(),
-            cancellationToken);
 
     internal static IResult Replay(HttpContext context, IdempotencyRecord.Completed record)
     {

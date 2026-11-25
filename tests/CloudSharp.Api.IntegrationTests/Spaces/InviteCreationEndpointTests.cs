@@ -222,6 +222,27 @@ public sealed class InviteCreationEndpointTests : InviteIntegrationTestBase
     }
 
     [Test]
+    public async Task CreateInvite_ShouldAllowSameKeyAfterBusinessRollback()
+    {
+        var owner = await RegisterSpaceUserAsync();
+        var space = await SeedSpaceAsync(owner, status: SpaceStatus.Archived);
+        var body = ExpirationBody(Clock.UtcNow.AddDays(1));
+        var key = NewIdempotencyKey();
+
+        using var first = await SendCreateInviteAsync(space.PublicId, owner.AccessToken, body, key);
+        await IntegrationAssert.AssertErrorAsync(first, HttpStatusCode.Conflict, "SPACE_ARCHIVED");
+        Assert.That(await GetInvitesAsync(space.Id), Is.Empty);
+
+        using var reactivated = await SendSpaceActionAsync(
+            HttpMethod.Post, $"{SpacePath(space.PublicId)}/reactivate", owner, "\"v1\"");
+        await ReadSuccessBodyAsync(reactivated, HttpStatusCode.OK);
+
+        using var retry = await SendCreateInviteAsync(space.PublicId, owner.AccessToken, body, key);
+        var created = await ReadCreatedInviteAsync(retry, space.PublicId);
+        Assert.That((await GetInvitesAsync(space.Id)).Single().PublicId, Is.EqualTo(created.PublicId));
+    }
+
+    [Test]
     public Task CreateInvite_ShouldEnforceSessionAndInviteManagementPermission() =>
         AssertInviteManagementAuthorizationAsync((actor, space, _) => SendCreateInviteAsync(
             space.PublicId, actor?.AccessToken, ExpirationBody(Clock.UtcNow.AddDays(1)), NewIdempotencyKey()));

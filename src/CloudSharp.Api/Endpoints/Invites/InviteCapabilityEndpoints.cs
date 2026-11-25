@@ -7,7 +7,6 @@ using CloudSharp.Api.Endpoints.Spaces.Mapping;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.UseCases;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Invites.Acceptances;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using CloudSharp.Core.UseCases.Invites.PublicInfo;
@@ -57,27 +56,15 @@ internal static class InviteCapabilityEndpoints
 
     private static async Task<IResult> AcceptInviteAsync(
         string inviteToken,
-        HttpContext httpContext,
         ICurrentActorAccessor currentActorAccessor,
-        AcceptSpaceInviteUseCase useCase,
-        IdempotentRequestExecutor executor,
+        IUseCase<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto> useCase,
         CancellationToken cancellationToken)
     {
         var actor = currentActorAccessor.CurrentActor
             ?? throw new InvalidOperationException("An authenticated Session actor is required.");
         var command = new AcceptSpaceInviteCommand(actor, inviteToken);
-        var result = await IdempotencyHttp.ExecuteLoggedAsync<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto, AcceptSpaceInviteUseCase>(
-            httpContext,
-            ct => useCase.ExecuteIdempotentAsync(command, executor, IdempotencyHttp.TakeReservation(httpContext),
-                InviteIdempotency.AcceptPolicy.ResultVersion, ct),
-            cancellationToken);
-        return ToCapabilityResult(result, execution => execution switch
-        {
-            IdempotentExecutionResult<AcceptSpaceInviteResultDto>.Executed executed => InviteIdempotency.Accepted(executed.Value),
-            IdempotentExecutionResult<AcceptSpaceInviteResultDto>.Recovered recovered =>
-                IdempotencyHttp.Replay(httpContext, recovered.Completion),
-            _ => throw new InvalidOperationException("Unknown idempotent execution result."),
-        });
+        var result = await useCase.ExecuteAsync(command, cancellationToken);
+        return ToCapabilityResult(result, InviteIdempotency.Accepted);
     }
 
     private static IResult ToCapabilityResult<T>(Result<T> result, Func<T, IResult> onSuccess)

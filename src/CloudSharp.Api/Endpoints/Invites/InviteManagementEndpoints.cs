@@ -10,7 +10,6 @@ using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Invites.Creations;
 using CloudSharp.Core.UseCases.Invites.Details;
 using CloudSharp.Core.UseCases.Invites.Dtos;
@@ -98,32 +97,19 @@ internal static class InviteManagementEndpoints
 
     private static async Task<IResult> CreateInviteAsync(
         CreateSpaceInviteRequest request,
-        CreateSpaceInviteUseCase useCase,
-        IdempotentRequestExecutor executor,
+        IUseCase<CreateSpaceInviteCommand, CreateSpaceInviteResultDto> useCase,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var context = SpaceAuthorizationFilter.GetRequiredContext(httpContext);
         var command = new CreateSpaceInviteCommand(context, request.ExpiresAt, request.MaxUses);
-        var result = await IdempotencyHttp.ExecuteLoggedAsync<CreateSpaceInviteCommand, CreateSpaceInviteResultDto, CreateSpaceInviteUseCase>(
-            httpContext,
-            ct => useCase.ExecuteIdempotentAsync(command, executor, IdempotencyHttp.TakeReservation(httpContext),
-                InviteIdempotency.CreatePolicy.ResultVersion, ct),
-            cancellationToken);
-        return result.ToSpaceHttpResult(execution => execution switch
-        {
-            IdempotentExecutionResult<CreateSpaceInviteResultDto>.Executed executed => Created(executed.Value),
-            IdempotentExecutionResult<CreateSpaceInviteResultDto>.Recovered recovered =>
-                IdempotencyHttp.Replay(httpContext, recovered.Completion),
-            _ => throw new InvalidOperationException("Unknown idempotent execution result."),
-        });
-
-        IResult Created(CreateSpaceInviteResultDto created)
+        var result = await useCase.ExecuteAsync(command, cancellationToken);
+        return result.ToSpaceHttpResult(created =>
         {
             httpContext.Response.Headers.ETag = ETagFormatter.Format(created.Version);
             var location = $"/api/v2/spaces/{context.SpacePublicId:D}/invites/{created.InvitePublicId:D}";
             return Results.Created(location, InviteManagementResponseMapper.ToResponse(created));
-        }
+        });
     }
 
     private static async Task<IResult> GetInviteAsync(

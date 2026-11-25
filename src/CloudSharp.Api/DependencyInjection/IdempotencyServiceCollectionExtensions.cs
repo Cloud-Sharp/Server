@@ -1,7 +1,6 @@
 using CloudSharp.Core.UseCases;
 using CloudSharp.Core.UseCases.Idempotency.Beginnings;
 using CloudSharp.Core.UseCases.Idempotency.Dtos;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Idempotency.Releases;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -13,6 +12,5 @@ internal static class IdempotencyServiceCollectionExtensions
     {
         services.AddScoped<IUseCase<BeginIdempotentRequestCommand, BeginIdempotentRequestResultDto>, BeginIdempotentRequestUseCase>();
         services.AddScoped<IUseCase<ReleaseIdempotencyReservationCommand, bool>, ReleaseIdempotencyReservationUseCase>();
-        services.AddScoped<IdempotentRequestExecutor>();
     }
 }

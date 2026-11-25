@@ -17,7 +17,7 @@ public sealed record SpaceCreationReplayDto(
     DateTimeOffset UpdatedAt,
     long Version)
 {
-    internal static SpaceCreationReplayDto FromResult(SpaceResultDto result)
+    public static SpaceCreationReplayDto FromResult(SpaceResultDto result)
     {
         var space = result.Space;
         return new SpaceCreationReplayDto(

@@ -1,6 +1,8 @@
 using CloudSharp.Api.Contracts.Mapping;
+using CloudSharp.Core.Abstractions.Idempotency;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Idempotency;
+using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.UseCases;
 using CloudSharp.Core.UseCases.Idempotency.Beginnings;
 using CloudSharp.Core.UseCases.Idempotency.Dtos;
@@ -52,36 +54,33 @@ internal sealed class IdempotencyEndpointFilter(IdempotencyEndpointPolicy policy
             throw new InvalidOperationException("The request start returned an unknown idempotency decision.");
         }
 
-        var reservation = new IdempotencyReservationFeature(started.Reservation);
-        httpContext.Features.Set(reservation);
+        var services = httpContext.RequestServices;
+        var transactionContext = services.GetRequiredService<IIdempotencyTransactionContext>();
+        var activation = transactionContext.Activate(
+            started.Reservation,
+            policy.ResultVersion,
+            policy.TransactionResultType,
+            policy.CreateRecovery,
+            services.GetRequiredService<IIdempotencyStore>(),
+            services.GetRequiredService<IClock>());
         try
         {
             return await next(context);
         }
+        catch (IdempotencyCompletionRecoveredException exception) when (exception.Completion.Reservation == started.Reservation)
+        {
+            return IdempotencyHttp.Replay(httpContext, exception.Completion);
+        }
         finally
         {
-            if (!reservation.IsTaken)
+            var canRelease = transactionContext.CanReleaseReservation;
+            activation.Dispose();
+            if (canRelease)
             {
-                var release = httpContext.RequestServices
+                var release = services
                     .GetRequiredService<IUseCase<ReleaseIdempotencyReservationCommand, bool>>();
                 await release.ExecuteAsync(new ReleaseIdempotencyReservationCommand(started.Reservation));
             }
         }
-    }
-}
-
-internal sealed class IdempotencyReservationFeature(IdempotencyReservation reservation)
-{
-    internal bool IsTaken { get; private set; }
-
-    internal IdempotencyReservation Take()
-    {
-        if (IsTaken)
-        {
-            throw new InvalidOperationException("The idempotency reservation was already taken.");
-        }
-
-        IsTaken = true;
-        return reservation;
     }
 }

@@ -14,7 +14,6 @@ using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Spaces.Archives;
 using CloudSharp.Core.UseCases.Spaces.Creations;
 using CloudSharp.Core.UseCases.Spaces.DeletionRequests;
@@ -42,7 +41,7 @@ public static class SpaceEndpoints
     private static readonly SpaceStatus[] ReadStatuses = [SpaceStatus.Active, SpaceStatus.Archived];
     private static readonly SpaceStatus[] ActiveOnly = [SpaceStatus.Active];
     private static readonly SpaceStatus[] ArchivedOnly = [SpaceStatus.Archived];
-    private static readonly IdempotencyEndpointPolicy CreateSpaceIdempotency = new(
+    private static readonly IdempotencyEndpointPolicy CreateSpaceIdempotency = IdempotencyEndpointPolicy.Create<SpaceResultDto>(
         CreateSpaceOperationId,
         CreateSpaceResultVersion,
         static context => IdempotencyHttp.ForSession(context, SpacesPath),
@@ -56,6 +55,7 @@ public static class SpaceEndpoints
                 request.AllowedBytes,
             };
         },
+        static created => new IdempotencyRecovery.Replayable<SpaceCreationReplayDto>(SpaceCreationReplayDto.FromResult(created)),
         static (httpContext, completion) => completion.Recovery is IdempotencyRecovery.Replayable<SpaceCreationReplayDto> replay
             ? SpaceCreated(httpContext, replay.Data.ToResult())
             : throw new InvalidOperationException("The stored Space creation result cannot be replayed."));
@@ -228,7 +228,6 @@ public static class SpaceEndpoints
     private static async Task<IResult> CreateSpaceAsync(
         CreateSpaceRequest request,
         CreateSpaceUseCase useCase,
-        IdempotentRequestExecutor executor,
         ICurrentActorAccessor currentActorAccessor,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -239,18 +238,8 @@ public static class SpaceEndpoints
             request.Name,
             request.Description,
             request.AllowedBytes);
-        var result = await useCase.ExecuteIdempotentAsync(
-            command,
-            IdempotencyHttp.TakeReservation(httpContext),
-            CreateSpaceResultVersion,
-            executor,
-            cancellationToken);
-        return result.ToSpaceHttpResult(value => value switch
-        {
-            IdempotentExecutionResult<SpaceResultDto>.Executed executed => SpaceCreated(httpContext, executed.Value),
-            IdempotentExecutionResult<SpaceResultDto>.Recovered recovered => IdempotencyHttp.Replay(httpContext, recovered.Completion),
-            _ => throw new InvalidOperationException("Unexpected Space creation result."),
-        });
+        var result = await useCase.ExecuteAsync(command, cancellationToken);
+        return result.ToSpaceHttpResult(value => SpaceCreated(httpContext, value));
     }
 
     private static IResult SpaceCreated(HttpContext httpContext, SpaceResultDto result)

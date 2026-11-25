@@ -8,7 +8,7 @@
 
 - [Auth 유즈케이스](use-cases/auth-use-cases.md) — 인증·내 계정 API, Session 수명주기와 구현 현황
 - [Space 유즈케이스](use-cases/space-use-cases.md) — Space·Role·Membership·Invite의 API별 행위자, 상태, 결과와 구현 경계
-- [Core 요청 멱등성 유즈케이스](use-cases/idempotency-use-cases.md) — 요청 시작, 업무 실행과 완료 기록, 선점 해제
+- [Core 요청 멱등성 유즈케이스](use-cases/idempotency-use-cases.md) — 요청 시작과 선점 해제, 업무 트랜잭션 연결
 
 ## 구현된 API
 

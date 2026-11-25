@@ -52,6 +52,9 @@ public static class PersistenceServiceCollectionExtensions
                     .MapEnum<SpaceMembershipStatus>(MembershipStatusEnumName, nameTranslator: EnumNameTranslator)
                     .MapEnum<SpaceInviteStatus>(InviteStatusEnumName, nameTranslator: EnumNameTranslator)));
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
+        services.AddScoped<IdempotencyTransactionContext>();
+        services.AddScoped<IIdempotencyTransactionContext>(provider =>
+            provider.GetRequiredService<IdempotencyTransactionContext>());
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ISpaceRepository, SpaceRepository>();

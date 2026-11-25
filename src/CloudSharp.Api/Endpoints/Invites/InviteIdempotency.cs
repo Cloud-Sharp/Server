@@ -10,22 +10,24 @@ namespace CloudSharp.Api.Endpoints.Invites;
 
 internal static class InviteIdempotency
 {
-    internal static readonly IdempotencyEndpointPolicy CreatePolicy = new(
+    internal static readonly IdempotencyEndpointPolicy CreatePolicy = IdempotencyEndpointPolicy.Create<CreateSpaceInviteResultDto>(
         "space-invite.create",
         1,
         context => IdempotencyHttp.ForSession(context,
             $"/api/v2/spaces/{SpaceAuthorizationFilter.GetRequiredContext(context.HttpContext).SpacePublicId:D}/invites"),
         context => IdempotencyHttp.GetArgument<CreateSpaceInviteRequest>(context),
+        invite => new IdempotencyRecovery.SecretNotReplayable(invite.InvitePublicId),
         (_, completion) => completion.Recovery is IdempotencyRecovery.SecretNotReplayable secret
             ? IdempotencyHttp.SecretNotReplayable("invitePublicId", secret.ResourcePublicId)
             : throw new InvalidOperationException("Invalid recovery result for invite creation."));
 
-    internal static readonly IdempotencyEndpointPolicy AcceptPolicy = new(
+    internal static readonly IdempotencyEndpointPolicy AcceptPolicy = IdempotencyEndpointPolicy.Create<AcceptSpaceInviteResultDto>(
         "space-invite.accept",
         1,
         context => IdempotencyHttp.ForSession(context,
             $"/api/v2/invites/{IdempotencyHttp.HashCapability(IdempotencyHttp.GetArgument<string>(context))}/accept"),
         _ => null,
+        accepted => new IdempotencyRecovery.Replayable<AcceptSpaceInviteResultDto>(accepted),
         (_, completion) => completion.Recovery is IdempotencyRecovery.Replayable<AcceptSpaceInviteResultDto> restored
             ? Accepted(restored.Data)
             : throw new InvalidOperationException("Invalid recovery result for invite acceptance."));

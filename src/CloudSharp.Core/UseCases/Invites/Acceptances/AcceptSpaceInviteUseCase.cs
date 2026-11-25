@@ -1,14 +1,12 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
-using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Policies.Authorization;
-using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
 
@@ -52,77 +50,40 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
         AcceptSpaceInviteCommand command,
         CancellationToken cancellationToken = default)
     {
-        var prepared = ValidateCommand(command);
-        if (prepared.IsFailed)
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validation = new AcceptSpaceInviteCommandValidator().Validate(command);
+        if (!validation.IsValid)
         {
-            return Result.Fail<AcceptSpaceInviteResultDto>(prepared.Errors);
+            return validation.ToFailureResult<AcceptSpaceInviteResultDto>();
+        }
+
+        var actorValidation = SessionSpaceAuthorizationPolicy.ValidateActor(command.Actor);
+        if (actorValidation.IsFailed)
+        {
+            return Result.Fail<AcceptSpaceInviteResultDto>(actorValidation.Errors);
+        }
+
+        if (InviteRepository is null || RoleReader is null || MembershipRepository is null)
+        {
+            return Result.Fail<AcceptSpaceInviteResultDto>(CommonError.DependencyUnavailable());
         }
 
         var result = await AttemptAsync();
-        if (!IsWriteConflict(result.Errors))
+        if (!IsWriteConflict(result))
         {
             return result;
         }
 
         // A losing write has rolled back before retrying against current Invite and Membership state.
         var retried = await AttemptAsync();
-        return IsWriteConflict(retried.Errors)
+        return IsWriteConflict(retried)
             ? Result.Fail<AcceptSpaceInviteResultDto>(CommonError.RequestConflict())
             : retried;
 
         Task<Result<AcceptSpaceInviteResultDto>> AttemptAsync() => TransactionExecutor.ExecuteAsync(
             ct => AcceptInTransactionAsync(command, ct),
             cancellationToken: cancellationToken);
-    }
-
-    public async Task<Result<IdempotentExecutionResult<AcceptSpaceInviteResultDto>>> ExecuteIdempotentAsync(
-        AcceptSpaceInviteCommand command,
-        IdempotentRequestExecutor executor,
-        IdempotencyReservation reservation,
-        int resultVersion,
-        CancellationToken cancellationToken = default)
-    {
-        var result = await executor.ExecuteAsync(
-            reservation,
-            resultVersion,
-            ct =>
-            {
-                var prepared = ValidateCommand(command);
-                return prepared.IsFailed
-                    ? Task.FromResult(Result.Fail<AcceptSpaceInviteResultDto>(prepared.Errors))
-                    : AcceptInTransactionAsync(command, ct);
-            },
-            accepted => new IdempotencyRecovery.Replayable<AcceptSpaceInviteResultDto>(accepted),
-            cancellationToken,
-            retryRolledBackOperation: IsWriteConflict);
-
-        return IsWriteConflict(result.Errors)
-            ? Result.Fail<IdempotentExecutionResult<AcceptSpaceInviteResultDto>>(CommonError.RequestConflict())
-            : result;
-    }
-
-    private Result ValidateCommand(AcceptSpaceInviteCommand command)
-    {
-        ArgumentNullException.ThrowIfNull(command);
-
-        var validation = new AcceptSpaceInviteCommandValidator().Validate(command);
-        if (!validation.IsValid)
-        {
-            return validation.ToFailureResult();
-        }
-
-        var actorValidation = SessionSpaceAuthorizationPolicy.ValidateActor(command.Actor);
-        if (actorValidation.IsFailed)
-        {
-            return actorValidation;
-        }
-
-        if (InviteRepository is null || RoleReader is null || MembershipRepository is null)
-        {
-            return Result.Fail(CommonError.DependencyUnavailable());
-        }
-
-        return Result.Ok();
     }
 
     private async Task<Result<AcceptSpaceInviteResultDto>> AcceptInTransactionAsync(
@@ -278,8 +239,8 @@ public sealed class AcceptSpaceInviteUseCase : IUseCase<AcceptSpaceInviteCommand
         return Result.Ok(new AcceptSpaceInviteResultDto(space.PublicId, membership.PublicId, false));
     }
 
-    private static bool IsWriteConflict(IReadOnlyList<IError> errors) =>
-        errors.OfType<CommonError>().Any(error =>
+    private static bool IsWriteConflict(Result<AcceptSpaceInviteResultDto> result) =>
+        result.Errors.OfType<CommonError>().Any(error =>
             error.Metadata.TryGetValue(CloudSharpError.ErrorCodeMetadataKey, out var code)
             && code is ErrorCodes.Common.PreconditionFailed);
 }

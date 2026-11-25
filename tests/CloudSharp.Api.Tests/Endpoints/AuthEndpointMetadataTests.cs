@@ -5,13 +5,11 @@ using CloudSharp.Api.Endpoints.Auth;
 using CloudSharp.Api.Endpoints.Users;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Api.Tests.TestSupport;
-using CloudSharp.Core.Abstractions.Idempotency;
-using CloudSharp.Core.Abstractions.Transactions;
-using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.UseCases;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Logins;
 using CloudSharp.Core.UseCases.Auth.PasswordChanges;
+using CloudSharp.Core.UseCases.Auth.Registrations;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http.Metadata;
 using Microsoft.AspNetCore.Routing;
@@ -36,11 +34,7 @@ public class AuthEndpointMetadataTests
             EnvironmentName = Environments.Production,
         });
         builder.Services.AddCloudSharpHttp();
-        builder.Services.AddSingleton(harness.RegistrationUseCase);
-        builder.Services.AddSingleton<IClock>(harness.Clock);
-        builder.Services.AddSingleton<ITransactionExecutor>(harness.TransactionExecutor);
-        builder.Services.AddSingleton<IIdempotencyStore>(new ApiTestIdempotencyStore());
-        builder.Services.AddIdempotencyServices();
+        builder.Services.AddSingleton<IUseCase<RegistrationCommand, RegistrationResultDto>>(harness.RegistrationUseCase);
         builder.Services.AddSingleton<IUseCase<LoginCommand, LoginResultDto>>(harness.LoginUseCase);
         builder.Services.AddSingleton(harness.GetProfileUseCase);
         builder.Services.AddSingleton<IUseCase<PasswordChangeCommand, PasswordChangeResultDto>>(
