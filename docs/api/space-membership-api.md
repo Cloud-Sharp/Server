@@ -4,15 +4,15 @@ Space 멤버 목록·상세 조회, Role 할당, 상태 변경과 본인 탈퇴�
 
 `S`는 `/api/v2/spaces/{spacePublicId}`, `M`은 `S/memberships/{membershipPublicId}`다.
 
-| ID    | API                                   | 메서드·경로                | 인증·권한                      | 허용 Space 상태          | 요청                          | 성공 응답                      |
-| ----- | ------------------------------------- | --------------------- | -------------------------- | -------------------- | --------------------------- | -------------------------- |
-| MB-01 | [멤버 목록 조회](#mb-01-멤버-목록-조회)           | `GET S/memberships`   | Session, `MEMBERS_VIEW`    | `ACTIVE`, `ARCHIVED` | cursor query                | 200, `items`와 `nextCursor` |
-| MB-02 | [멤버 상세 조회](#mb-02-멤버-상세-조회)           | `GET M`               | Session, `MEMBERS_VIEW`    | `ACTIVE`, `ARCHIVED` | —                           | 200, Membership과 `ETag`    |
-| MB-03 | [멤버 Role 전체 교체](#mb-03-멤버-role-전체-교체) | `PUT M/roles`         | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`, JSON | 200, Membership과 `ETag`    |
-| MB-04 | [멤버 정지](#mb-04-멤버-정지)                 | `POST M/suspend`      | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`       | 200, Membership과 `ETag`    |
-| MB-05 | [정지 멤버 활성화](#mb-05-정지-멤버-활성화)         | `POST M/activate`     | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`       | 200, Membership과 `ETag`    |
-| MB-06 | [멤버 제거](#mb-06-멤버-제거)                 | `DELETE M`            | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`       | 204, 새 Membership `ETag`   |
-| MB-07 | [본인 탈퇴](#mb-07-본인-탈퇴)                 | `DELETE S/membership` | Session, 본인의 Membership 관계 | `ACTIVE`, `ARCHIVED` | 본문 없는 멱등 호출                 | 204                        |
+| ID    | API                                   | 메서드·경로                | 인증·권한                      | 허용 Space 상태          | 요청                          | 성공 응답                      | 멱등성 종류 | `SYSTEM_ADMIN` 우회 |
+| ----- | ------------------------------------- | --------------------- | -------------------------- | -------------------- | --------------------------- | -------------------------- | ----- | ----- |
+| MB-01 | [멤버 목록 조회](#mb-01-멤버-목록-조회)           | `GET S/memberships`   | Session, `MEMBERS_VIEW`    | `ACTIVE`, `ARCHIVED` | cursor query                | 200, `items`와 `nextCursor` | 조회 | 없음 |
+| MB-02 | [멤버 상세 조회](#mb-02-멤버-상세-조회)           | `GET M`               | Session, `MEMBERS_VIEW`    | `ACTIVE`, `ARCHIVED` | —                           | 200, Membership과 `ETag`    | 조회 | 없음 |
+| MB-03 | [멤버 Role 전체 교체](#mb-03-멤버-role-전체-교체) | `PUT M/roles`         | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`, JSON | 200, Membership과 `ETag`    | 버전 비교 (`If-Match`) | 없음 |
+| MB-04 | [멤버 정지](#mb-04-멤버-정지)                 | `POST M/suspend`      | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`       | 200, Membership과 `ETag`    | 버전 비교 (`If-Match`) | 없음 |
+| MB-05 | [정지 멤버 활성화](#mb-05-정지-멤버-활성화)         | `POST M/activate`     | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`       | 200, Membership과 `ETag`    | 버전 비교 (`If-Match`) | 없음 |
+| MB-06 | [멤버 제거](#mb-06-멤버-제거)                 | `DELETE M`            | Session, `MEMBERS_MANAGE`  | `ACTIVE`             | Membership `If-Match`       | 204, 새 Membership `ETag`   | 버전 비교 (`If-Match`) | 없음 |
+| MB-07 | [본인 탈퇴](#mb-07-본인-탈퇴)                 | `DELETE S/membership` | Session, 본인의 Membership 관계 | `ACTIVE`, `ARCHIVED` | 본문 없는 멱등 호출                 | 204                        | 상태 기반 | 없음 |
 
 ## 공통 계약
 

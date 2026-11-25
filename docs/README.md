@@ -8,10 +8,10 @@
 
 - [Auth 유즈케이스](use-cases/auth-use-cases.md) — 인증·내 계정 API, Session 수명주기와 구현 현황
 - [Space 유즈케이스](use-cases/space-use-cases.md) — Space·Role·Membership·Invite의 API별 행위자, 상태, 결과와 구현 경계
-- [Core 요청 멱등성 유즈케이스](use-cases/idempotency-use-cases.md) — 요청 시작과 선점 해제, 업무 트랜잭션 연결
 
 ## 구현된 API
 
+- [Idempotency-Key 사용법](../src/CloudSharp.Api/README.md#idempotency-key) — 요청 재시도와 새 엔드포인트 등록
 - [Auth API](api/auth-api.md) — 계정 등록, 로그인
 - [User API](api/user-api.md) — 내 프로필 조회, 비밀번호 변경
 
@@ -46,7 +46,6 @@
 
 ## 설계·운영 문서
 
-- [HTTP 요청 멱등성 공통 구조 기획](http-request-idempotency-plan.md) — 새 API 연결 방식, PostgreSQL 선점·완료 기록과 복구
 - [유즈케이스 로깅 데코레이터 설계](adr/use-case-logging-decorator.md) — 공통 실행 계약, 구조화 로그 정책, Transactional Outbox와의 책임 분리
 - [아키텍처 결정 기록](adr/README.md)
 - [제품·프로세스 결정 기록](decisions/README.md)

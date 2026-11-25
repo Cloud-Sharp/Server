@@ -2,22 +2,22 @@
 
 Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다. IN-01~IN-05는 구현된 유즈케이스에 대응하며 IN-06은 폐기에 필요한 최신 ETag를 제공하는 추가 조회 계약이다. [Space·접근제어 설계](../../.llm/api/spaces-access.md) · [Invite 유즈케이스](../use-cases/space-use-cases.md#4-space-invite) · [Invite 저장소](../repositories/space-invite-repositories.md)
 
-IN-02·IN-05는 공통 멱등성 필터를 사용한다. PostgreSQL에 키와 완료 결과를 저장하고 동일한 요청의 결과를 복구한다. 초대 관리에서 `SYSTEM_ADMIN`에도 일반 Space 접근·관리 권한을 적용한다. 감사 Outbox와 권한 우회는 함께 도입할 예정이다.
+IN-02·IN-05는 `Idempotency-Key`를 필수로 받는다.
 
 `S`는 `/api/v2/spaces/{spacePublicId}`, `I`는 `S/invites/{invitePublicId}`다.
 
-| ID    | API                                 | 메서드·경로                                      | 인증·권한                     | 허용 Space 상태          | 요청                      | 성공 응답                                 |
-| ----- | ----------------------------------- | ------------------------------------------- | ------------------------- | -------------------- | ----------------------- | ------------------------------------- |
-| IN-01 | [초대 목록 조회](#in-01-초대-목록-조회)         | `GET S/invites`                             | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | cursor query            | 200, `items`와 `nextCursor`            |
-| IN-02 | [초대 링크 생성](#in-02-초대-링크-생성)         | `POST S/invites`                            | Session, `INVITES_MANAGE` | `ACTIVE`             | `Idempotency-Key`, JSON | 201, 발급 정보, Invite `ETag`, `Location` |
-| IN-03 | [초대 폐기](#in-03-초대-폐기)               | `DELETE I`                                  | Session, `INVITES_MANAGE` | `ACTIVE`             | Invite `If-Match`       | 204, 새 Invite `ETag`                  |
-| IN-04 | [공개 초대 정보 조회](#in-04-공개-초대-정보-조회)   | `GET /public/v2/invites/{inviteToken}`      | 유효한 초대 토큰, 익명 가능          | `ACTIVE`, `ARCHIVED` | —                       | 200, Space 이름·Role 이름·만료 시각           |
-| IN-05 | [초대 수락](#in-05-초대-수락)               | `POST /api/v2/invites/{inviteToken}/accept` | Session, 유효한 초대 토큰        | `ACTIVE`             | `Idempotency-Key`       | 200, 가입 결과                            |
-| IN-06 | [관리용 초대 상세 조회](#in-06-관리용-초대-상세-조회) | `GET I`                                     | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | —                       | 200, 초대 관리 정보, Invite `ETag`          |
+| ID    | API                                 | 메서드·경로                                      | 인증·권한                     | 허용 Space 상태          | 요청                      | 성공 응답                                 | 멱등성 종류 | `SYSTEM_ADMIN` 우회 |
+| ----- | ----------------------------------- | ------------------------------------------- | ------------------------- | -------------------- | ----------------------- | ------------------------------------- | ----- | ----- |
+| IN-01 | [초대 목록 조회](#in-01-초대-목록-조회)         | `GET S/invites`                             | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | cursor query            | 200, `items`와 `nextCursor`            | 조회 | 없음 |
+| IN-02 | [초대 링크 생성](#in-02-초대-링크-생성)         | `POST S/invites`                            | Session, `INVITES_MANAGE` | `ACTIVE`             | `Idempotency-Key`, JSON | 201, 발급 정보, Invite `ETag`, `Location` | 키 기반 (`Idempotency-Key` 필수) | 없음 |
+| IN-03 | [초대 폐기](#in-03-초대-폐기)               | `DELETE I`                                  | Session, `INVITES_MANAGE` | `ACTIVE`             | Invite `If-Match`       | 204, 새 Invite `ETag`                  | 버전 비교 (`If-Match`) | 없음 |
+| IN-04 | [공개 초대 정보 조회](#in-04-공개-초대-정보-조회)   | `GET /public/v2/invites/{inviteToken}`      | 유효한 초대 토큰, 익명 가능          | `ACTIVE`, `ARCHIVED` | —                       | 200, Space 이름·Role 이름·만료 시각           | 조회 | 없음 |
+| IN-05 | [초대 수락](#in-05-초대-수락)               | `POST /api/v2/invites/{inviteToken}/accept` | Session, 유효한 초대 토큰        | `ACTIVE`             | `Idempotency-Key`       | 200, 가입 결과                            | 키 기반 (`Idempotency-Key` 필수) | 없음 |
+| IN-06 | [관리용 초대 상세 조회](#in-06-관리용-초대-상세-조회) | `GET I`                                     | Session, `INVITES_MANAGE` | `ACTIVE`, `ARCHIVED` | —                       | 200, 초대 관리 정보, Invite `ETag`          | 조회 | 없음 |
 
 ## 공통 계약
 
-- 관리 요청에는 `UserSessionOnly`와 `INVITES_MANAGE`를 적용한다. Space 기본 접근 자격과 상태를 확인한 뒤 관리 권한을 평가한다. Session `SYSTEM_ADMIN`의 권한 우회는 감사 대상이다. 수락은 `UserSessionOnly`와 초대 토큰으로 인가하며 신규 사용자도 호출할 수 있다. [Space API](space-api.md#공통-계약) · [권한 계약](../../contracts/permissions/README.md#space접근-제어-endpoint)
+- 관리 요청에는 `UserSessionOnly`와 `INVITES_MANAGE`를 적용한다. `SYSTEM_ADMIN` 요청에도 같은 Space 접근 자격, 상태, 관리 권한을 확인한다. 수락은 `UserSessionOnly`와 초대 토큰으로 인가하며 신규 사용자도 호출할 수 있다. 관리자 우회와 영속 감사 연결은 후속 범위다. [Space API](space-api.md#공통-계약) · [권한 계약](../../contracts/permissions/README.md#space접근-제어-endpoint)
 - 관리 경로의 `spacePublicId`와 `invitePublicId`는 RFC variant UUIDv7이다. JSON 필드는 `camelCase`, 상태는 `UPPER_SNAKE_CASE`, 시각은 UTC ISO 8601을 사용한다. 오류 본문은 공통 `requestId`·`error` 형식이다. `requestId`는 응답의 `X-Correlation-ID`와 같다. [공통 API 계약](../../.llm/api/common-contract.md)
 - 모든 응답에 `Cache-Control: no-store`를 적용한다. 토큰 경로인 IN-04·IN-05 응답에는 `Referrer-Policy: no-referrer`도 적용한다. 토큰은 대소문자를 구분하는 `cs_inv_` 접두사와 32바이트를 인코딩한 43자 base64url 본문으로 구성된다. nginx와 API 접근 로그는 토큰 경로 구간을 마스킹하고 trace·metric에는 라우트 템플릿을 사용한다. [토큰 형식 검증](../../src/CloudSharp.Core/UseCases/Invites/InviteTokenValidationRules.cs) · [토큰 경로 보호](../../.llm/api/common-contract.md#11-capability-token-경로-보호)
 - Invite `If-Match`에는 IN-02 또는 IN-06 응답에서 받은 `"v7"` 형식의 강한 ETag 하나를 사용한다. 버전은 초대 Aggregate의 버전이다. 약한 ETag, 와일드카드, 복수 값은 400 `REQUEST_VALIDATION_FAILED` (`ifMatch` / `INVALID_ETAG`)다. [ETag 파서](../../src/CloudSharp.Api/Contracts/Mapping/IfMatchETag.cs)
@@ -45,7 +45,7 @@ IN-02·IN-05는 공통 멱등성 필터를 사용한다. PostgreSQL에 키와 �
 
 - JSON의 `expiresAt`은 현재보다 뒤인 UTC 시각으로 필수다. `maxUses`는 선택 필드이며 1~2,147,483,647의 정수 또는 `null`을 받는다. 생략과 `null`은 모두 무제한이다. 초기 상태는 `ACTIVE`, 사용 횟수는 0이다. 초대 수락으로 부여하는 Role은 VIEWER로 고정한다. 데이터베이스에는 토큰 해시를 보관한다. [생성 명령](../../src/CloudSharp.Core/UseCases/Invites/Creations/CreateSpaceInviteCommand.cs) · [Invite 도메인](../../.llm/domains/space-invite.md)
 - 최초 201 본문은 `invitePublicId`, `inviteToken`, `inviteUrl`, `expiresAt`, `maxUses`를 담는다. `inviteUrl`은 `/public/v2/invites/{inviteToken}`의 상대 경로다. `Location`에는 관리용 상세 경로 `I`를 사용하며 버전은 Invite `ETag`로 반환한다. 토큰과 URL은 이 최초 성공 본문에서 한 번 제공한다. [발급 응답 DTO](../../src/CloudSharp.Core/UseCases/Invites/Dtos/CreateSpaceInviteResultDto.cs)
-- 같은 키와 입력으로 완료된 발급을 다시 요청하면 409 `SECRET_RESPONSE_NOT_REPLAYABLE`을 반환한다. 공통 오류 본문의 최상위 `invitePublicId`에 처음 생성된 ID를 추가한다. 이 ID로 관리용 상세를 조회하고 폐기할 수 있다. [멱등 키 공통 계약](../../.llm/api/common-contract.md#9-idempotency-key)
+- 발급 응답을 받지 못하면 같은 키와 입력으로 재시도한다. 이미 발급이 완료됐다면 409 `SECRET_RESPONSE_NOT_REPLAYABLE`과 최초 `invitePublicId`를 응답 본문 최상위에 반환한다. 이 ID로 관리용 상세를 조회하고 폐기할 수 있다.
 
 ## IN-03 초대 폐기
 
@@ -79,10 +79,10 @@ IN-02·IN-05는 공통 멱등성 필터를 사용한다. PostgreSQL에 키와 �
 
 ## 생성·수락의 멱등 키
 
-- `Idempotency-Key`는 16~128자의 ASCII 문자열 하나다. 누락·형식 오류는 400 `REQUEST_VALIDATION_FAILED`다. 인증된 사용자, HTTP 메서드, 표준 경로 범위에서 정규화한 요청 지문과 키를 24시간 관리한다. 수락 경로의 토큰 구간을 식별할 때는 토큰 해시를 사용한다.
-- 매 요청에 Session 인증을 적용하며, 생성 결과를 복구할 때도 현재 Space의 관리 권한을 확인한다. 권한이 있으면 Space 보관 후에도 완료된 생성 결과를 복구할 수 있다. 완료된 요청의 결과는 생성 만료 시각이나 수락 가능 여부처럼 시간에 따라 달라지는 검증에 앞서 확인한다.
-- 같은 범위와 키의 다른 지문은 409 `IDEMPOTENCY_KEY_REUSED`, 같은 지문의 진행 중 요청은 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`다. 멱등성 판정에 필요한 PostgreSQL을 사용할 수 없으면 503으로 처리한다. [공통 저장과 복구](../http-request-idempotency-plan.md#postgresql-저장과-복구)
-- 생성의 복구용 결과는 생성된 `invitePublicId`만 보관한다. 수락은 최초의 200 본문을 보관한다. 업무 변경과 완료 기록을 같은 PostgreSQL 트랜잭션에 저장해 커밋 후 응답이 유실되어도 최초 결과를 복구한다. 토큰과 토큰을 포함한 URL은 복구 결과에서 제외한다. [공통 저장과 복구](../http-request-idempotency-plan.md#postgresql-저장과-복구)
+- 초대 생성 또는 수락을 처음 요청할 때 UUID 같은 새 키를 만들고 `Idempotency-Key` 헤더 하나로 보낸다. 출력 가능한 ASCII 16~128자를 사용한다. 헤더 누락·복수 값·형식 오류는 400 `REQUEST_VALIDATION_FAILED`와 `idempotencyKey` / `INVALID_IDEMPOTENCY_KEY`를 반환한다. [Idempotency-Key 사용 방법](../../src/CloudSharp.Api/README.md#idempotency-key)
+- 같은 작업을 다시 시도할 때는 같은 사용자·경로·입력·키를 사용한다. 완료 결과는 24시간 동안 확인할 수 있다. 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`를 받으면 같은 키와 입력으로 다시 시도할 수 있다. 같은 키에 다른 입력을 보내면 409 `IDEMPOTENCY_KEY_REUSED`를 반환한다.
+- 재시도에도 유효한 Session을 보낸다. 초대 생성은 현재 `INVITES_MANAGE` 권한이 있으면 Space 보관 후에도 완료된 발급 결과를 확인할 수 있다. 초대 수락은 같은 경로와 키로 재시도하면 최초 200 본문이 반환되며, 최초 요청이 마지막 가입 슬롯을 사용한 경우에도 결과가 같다.
+- 멱등성 판정에 필요한 저장소에 접근할 수 없으면 503 `DEPENDENCY_UNAVAILABLE`을 반환한다. 복구 후 같은 키와 입력으로 다시 시도할 수 있다.
 
 ## 엔드포인트 구현 시 연결할 계약
 

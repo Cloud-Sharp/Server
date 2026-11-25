@@ -21,7 +21,9 @@
 - Redis 중단 시 503 fail closed, Redis 장애 중 가입 계정 commit 보존과 로그인 복구
 - 비밀번호 변경 commit 직후 Redis 중단: 모든 기존 Session 거부, 새 비밀번호 로그인 성공, read transaction 비간섭
 
-로그아웃, 프로필 PATCH, 멱등성, rate limit, 활동 갱신, MCP는 현재 구현 범위가 아니므로 테스트하지 않는다.
+멱등성 테스트는 같은 키와 입력을 사용하는 등록 재시도, 응답의 공개 ID, 데이터베이스의 단일 계정 생성 여부를 확인한다. [등록 통합 테스트](Auth/RegistrationEndpointTests.cs) · [Idempotency-Key 사용법](../../src/CloudSharp.Api/README.md#idempotency-key)
+
+로그아웃, 프로필 PATCH, rate limit, 활동 갱신, MCP는 현재 구현 범위가 아니므로 테스트하지 않는다.
 
 ## 테스트 기반
 
@@ -37,7 +39,7 @@
 - migration이 아직 없으므로 전용 테스트 DB에만 `EnsureCreatedAsync()`를 사용한다.
   migration 적용 검증은 이 suite의 완료 범위가 아니다.
 - 일반 테스트는 하나의 PostgreSQL·Redis container와 host를 공유한다. 각 테스트 전에
-  `TRUNCATE TABLE users RESTART IDENTITY CASCADE`와 `FLUSHDB`를 실행하고 `[NonParallelizable]`로
+  `TRUNCATE TABLE users, idempotency_requests RESTART IDENTITY CASCADE`와 `FLUSHDB`를 실행하고 `[NonParallelizable]`로
   직렬화한다. 장애 테스트는 전용 container·host를 사용하며 Redis 재시작 검증은 고정 host port를 쓴다.
 - 비밀번호 변경 후처리 장애는 테스트 전용 EF interceptor가 write transaction commit 직후 Redis를
   중단하도록 구성한다. read transaction commit에서는 중단하지 않는다.
