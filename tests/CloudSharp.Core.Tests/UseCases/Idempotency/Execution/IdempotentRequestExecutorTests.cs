@@ -57,7 +57,8 @@ public sealed class IdempotentRequestExecutorTests
         var harness = new Harness();
         harness.Store.CompletionFailure = CommonError.DependencyUnavailable();
 
-        var result = await harness.CreateExecutor().ExecuteAsync(Reservation, 1, harness.ExecuteBusinessAsync, Project);
+        var result = await harness.CreateExecutor().ExecuteAsync(
+            Reservation, 1, harness.ExecuteBusinessAsync, Project, retryRolledBackOperation: _ => true);
 
         Assert.That(result.IsFailed, Is.True);
         Assert.Multiple(() =>
@@ -66,6 +67,68 @@ public sealed class IdempotentRequestExecutorTests
                 Is.EqualTo(ErrorCodes.Common.DependencyUnavailable));
             Assert.That(harness.Transactions.CommitCount, Is.Zero);
             Assert.That(harness.Transactions.RollbackCount, Is.EqualTo(1));
+            Assert.That(harness.ExecutionCount, Is.EqualTo(1));
+            Assert.That(harness.Store.ReleasedReservation, Is.EqualTo(Reservation));
+            Assert.That(harness.Store.Persisted, Is.Null);
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldRetryRolledBackBusinessOperationWithoutReleasingReservation()
+    {
+        var harness = new Harness();
+        var releaseCounts = new List<int>();
+
+        var result = await harness.CreateExecutor().ExecuteAsync(
+            Reservation,
+            1,
+            ct =>
+            {
+                releaseCounts.Add(harness.Store.ReleaseCount);
+                return releaseCounts.Count == 1
+                    ? Task.FromResult(Result.Fail<BusinessResult>(CommonError.PreconditionFailed()))
+                    : harness.ExecuteBusinessAsync(ct);
+            },
+            Project,
+            retryRolledBackOperation: _ => true);
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value, Is.TypeOf<IdempotentExecutionResult<BusinessResult>.Executed>());
+            Assert.That(releaseCounts, Is.EqualTo(new[] { 0, 0 }));
+            Assert.That(harness.Transactions.RollbackCount, Is.EqualTo(1));
+            Assert.That(harness.Transactions.CommitCount, Is.EqualTo(1));
+            Assert.That(harness.Store.ReleaseCount, Is.Zero);
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldReleaseReservationAfterRetriedOperationFails()
+    {
+        var harness = new Harness();
+        var releaseCounts = new List<int>();
+
+        var result = await harness.CreateExecutor().ExecuteAsync(
+            Reservation,
+            1,
+            _ =>
+            {
+                releaseCounts.Add(harness.Store.ReleaseCount);
+                return Task.FromResult(Result.Fail<BusinessResult>(CommonError.PreconditionFailed()));
+            },
+            Project,
+            retryRolledBackOperation: _ => true);
+
+        Assert.That(result.IsFailed, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Errors.Single().Metadata[CloudSharpError.ErrorCodeMetadataKey],
+                Is.EqualTo(ErrorCodes.Common.PreconditionFailed));
+            Assert.That(releaseCounts, Is.EqualTo(new[] { 0, 0 }));
+            Assert.That(harness.Transactions.RollbackCount, Is.EqualTo(2));
+            Assert.That(harness.Transactions.CommitCount, Is.Zero);
+            Assert.That(harness.Store.ReleaseCount, Is.EqualTo(1));
             Assert.That(harness.Store.ReleasedReservation, Is.EqualTo(Reservation));
             Assert.That(harness.Store.Persisted, Is.Null);
         });

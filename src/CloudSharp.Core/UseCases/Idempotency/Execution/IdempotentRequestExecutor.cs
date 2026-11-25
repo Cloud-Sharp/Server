@@ -18,7 +18,8 @@ public sealed class IdempotentRequestExecutor(
         int resultVersion,
         Func<CancellationToken, Task<Result<T>>> operation,
         Func<T, IdempotencyRecovery> createRecovery,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        Func<IReadOnlyList<IError>, bool>? retryRolledBackOperation = null)
     {
         ArgumentNullException.ThrowIfNull(reservation);
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(resultVersion);
@@ -26,8 +27,13 @@ public sealed class IdempotentRequestExecutor(
         ArgumentNullException.ThrowIfNull(createRecovery);
 
         Result<IdempotentExecutionResult<T>>? operationFailure = null;
+        Result<IdempotentExecutionResult<T>>? businessFailure = null;
         var completionStaged = false;
         var result = await transactionExecutor.ExecuteAsync(ExecuteInTransactionAsync, cancellationToken: cancellationToken);
+        if (ReferenceEquals(result, businessFailure) && retryRolledBackOperation?.Invoke(result.Errors) == true)
+        {
+            result = await transactionExecutor.ExecuteAsync(ExecuteInTransactionAsync, cancellationToken: cancellationToken);
+        }
 
         // 기존 실행기는 명시적 롤백 후 콜백의 실패 결과를 그대로 반환한다.
         if (ReferenceEquals(result, operationFailure))
@@ -49,6 +55,7 @@ public sealed class IdempotentRequestExecutor(
         async Task<Result<IdempotentExecutionResult<T>>> ExecuteInTransactionAsync(CancellationToken transactionToken)
         {
             operationFailure = null;
+            businessFailure = null;
             var request = reservation.Request;
             var current = await store.LockAsync(request.Scope, request.Key, transactionToken);
             if (current.IsFailed)
@@ -76,6 +83,7 @@ public sealed class IdempotentRequestExecutor(
             if (businessResult.IsFailed)
             {
                 operationFailure = Result.Fail<IdempotentExecutionResult<T>>(businessResult.Errors);
+                businessFailure = operationFailure;
                 return operationFailure;
             }
 

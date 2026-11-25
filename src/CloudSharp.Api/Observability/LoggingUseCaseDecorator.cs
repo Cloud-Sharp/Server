@@ -14,36 +14,45 @@ internal sealed class LoggingUseCaseDecorator<TInput, TOutput>(
     private const string MessageTemplate =
         "Use case {UseCase} completed with {Outcome} in {ElapsedMs} ms. TraceId={TraceId}; ErrorCodes={ErrorCodes}; ExceptionType={ExceptionType}";
 
-    public async Task<Result<TOutput>> ExecuteAsync(
+    public Task<Result<TOutput>> ExecuteAsync(
         TInput input,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default) =>
+        ExecuteLoggedAsync(inner.GetType().Name, ct => inner.ExecuteAsync(input, ct), logger, cancellationToken);
+
+    internal static async Task<Result<TExecutionOutput>> ExecuteLoggedAsync<TExecutionOutput>(
+        string useCaseName,
+        Func<CancellationToken, Task<Result<TExecutionOutput>>> execute,
+        ILogger<LoggingUseCaseDecorator<TInput, TOutput>> logger,
+        CancellationToken cancellationToken)
     {
         var startTimestamp = Stopwatch.GetTimestamp();
-        Result<TOutput> result;
+        Result<TExecutionOutput> result;
 
         try
         {
-            result = await inner.ExecuteAsync(input, cancellationToken);
+            result = await execute(cancellationToken);
         }
         catch (OperationCanceledException)
         {
-            TryLogCompletion(startTimestamp, "Canceled");
+            TryLogCompletion(logger, useCaseName, startTimestamp, "Canceled");
             throw;
         }
         catch (Exception exception)
         {
-            TryLogCompletion(startTimestamp, "Faulted", exception: exception);
+            TryLogCompletion(logger, useCaseName, startTimestamp, "Faulted", exception: exception);
             throw;
         }
 
-        TryLogCompletion(startTimestamp, result.IsSuccess ? "Succeeded" : "Failed", result);
+        TryLogCompletion(logger, useCaseName, startTimestamp, result.IsSuccess ? "Succeeded" : "Failed", result.Errors);
         return result;
     }
 
-    private void TryLogCompletion(
+    private static void TryLogCompletion(
+        ILogger logger,
+        string useCaseName,
         long startTimestamp,
         string outcome,
-        Result<TOutput>? result = null,
+        IReadOnlyList<IError>? errors = null,
         Exception? exception = null)
     {
         try
@@ -53,8 +62,8 @@ internal sealed class LoggingUseCaseDecorator<TInput, TOutput>(
                 return;
             }
 
-            var errorCodes = result is { IsFailed: true }
-                ? result.Errors
+            var errorCodes = errors is { Count: > 0 }
+                ? errors
                     .Select(error => error.Metadata.TryGetValue(
                         CloudSharpError.ErrorCodeMetadataKey,
                         out var value)
@@ -71,7 +80,7 @@ internal sealed class LoggingUseCaseDecorator<TInput, TOutput>(
                 message: MessageTemplate,
                 args:
                 [
-                    inner.GetType().Name,
+                    useCaseName,
                     outcome,
                     Stopwatch.GetElapsedTime(startTimestamp).TotalMilliseconds,
                     Activity.Current?.TraceId.ToString(),

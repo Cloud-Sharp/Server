@@ -8,6 +8,7 @@ using CloudSharp.Api.Endpoints.Users;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Api.Tests.TestSupport;
 using CloudSharp.Core.Abstractions.Auth;
+using CloudSharp.Core.Abstractions.Idempotency;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Actors;
@@ -250,6 +251,7 @@ public class EndpointRequestDelegateTests
         builder.Services.Replace(ServiceDescriptor.Singleton<IUserRepository>(harness.UserRepository));
         builder.Services.Replace(ServiceDescriptor.Singleton<IUnitOfWork>(harness.UnitOfWork));
         builder.Services.Replace(ServiceDescriptor.Singleton<ITransactionExecutor>(harness.TransactionExecutor));
+        builder.Services.Replace(ServiceDescriptor.Singleton<IIdempotencyStore>(new ApiTestIdempotencyStore()));
         builder.Services.Replace(ServiceDescriptor.Singleton<ISessionStore>(harness.SessionStore));
         builder.Services.Replace(ServiceDescriptor.Singleton<ITokenIssuer>(harness.TokenIssuer));
         builder.Services.Replace(ServiceDescriptor.Singleton<IPasswordHasher>(harness.PasswordHasher));
@@ -267,6 +269,10 @@ public class EndpointRequestDelegateTests
         context.Request.Method = endpoint.Metadata.GetMetadata<HttpMethodMetadata>()!.HttpMethods[0];
         context.Request.Path = path;
         context.Request.ContentType = contentType;
+        if (path == Registrations)
+        {
+            context.Request.Headers["Idempotency-Key"] = "delegate-registration-key";
+        }
         var bytes = Encoding.UTF8.GetBytes(json);
         context.Request.ContentLength = bytes.Length;
         context.Request.Body = new MemoryStream(bytes);

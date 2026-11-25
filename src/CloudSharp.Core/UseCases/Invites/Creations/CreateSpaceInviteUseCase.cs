@@ -1,11 +1,13 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Invites;
 using CloudSharp.Core.Domain.Spaces;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
 
@@ -42,23 +44,52 @@ public sealed class CreateSpaceInviteUseCase : IUseCase<CreateSpaceInviteCommand
         CreateSpaceInviteCommand command,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(command);
-
-        var validation = new CreateSpaceInviteCommandValidator(Clock).Validate(command);
-        if (!validation.IsValid)
+        var prepared = ValidateCommand(command);
+        if (prepared.IsFailed)
         {
-            return validation.ToFailureResult<CreateSpaceInviteResultDto>();
-        }
-
-        if (SpaceRepository is null || InviteRepository is null || TokenIssuer is null
-            || UnitOfWork is null || TransactionExecutor is null || Clock is null)
-        {
-            return Result.Fail<CreateSpaceInviteResultDto>(CommonError.DependencyUnavailable());
+            return Result.Fail<CreateSpaceInviteResultDto>(prepared.Errors);
         }
 
         return await TransactionExecutor.ExecuteAsync(
             ct => CreateInTransactionAsync(command, ct),
             cancellationToken: cancellationToken);
+    }
+
+    public Task<Result<IdempotentExecutionResult<CreateSpaceInviteResultDto>>> ExecuteIdempotentAsync(
+        CreateSpaceInviteCommand command,
+        IdempotentRequestExecutor executor,
+        IdempotencyReservation reservation,
+        int resultVersion,
+        CancellationToken cancellationToken = default) => executor.ExecuteAsync(
+            reservation,
+            resultVersion,
+            ct =>
+            {
+                var prepared = ValidateCommand(command);
+                return prepared.IsFailed
+                    ? Task.FromResult(Result.Fail<CreateSpaceInviteResultDto>(prepared.Errors))
+                    : CreateInTransactionAsync(command, ct);
+            },
+            created => new IdempotencyRecovery.SecretNotReplayable(created.InvitePublicId),
+            cancellationToken);
+
+    private Result ValidateCommand(CreateSpaceInviteCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validation = new CreateSpaceInviteCommandValidator(Clock).Validate(command);
+        if (!validation.IsValid)
+        {
+            return validation.ToFailureResult();
+        }
+
+        if (SpaceRepository is null || InviteRepository is null || TokenIssuer is null
+            || UnitOfWork is null || TransactionExecutor is null || Clock is null)
+        {
+            return Result.Fail(CommonError.DependencyUnavailable());
+        }
+
+        return Result.Ok();
     }
 
     private async Task<Result<CreateSpaceInviteResultDto>> CreateInTransactionAsync(

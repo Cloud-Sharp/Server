@@ -1,11 +1,13 @@
 using CloudSharp.Api.Auth.Authentication;
 using CloudSharp.Api.Auth.CurrentUser;
 using CloudSharp.Api.Contracts.ProblemDetails;
+using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Endpoints.Invites.Responses;
 using CloudSharp.Api.Endpoints.Spaces.Mapping;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.UseCases;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Invites.Acceptances;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using CloudSharp.Core.UseCases.Invites.PublicInfo;
@@ -30,9 +32,9 @@ internal static class InviteCapabilityEndpoints
 
         endpoints.MapPost(InviteCapabilityProtectionMiddleware.AcceptRoute, AcceptInviteAsync)
             .RequireAuthorization(SessionAuthenticationDefaults.UserSessionOnlyPolicy)
+            .RequireIdempotency(InviteIdempotency.AcceptPolicy)
             .WithName("AcceptSpaceInvite")
             .WithSummary("초대 링크로 Space에 가입합니다.")
-            .WithDescription(InviteHttpContract.IdempotencyDescription)
             .Produces<AcceptSpaceInviteResponse>()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest)
             .Produces<ErrorResponse>(StatusCodes.Status401Unauthorized)
@@ -57,19 +59,25 @@ internal static class InviteCapabilityEndpoints
         string inviteToken,
         HttpContext httpContext,
         ICurrentActorAccessor currentActorAccessor,
-        IUseCase<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto> useCase,
+        AcceptSpaceInviteUseCase useCase,
+        IdempotentRequestExecutor executor,
         CancellationToken cancellationToken)
     {
-        if (InviteHttpContract.ValidateIdempotencyKey(httpContext.Request) is { } error)
-        {
-            return error;
-        }
-
         var actor = currentActorAccessor.CurrentActor
             ?? throw new InvalidOperationException("An authenticated Session actor is required.");
-        var result = await useCase.ExecuteAsync(new AcceptSpaceInviteCommand(actor, inviteToken), cancellationToken);
-        return ToCapabilityResult(result, accepted => Results.Ok(new AcceptSpaceInviteResponse(
-            accepted.SpacePublicId, accepted.MembershipPublicId, accepted.AlreadyMember)));
+        var command = new AcceptSpaceInviteCommand(actor, inviteToken);
+        var result = await IdempotencyHttp.ExecuteLoggedAsync<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto, AcceptSpaceInviteUseCase>(
+            httpContext,
+            ct => useCase.ExecuteIdempotentAsync(command, executor, IdempotencyHttp.TakeReservation(httpContext),
+                InviteIdempotency.AcceptPolicy.ResultVersion, ct),
+            cancellationToken);
+        return ToCapabilityResult(result, execution => execution switch
+        {
+            IdempotentExecutionResult<AcceptSpaceInviteResultDto>.Executed executed => InviteIdempotency.Accepted(executed.Value),
+            IdempotentExecutionResult<AcceptSpaceInviteResultDto>.Recovered recovered =>
+                IdempotencyHttp.Replay(httpContext, recovered.Completion),
+            _ => throw new InvalidOperationException("Unknown idempotent execution result."),
+        });
     }
 
     private static IResult ToCapabilityResult<T>(Result<T> result, Func<T, IResult> onSuccess)

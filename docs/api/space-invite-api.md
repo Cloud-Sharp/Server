@@ -2,7 +2,7 @@
 
 Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다. IN-01~IN-05는 구현된 유즈케이스에 대응하며 IN-06은 폐기에 필요한 최신 ETag를 제공하는 추가 조회 계약이다. [Space·접근제어 설계](../../.llm/api/spaces-access.md) · [Invite 유즈케이스](../use-cases/space-use-cases.md#4-space-invite) · [Invite 저장소](../repositories/space-invite-repositories.md)
 
-현재 구현에서 IN-02·IN-05는 `Idempotency-Key`의 필수 여부와 형식을 검증한다. 키 저장, 중복 감지, 응답 재생, 커밋 후 복구는 후속 작업이다. 초대 관리에서 `SYSTEM_ADMIN`에도 일반 Space 접근·관리 권한을 적용한다. 감사 Outbox와 권한 우회는 함께 도입할 예정이다.
+IN-02·IN-05는 공통 멱등성 필터를 사용한다. PostgreSQL에 키와 완료 결과를 저장하고 동일한 요청의 결과를 복구한다. 초대 관리에서 `SYSTEM_ADMIN`에도 일반 Space 접근·관리 권한을 적용한다. 감사 Outbox와 권한 우회는 함께 도입할 예정이다.
 
 `S`는 `/api/v2/spaces/{spacePublicId}`, `I`는 `S/invites/{invitePublicId}`다.
 
@@ -80,7 +80,7 @@ Space 초대의 관리, 공개 정보 조회, 수락에 대한 HTTP 계약이다
 ## 생성·수락의 멱등 키
 
 - `Idempotency-Key`는 16~128자의 ASCII 문자열 하나다. 누락·형식 오류는 400 `REQUEST_VALIDATION_FAILED`다. 인증된 사용자, HTTP 메서드, 표준 경로 범위에서 정규화한 요청 지문과 키를 24시간 관리한다. 수락 경로의 토큰 구간을 식별할 때는 토큰 해시를 사용한다.
-- 매 요청에 Session 인증을 적용하며, 생성 결과를 복구할 때도 현재 Space의 관리 권한을 확인한다. 완료된 요청의 결과는 생성 만료 시각이나 수락 가능 여부처럼 시간에 따라 달라지는 검증에 앞서 확인한다.
+- 매 요청에 Session 인증을 적용하며, 생성 결과를 복구할 때도 현재 Space의 관리 권한을 확인한다. 권한이 있으면 Space 보관 후에도 완료된 생성 결과를 복구할 수 있다. 완료된 요청의 결과는 생성 만료 시각이나 수락 가능 여부처럼 시간에 따라 달라지는 검증에 앞서 확인한다.
 - 같은 범위와 키의 다른 지문은 409 `IDEMPOTENCY_KEY_REUSED`, 같은 지문의 진행 중 요청은 409 `IDEMPOTENCY_REQUEST_IN_PROGRESS`다. 멱등성 판정에 필요한 PostgreSQL을 사용할 수 없으면 503으로 처리한다. [공통 저장과 복구](../http-request-idempotency-plan.md#postgresql-저장과-복구)
 - 생성의 복구용 결과는 생성된 `invitePublicId`만 보관한다. 수락은 최초의 200 본문을 보관한다. 업무 변경과 완료 기록을 같은 PostgreSQL 트랜잭션에 저장해 커밋 후 응답이 유실되어도 최초 결과를 복구한다. 토큰과 토큰을 포함한 URL은 복구 결과에서 제외한다. [공통 저장과 복구](../http-request-idempotency-plan.md#postgresql-저장과-복구)
 

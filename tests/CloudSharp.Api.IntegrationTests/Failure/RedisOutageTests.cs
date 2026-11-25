@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json;
 using CloudSharp.Api.IntegrationTests.TestHost;
 using CloudSharp.Core.Common.Errors;
 using NUnit.Framework;
@@ -66,10 +67,14 @@ public sealed class RedisOutageTests
             ErrorCodes.Common.DependencyUnavailable);
 
         var secondRegistration = TestData.NewRegistration();
+        var key = Guid.NewGuid().ToString("N");
+        void UseOriginalKey(HttpRequestMessage request) => request.Headers.TryAddWithoutValidation("Idempotency-Key", key);
+
         using var registrationResponse = await _api.SendJsonAsync(
             HttpMethod.Post,
             "/api/v2/auth/registrations",
-            secondRegistration);
+            secondRegistration,
+            configure: UseOriginalKey);
         await IntegrationAssert.AssertErrorAsync(
             registrationResponse,
             HttpStatusCode.ServiceUnavailable,
@@ -84,6 +89,16 @@ public sealed class RedisOutageTests
             "accessToken",
             "A failed registration must not return an access token.");
 
+        using var committedRetry = await _api.SendJsonAsync(
+            HttpMethod.Post,
+            "/api/v2/auth/registrations",
+            secondRegistration,
+            configure: UseOriginalKey);
+        await IntegrationAssert.AssertErrorAsync(
+            committedRetry, HttpStatusCode.Conflict, "SECRET_RESPONSE_NOT_REPLAYABLE");
+        using var retryBody = JsonDocument.Parse(await TestApiClient.ReadBodyAsync(committedRetry));
+        var committedPublicId = retryBody.RootElement.GetProperty("userPublicId").GetGuid();
+
         await _environment.StartRedisAsync();
 
         var second = await TestFlows.LoginAsync(
@@ -91,6 +106,7 @@ public sealed class RedisOutageTests
             new LoginWireRequest(secondRegistration.Email, secondRegistration.Password));
         var (secondProfile, _) = await TestFlows.GetMeAsync(_api, second.AccessToken);
         Assert.That(secondProfile.Email, Is.EqualTo(secondRegistration.Email));
+        Assert.That(secondProfile.UserPublicId, Is.EqualTo(committedPublicId));
 
         var persisted = await _environment.FindUserAsync(secondProfile.UserPublicId);
         Assert.That(persisted, Is.Not.Null);

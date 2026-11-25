@@ -23,4 +23,4 @@ HTTP 멱등성 기록은 PostgreSQL 전용 테이블에서 24시간 보존한다
 
 ## 현재 적용 사례
 
-`POST /api/v2/spaces`는 현재 선택 헤더인 `Idempotency-Key`를 무시하고 유효한 요청마다 새 Space를 생성한다. Space Session API에서 `SYSTEM_ADMIN`도 OWNER 또는 활성 Membership 권한으로 접근한다. 두 기능의 도입 상태는 해당 API의 현재 구현 범위에서 확인한다. [Space API](../api/space-api.md)
+Space 생성, 초대 생성·수락, 계정 등록은 공통 필터에서 `Idempotency-Key`를 필수로 검증하고 PostgreSQL 완료 기록으로 재시도에 응답한다. Space Session API에서 `SYSTEM_ADMIN`도 OWNER 또는 활성 Membership 권한으로 접근한다. [Space API](../api/space-api.md) · [초대 API](../api/space-invite-api.md) · [계정 등록 API](../api/auth-api.md)

@@ -17,6 +17,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddSingleton<IClock>(new SystemClock(TimeProvider.System));
         services.AddAuthServices(configuration);
         services.AddPostgreSqlPersistence(configuration);
+        services.AddIdempotencyServices();
         services.AddUserServices();
         services.AddSpaceServices();
         services.AddMembershipServices();

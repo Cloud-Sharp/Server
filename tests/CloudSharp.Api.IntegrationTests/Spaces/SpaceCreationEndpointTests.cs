@@ -60,6 +60,73 @@ public sealed class SpaceCreationEndpointTests : SpaceIntegrationTestBase
         });
     }
 
+    [TestCase(null)]
+    [TestCase("short")]
+    public async Task CreateSpace_ShouldRequireAValidIdempotencyKey(string? key)
+    {
+        var owner = await RegisterSpaceUserAsync();
+
+        using var response = await PostWithIdempotencyKeyAsync(owner, """{"name":"Product"}""", key);
+        var error = await IntegrationAssert.AssertErrorAsync(
+            response, HttpStatusCode.BadRequest, "REQUEST_VALIDATION_FAILED");
+
+        Assert.That(error.Error.Details.Select(detail => (detail.Field, detail.Code)),
+            Does.Contain(("idempotencyKey", "INVALID_IDEMPOTENCY_KEY")));
+        Assert.That(await GetSpacesAsync(), Is.Empty);
+    }
+
+    [Test]
+    public async Task CreateSpace_ShouldReplayTheOriginalCreatedResponseForEquivalentInput()
+    {
+        var owner = await RegisterSpaceUserAsync();
+        var key = Guid.NewGuid().ToString("N");
+        using var initial = await PostWithIdempotencyKeyAsync(
+            owner, """{"name":"  Product  ","description":"   "}""", key);
+        var created = await ReadSpaceAsync(initial, HttpStatusCode.Created);
+        var originalBody = await TestApiClient.ReadBodyAsync(initial);
+        var originalETag = AssertETag(initial, "\"v1\"");
+        var location = SpacePath(created.SpacePublicId);
+        Assert.That(TestApiClient.GetHeader(initial, "Location"), Is.EqualTo(location));
+
+        using var update = await Api.SendRawAsync(
+            HttpMethod.Patch, location, """{"name":"Renamed"}""", "application/json", owner.AccessToken,
+            ifMatch: originalETag);
+        Assert.That(update.StatusCode, Is.EqualTo(HttpStatusCode.OK));
+        AssertETag(update, "\"v2\"");
+
+        using var retry = await PostWithIdempotencyKeyAsync(
+            owner, """{"allowedBytes":null,"description":null,"name":"Product"}""", key);
+        var replayBody = await ReadSuccessBodyAsync(retry, HttpStatusCode.Created);
+        var spaces = await GetSpacesAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(replayBody, Is.EqualTo(originalBody));
+            AssertETag(retry, originalETag);
+            Assert.That(TestApiClient.GetHeader(retry, "Location"), Is.EqualTo(location));
+            Assert.That(spaces.Select(space => (space.PublicId, space.Name)),
+                Is.EqualTo(new[] { (created.SpacePublicId, "Renamed") }));
+        });
+    }
+
+    [Test]
+    public async Task CreateSpace_ShouldRejectDifferentInputWithTheSameIdempotencyKey()
+    {
+        var owner = await RegisterSpaceUserAsync();
+        var key = Guid.NewGuid().ToString("N");
+        using var initial = await PostWithIdempotencyKeyAsync(
+            owner, """{"name":"Product","allowedBytes":1024}""", key);
+        var created = await ReadSpaceAsync(initial, HttpStatusCode.Created);
+
+        using var retry = await PostWithIdempotencyKeyAsync(
+            owner, """{"name":"Product","allowedBytes":2048}""", key);
+        await IntegrationAssert.AssertErrorAsync(retry, HttpStatusCode.Conflict, "IDEMPOTENCY_KEY_REUSED");
+
+        var spaces = await GetSpacesAsync();
+        Assert.That(spaces.Select(space => (space.PublicId, space.AllowedBytes)),
+            Is.EqualTo(new[] { (created.SpacePublicId, (long?)1024) }));
+    }
+
     [TestCase("""
         {"name":"Unlimited"}
         """)]
@@ -152,4 +219,20 @@ public sealed class SpaceCreationEndpointTests : SpaceIntegrationTestBase
             "REQUEST_VALIDATION_FAILED");
         Assert.That(await GetSpacesAsync(), Is.Empty);
     }
+
+    private Task<HttpResponseMessage> PostWithIdempotencyKeyAsync(SpaceTestUser owner, string body, string? key) =>
+        Api.SendRawAsync(
+            HttpMethod.Post,
+            SpacesPath,
+            body,
+            "application/json",
+            owner.AccessToken,
+            configure: request =>
+            {
+                if (key is not null)
+                {
+                    request.Headers.TryAddWithoutValidation("Idempotency-Key", key);
+                }
+            },
+            useDefaultIdempotencyKey: false);
 }

@@ -1,5 +1,6 @@
 using CloudSharp.Api.Contracts.Mapping;
 using CloudSharp.Api.Contracts.ProblemDetails;
+using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Endpoints.Invites.Mapping;
 using CloudSharp.Api.Endpoints.Invites.Requests;
 using CloudSharp.Api.Endpoints.Invites.Responses;
@@ -9,6 +10,7 @@ using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Invites.Creations;
 using CloudSharp.Core.UseCases.Invites.Details;
 using CloudSharp.Core.UseCases.Invites.Dtos;
@@ -43,10 +45,11 @@ internal static class InviteManagementEndpoints
             .Produces<SpaceInvitePageResponse>()
             .ProducesManagementErrors();
         invites.MapPost("", CreateInviteAsync)
-            .AddEndpointFilter(authorizeWrite)
+            .AddEndpointFilter(authorizeRead)
+            .RequireIdempotency(InviteIdempotency.CreatePolicy)
             .WithName("CreateSpaceInvite")
             .WithSummary("Space 초대 링크를 생성합니다.")
-            .WithDescription(InviteHttpContract.ManagementDescription + " " + InviteHttpContract.IdempotencyDescription)
+            .WithDescription(InviteHttpContract.ManagementDescription)
             .Produces<CreateSpaceInviteResponse>(StatusCodes.Status201Created)
             .ProducesManagementErrors()
             .Produces<ErrorResponse>(StatusCodes.Status409Conflict)
@@ -95,24 +98,32 @@ internal static class InviteManagementEndpoints
 
     private static async Task<IResult> CreateInviteAsync(
         CreateSpaceInviteRequest request,
-        IUseCase<CreateSpaceInviteCommand, CreateSpaceInviteResultDto> useCase,
+        CreateSpaceInviteUseCase useCase,
+        IdempotentRequestExecutor executor,
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
-        if (InviteHttpContract.ValidateIdempotencyKey(httpContext.Request) is { } error)
-        {
-            return error;
-        }
-
         var context = SpaceAuthorizationFilter.GetRequiredContext(httpContext);
         var command = new CreateSpaceInviteCommand(context, request.ExpiresAt, request.MaxUses);
-        var result = await useCase.ExecuteAsync(command, cancellationToken);
-        return result.ToSpaceHttpResult(created =>
+        var result = await IdempotencyHttp.ExecuteLoggedAsync<CreateSpaceInviteCommand, CreateSpaceInviteResultDto, CreateSpaceInviteUseCase>(
+            httpContext,
+            ct => useCase.ExecuteIdempotentAsync(command, executor, IdempotencyHttp.TakeReservation(httpContext),
+                InviteIdempotency.CreatePolicy.ResultVersion, ct),
+            cancellationToken);
+        return result.ToSpaceHttpResult(execution => execution switch
+        {
+            IdempotentExecutionResult<CreateSpaceInviteResultDto>.Executed executed => Created(executed.Value),
+            IdempotentExecutionResult<CreateSpaceInviteResultDto>.Recovered recovered =>
+                IdempotencyHttp.Replay(httpContext, recovered.Completion),
+            _ => throw new InvalidOperationException("Unknown idempotent execution result."),
+        });
+
+        IResult Created(CreateSpaceInviteResultDto created)
         {
             httpContext.Response.Headers.ETag = ETagFormatter.Format(created.Version);
             var location = $"/api/v2/spaces/{context.SpacePublicId:D}/invites/{created.InvitePublicId:D}";
             return Results.Created(location, InviteManagementResponseMapper.ToResponse(created));
-        });
+        }
     }
 
     private static async Task<IResult> GetInviteAsync(

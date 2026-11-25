@@ -2,11 +2,13 @@ using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Sessions;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using FluentResults;
 
 namespace CloudSharp.Core.UseCases.Auth.Registrations;
@@ -31,34 +33,79 @@ public sealed class RegistrationUseCase(
         RegistrationCommand command,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(command);
-
-        var validation = new RegistrationCommandValidator().Validate(command);
-        if (!validation.IsValid)
-        {
-            return validation.ToFailureResult<RegistrationResultDto>();
-        }
-
-        var creation = User.Create(
-            command.Email,
-            command.UserName,
-            command.DisplayName,
-            passwordHasher.Hash(command.Password),
-            clock.UtcNow);
+        var creation = CreateUser(command);
         if (creation.IsFailed)
         {
             return Result.Fail<RegistrationResultDto>(creation.Errors);
         }
 
         var persistResult = await transactionExecutor.ExecuteAsync(
-            async ct => await PersistUserAsync(creation.Value, ct),
+            ct => PersistUserAsync(creation.Value, ct),
             cancellationToken: cancellationToken);
         if (persistResult.IsFailed)
         {
             return Result.Fail<RegistrationResultDto>(persistResult.Errors);
         }
 
-        var user = persistResult.Value;
+        return await IssueSessionAsync(persistResult.Value, cancellationToken);
+    }
+
+    public async Task<Result<IdempotentExecutionResult<RegistrationResultDto>>> ExecuteIdempotentAsync(
+        RegistrationCommand command,
+        IdempotencyReservation reservation,
+        int resultVersion,
+        IdempotentRequestExecutor executor,
+        CancellationToken cancellationToken = default)
+    {
+        var creation = CreateUser(command);
+        var persistResult = await executor.ExecuteAsync(
+            reservation,
+            resultVersion,
+            ct => creation.IsSuccess ? PersistUserAsync(creation.Value, ct) : Task.FromResult(creation),
+            user => new IdempotencyRecovery.SecretNotReplayable(user.PublicId),
+            cancellationToken);
+        if (persistResult.IsFailed)
+        {
+            return Result.Fail<IdempotentExecutionResult<RegistrationResultDto>>(persistResult.Errors);
+        }
+
+        // 계정 저장은 이미 커밋됐다. 첫 Session 발급은 최초 실행에서만 시도한다.
+        switch (persistResult.Value)
+        {
+            case IdempotentExecutionResult<User>.Recovered recovered:
+                return Result.Ok<IdempotentExecutionResult<RegistrationResultDto>>(
+                    new IdempotentExecutionResult<RegistrationResultDto>.Recovered(recovered.Completion));
+            case IdempotentExecutionResult<User>.Executed executed:
+                var registration = await IssueSessionAsync(executed.Value, cancellationToken);
+                return registration.IsSuccess
+                    ? Result.Ok<IdempotentExecutionResult<RegistrationResultDto>>(
+                        new IdempotentExecutionResult<RegistrationResultDto>.Executed(registration.Value))
+                    : Result.Fail<IdempotentExecutionResult<RegistrationResultDto>>(registration.Errors);
+            default:
+                throw new InvalidOperationException("Unknown execution result for account registration.");
+        }
+    }
+
+    private Result<User> CreateUser(RegistrationCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validation = new RegistrationCommandValidator().Validate(command);
+        if (!validation.IsValid)
+        {
+            return validation.ToFailureResult<User>();
+        }
+
+        return User.Create(
+            command.Email,
+            command.UserName,
+            command.DisplayName,
+            passwordHasher.Hash(command.Password),
+            clock.UtcNow);
+    }
+
+    private async Task<Result<RegistrationResultDto>> IssueSessionAsync(User user, CancellationToken cancellationToken)
+    {
         var sessionResult = await sessionIssuanceService.IssueAsync(user, cancellationToken);
         if (sessionResult.IsFailed)
         {

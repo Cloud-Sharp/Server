@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using CloudSharp.Api.IntegrationTests.TestHost;
 using CloudSharp.Core.Domain.Invites;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using NUnit.Framework;
 
@@ -54,7 +55,6 @@ public sealed class InviteCreationEndpointTests : InviteIntegrationTestBase
 
     [TestCase(false)]
     [TestCase(true)]
-    [Explicit("Requires persisted invite idempotency and response recovery.")]
     public async Task CreateInvite_WithCompletedKey_ShouldReturnOnlyTheOriginalPublicId(bool resetRedis)
     {
         var registration = TestData.NewRegistration();
@@ -88,7 +88,6 @@ public sealed class InviteCreationEndpointTests : InviteIntegrationTestBase
     }
 
     [Test]
-    [Explicit("Requires persisted invite idempotency and fingerprint comparison.")]
     public async Task CreateInvite_WithChangedRequestForCompletedKey_ShouldRejectReuse()
     {
         var owner = await RegisterSpaceUserAsync();
@@ -104,6 +103,51 @@ public sealed class InviteCreationEndpointTests : InviteIntegrationTestBase
             space.PublicId, owner.AccessToken, ExpirationBody(Clock.UtcNow.AddDays(2)), key);
         await IntegrationAssert.AssertErrorAsync(retry, HttpStatusCode.Conflict, "IDEMPOTENCY_KEY_REUSED");
         AssertInviteUnchanged((await GetInvitesAsync(space.Id)).Single(), initial);
+    }
+
+    [Test]
+    public async Task CreateInvite_WithCompletedKey_ShouldCheckCurrentManagementPermission()
+    {
+        var owner = await RegisterSpaceUserAsync();
+        var manager = await RegisterSpaceUserAsync();
+        var space = await SeedSpaceAsync(owner);
+        var managerMembership = await SeedMembershipAsync(space, manager, owner, roleKeys: [SpaceRoleSystemKey.Admin]);
+        var viewer = (await GetSpaceRolesAsync(space.Id)).Single(role => role.SystemKey == SpaceRoleSystemKey.Viewer);
+        var body = ExpirationBody(Clock.UtcNow.AddDays(1));
+        var key = NewIdempotencyKey();
+
+        using var first = await SendCreateInviteAsync(space.PublicId, manager.AccessToken, body, key);
+        await ReadCreatedInviteAsync(first, space.PublicId);
+        var initial = (await GetInvitesAsync(space.Id)).Single();
+
+        using var updated = await Api.SendJsonAsync(HttpMethod.Put,
+            $"{SpacePath(space.PublicId)}/memberships/{managerMembership.PublicId:D}/roles",
+            new { rolePublicIds = new[] { viewer.PublicId } }, owner.AccessToken, "\"v1\"");
+        await ReadSuccessBodyAsync(updated, HttpStatusCode.OK);
+
+        using var retry = await SendCreateInviteAsync(space.PublicId, manager.AccessToken, body, key);
+        await IntegrationAssert.AssertErrorAsync(retry, HttpStatusCode.Forbidden, "PERMISSION_DENIED");
+        AssertInviteUnchanged((await GetInvitesAsync(space.Id)).Single(), initial);
+    }
+
+    [Test]
+    public async Task CreateInvite_WithCompletedKey_ShouldReplayAfterArchiving()
+    {
+        var owner = await RegisterSpaceUserAsync();
+        var space = await SeedSpaceAsync(owner);
+        var body = ExpirationBody(Clock.UtcNow.AddDays(1));
+        var key = NewIdempotencyKey();
+
+        using var first = await SendCreateInviteAsync(space.PublicId, owner.AccessToken, body, key);
+        var created = await ReadCreatedInviteAsync(first, space.PublicId);
+        using var archived = await SendSpaceActionAsync(HttpMethod.Post, $"{SpacePath(space.PublicId)}/archive", owner, "\"v1\"");
+        await ReadSuccessBodyAsync(archived, HttpStatusCode.OK);
+
+        using var retry = await SendCreateInviteAsync(space.PublicId, owner.AccessToken, body, key);
+        await IntegrationAssert.AssertErrorAsync(retry, HttpStatusCode.Conflict, "SECRET_RESPONSE_NOT_REPLAYABLE");
+        using var document = JsonDocument.Parse(await TestApiClient.ReadBodyAsync(retry));
+        Assert.That(document.RootElement.GetProperty("invitePublicId").GetGuid(), Is.EqualTo(created.PublicId));
+        Assert.That((await GetInvitesAsync(space.Id)).Single().PublicId, Is.EqualTo(created.PublicId));
     }
 
     [TestCase("""{}""", null)]

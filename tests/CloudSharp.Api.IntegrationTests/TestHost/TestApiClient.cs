@@ -9,6 +9,7 @@ internal sealed class TestApiClient : IDisposable
 {
     internal const string CorrelationHeaderName = "X-Correlation-ID";
     internal const string IfMatchHeaderName = "If-Match";
+    internal const string IdempotencyKeyHeaderName = "Idempotency-Key";
 
     internal static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
 
@@ -41,7 +42,8 @@ internal sealed class TestApiClient : IDisposable
         string? token = null,
         string? ifMatch = null,
         string? correlationId = null,
-        Action<HttpRequestMessage>? configure = null) =>
+        Action<HttpRequestMessage>? configure = null,
+        bool useDefaultIdempotencyKey = true) =>
         SendAsync(method, path, token, correlationId, request =>
         {
             request.Content = new StringContent(
@@ -54,7 +56,7 @@ internal sealed class TestApiClient : IDisposable
             }
 
             configure?.Invoke(request);
-        });
+        }, useDefaultIdempotencyKey);
 
     internal Task<HttpResponseMessage> SendRawAsync(
         HttpMethod method,
@@ -64,7 +66,8 @@ internal sealed class TestApiClient : IDisposable
         string? token = null,
         string? ifMatch = null,
         string? correlationId = null,
-        Action<HttpRequestMessage>? configure = null) =>
+        Action<HttpRequestMessage>? configure = null,
+        bool useDefaultIdempotencyKey = true) =>
         SendAsync(method, path, token, correlationId, request =>
         {
             request.Content = new StringContent(content, Encoding.UTF8, mediaType);
@@ -74,14 +77,15 @@ internal sealed class TestApiClient : IDisposable
             }
 
             configure?.Invoke(request);
-        });
+        }, useDefaultIdempotencyKey);
 
     internal async Task<HttpResponseMessage> SendAsync(
         HttpMethod method,
         string path,
         string? token = null,
         string? correlationId = null,
-        Action<HttpRequestMessage>? configure = null)
+        Action<HttpRequestMessage>? configure = null,
+        bool useDefaultIdempotencyKey = true)
     {
         using var request = new HttpRequestMessage(method, path);
         if (token is not null)
@@ -95,6 +99,11 @@ internal sealed class TestApiClient : IDisposable
         }
 
         configure?.Invoke(request);
+        if (useDefaultIdempotencyKey && method == HttpMethod.Post &&
+            path is "/api/v2/auth/registrations" or "/api/v2/spaces" && !request.Headers.Contains(IdempotencyKeyHeaderName))
+        {
+            request.Headers.TryAddWithoutValidation(IdempotencyKeyHeaderName, Guid.NewGuid().ToString("N"));
+        }
         return await _http.SendAsync(request);
     }
 

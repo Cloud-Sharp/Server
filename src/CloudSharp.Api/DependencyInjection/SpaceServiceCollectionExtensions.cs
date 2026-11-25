@@ -1,4 +1,5 @@
 using CloudSharp.Api.Auth.Authorization;
+using CloudSharp.Api.Endpoints.Spaces;
 using CloudSharp.Core.Abstractions.Auth;
 using CloudSharp.Core.UseCases.Spaces.Archives;
 using CloudSharp.Core.UseCases.Spaces.Creations;
@@ -11,6 +12,7 @@ using CloudSharp.Core.UseCases.Spaces.OwnershipTransfers;
 using CloudSharp.Core.UseCases.Spaces.QuotaChanges;
 using CloudSharp.Core.UseCases.Spaces.QuotaReads;
 using CloudSharp.Core.UseCases.Spaces.Reactivations;
+using CloudSharp.Infrastructure.Persistence.Idempotency;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CloudSharp.Api.DependencyInjection;
@@ -22,6 +24,8 @@ internal static class SpaceServiceCollectionExtensions
         services.AddSingleton<ISpaceListAccessPolicy, SessionSpaceListAccessPolicy>();
         services.AddLoggedUseCase<ListSpacesQuery, SpacePageDto, ListSpacesUseCase>();
         services.AddLoggedUseCase<CreateSpaceCommand, SpaceResultDto, CreateSpaceUseCase>();
+        services.AddIdempotencyReplayType<SpaceCreationReplayDto>(
+            SpaceEndpoints.CreateSpaceOperationId, SpaceEndpoints.CreateSpaceResultVersion);
         services.AddLoggedUseCase<GetSpaceQuery, SpaceResultDto, GetSpaceUseCase>();
         services.AddLoggedUseCase<UpdateSpaceCommand, SpaceResultDto, UpdateSpaceUseCase>();
         services.AddLoggedUseCase<ArchiveSpaceCommand, SpaceResultDto, ArchiveSpaceUseCase>();

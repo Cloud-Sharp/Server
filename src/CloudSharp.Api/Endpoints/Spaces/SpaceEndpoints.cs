@@ -2,6 +2,7 @@ using CloudSharp.Api.Auth.Authentication;
 using CloudSharp.Api.Auth.CurrentUser;
 using CloudSharp.Api.Contracts.Mapping;
 using CloudSharp.Api.Contracts.ProblemDetails;
+using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Endpoints.Invites;
 using CloudSharp.Api.Endpoints.Memberships;
 using CloudSharp.Api.Endpoints.Spaces.Mapping;
@@ -9,9 +10,11 @@ using CloudSharp.Api.Endpoints.Spaces.Requests;
 using CloudSharp.Api.Endpoints.Spaces.Responses;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Core.Common.Actors;
+using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Spaces.Archives;
 using CloudSharp.Core.UseCases.Spaces.Creations;
 using CloudSharp.Core.UseCases.Spaces.DeletionRequests;
@@ -31,16 +34,37 @@ namespace CloudSharp.Api.Endpoints.Spaces;
 
 public static class SpaceEndpoints
 {
+    internal const string CreateSpaceOperationId = "create-space";
+    internal const int CreateSpaceResultVersion = 1;
+
+    private const string SpacesPath = "/api/v2/spaces";
     private const string JsonMediaType = "application/json";
     private static readonly SpaceStatus[] ReadStatuses = [SpaceStatus.Active, SpaceStatus.Archived];
     private static readonly SpaceStatus[] ActiveOnly = [SpaceStatus.Active];
     private static readonly SpaceStatus[] ArchivedOnly = [SpaceStatus.Archived];
+    private static readonly IdempotencyEndpointPolicy CreateSpaceIdempotency = new(
+        CreateSpaceOperationId,
+        CreateSpaceResultVersion,
+        static context => IdempotencyHttp.ForSession(context, SpacesPath),
+        static context =>
+        {
+            var request = IdempotencyHttp.GetArgument<CreateSpaceRequest>(context);
+            return new
+            {
+                Name = request.Name.Trim(),
+                Description = string.IsNullOrWhiteSpace(request.Description) ? null : request.Description.Trim(),
+                request.AllowedBytes,
+            };
+        },
+        static (httpContext, completion) => completion.Recovery is IdempotencyRecovery.Replayable<SpaceCreationReplayDto> replay
+            ? SpaceCreated(httpContext, replay.Data.ToResult())
+            : throw new InvalidOperationException("The stored Space creation result cannot be replayed."));
 
     public static IEndpointRouteBuilder MapSpaceEndpoints(this IEndpointRouteBuilder endpoints)
     {
         ArgumentNullException.ThrowIfNull(endpoints);
 
-        var group = endpoints.MapGroup("/api/v2/spaces")
+        var group = endpoints.MapGroup(SpacesPath)
             .WithTags("Spaces")
             .WithMetadata(NoStoreResponseMetadata.Instance)
             .RequireAuthorization(SessionAuthenticationDefaults.UserSessionOnlyPolicy);
@@ -57,10 +81,12 @@ public static class SpaceEndpoints
         group.MapPost("", CreateSpaceAsync)
             .WithName("CreateSpace")
             .WithSummary("현재 Session 소유의 Space와 관리형 Role을 생성합니다.")
+            .RequireIdempotency(CreateSpaceIdempotency)
             .Produces<SpaceResponse>(StatusCodes.Status201Created, JsonMediaType)
             .ProducesValidationProblem()
             .Produces<ErrorResponse>(StatusCodes.Status400BadRequest, JsonMediaType)
             .Produces<ErrorResponse>(StatusCodes.Status401Unauthorized, JsonMediaType)
+            .Produces<ErrorResponse>(StatusCodes.Status409Conflict, JsonMediaType)
             .Produces<ErrorResponse>(StatusCodes.Status503ServiceUnavailable, JsonMediaType);
 
         group.MapGet("/{spacePublicId}", GetSpaceAsync)
@@ -202,6 +228,7 @@ public static class SpaceEndpoints
     private static async Task<IResult> CreateSpaceAsync(
         CreateSpaceRequest request,
         CreateSpaceUseCase useCase,
+        IdempotentRequestExecutor executor,
         ICurrentActorAccessor currentActorAccessor,
         HttpContext httpContext,
         CancellationToken cancellationToken)
@@ -212,13 +239,25 @@ public static class SpaceEndpoints
             request.Name,
             request.Description,
             request.AllowedBytes);
-        var result = await useCase.ExecuteAsync(command, cancellationToken);
-        return result.ToSpaceHttpResult(value =>
+        var result = await useCase.ExecuteIdempotentAsync(
+            command,
+            IdempotencyHttp.TakeReservation(httpContext),
+            CreateSpaceResultVersion,
+            executor,
+            cancellationToken);
+        return result.ToSpaceHttpResult(value => value switch
         {
-            var response = SpaceResponseMapper.ToResponse(value.Space);
-            SetETag(httpContext, value.Version);
-            return Results.Created(SpacePath(response.SpacePublicId), response);
+            IdempotentExecutionResult<SpaceResultDto>.Executed executed => SpaceCreated(httpContext, executed.Value),
+            IdempotentExecutionResult<SpaceResultDto>.Recovered recovered => IdempotencyHttp.Replay(httpContext, recovered.Completion),
+            _ => throw new InvalidOperationException("Unexpected Space creation result."),
         });
+    }
+
+    private static IResult SpaceCreated(HttpContext httpContext, SpaceResultDto result)
+    {
+        var response = SpaceResponseMapper.ToResponse(result.Space);
+        SetETag(httpContext, result.Version);
+        return Results.Created(SpacePath(response.SpacePublicId), response);
     }
 
     private static async Task<IResult> GetSpaceAsync(
@@ -367,5 +406,5 @@ public static class SpaceEndpoints
     private static void SetETag(HttpContext httpContext, long version) =>
         httpContext.Response.Headers["ETag"] = ETagFormatter.Format(version);
 
-    private static string SpacePath(Guid spacePublicId) => $"/api/v2/spaces/{spacePublicId:D}";
+    private static string SpacePath(Guid spacePublicId) => $"{SpacesPath}/{spacePublicId:D}";
 }

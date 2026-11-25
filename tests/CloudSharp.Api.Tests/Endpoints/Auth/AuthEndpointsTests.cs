@@ -4,10 +4,13 @@ using CloudSharp.Api.Contracts.ProblemDetails;
 using CloudSharp.Api.Endpoints.Auth;
 using CloudSharp.Api.Endpoints.Auth.Requests;
 using CloudSharp.Api.Endpoints.Auth.Responses;
+using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Tests.TestSupport;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using FluentAssertions;
 using Microsoft.AspNetCore.Http;
 using NUnit.Framework;
@@ -33,6 +36,7 @@ public class AuthEndpointsTests
         var result = await AuthEndpoints.RegisterAsync(
             request,
             harness.RegistrationUseCase,
+            PrepareRegistration(harness, context),
             context,
             CancellationToken.None);
 
@@ -74,6 +78,7 @@ public class AuthEndpointsTests
         var result = await AuthEndpoints.RegisterAsync(
             new RegistrationRequest("user@example.com", null, null, Password),
             harness.RegistrationUseCase,
+            PrepareRegistration(harness, context),
             context,
             CancellationToken.None);
 
@@ -96,6 +101,7 @@ public class AuthEndpointsTests
         var result = await AuthEndpoints.RegisterAsync(
             new RegistrationRequest("user@example.com", "cloud-user", null, Password),
             harness.RegistrationUseCase,
+            PrepareRegistration(harness, context),
             context,
             CancellationToken.None);
 
@@ -116,6 +122,7 @@ public class AuthEndpointsTests
         var result = await AuthEndpoints.RegisterAsync(
             new RegistrationRequest("user@example.com", null, null, "short"),
             harness.RegistrationUseCase,
+            PrepareRegistration(harness, context),
             context,
             CancellationToken.None);
 
@@ -139,6 +146,7 @@ public class AuthEndpointsTests
         var result = await AuthEndpoints.RegisterAsync(
             new RegistrationRequest("user@example.com", null, null, Password),
             harness.RegistrationUseCase,
+            PrepareRegistration(harness, context),
             context,
             cancellation.Token);
 
@@ -261,5 +269,19 @@ public class AuthEndpointsTests
         typeof(UserResponse).GetProperties().Select(property => property.Name)
             .Should().NotContain(name => name.Contains("Id", StringComparison.Ordinal)
                 && name != "UserPublicId");
+    }
+
+    private static IdempotentRequestExecutor PrepareRegistration(ApiTestHarness harness, HttpContext context)
+    {
+        var request = new IdempotencyRequestIdentity(
+            new IdempotencyScope("test-actor", "POST", "/api/v2/auth/registrations"),
+            "test-registration-key",
+            "test-fingerprint",
+            AuthEndpoints.RegistrationOperationId);
+        var reservation = new IdempotencyReservation(request, Guid.NewGuid());
+        context.Features.Set(new IdempotencyReservationFeature(reservation));
+        var store = new ApiTestIdempotencyStore(
+            new IdempotencyRecord.InProgress(reservation, harness.Clock.UtcNow.AddMinutes(1)));
+        return new IdempotentRequestExecutor(store, harness.TransactionExecutor, harness.Clock);
     }
 }

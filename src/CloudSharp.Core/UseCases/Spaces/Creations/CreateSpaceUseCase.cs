@@ -1,12 +1,14 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.Policies.Authorization;
+using CloudSharp.Core.UseCases.Idempotency.Execution;
 using CloudSharp.Core.UseCases.Spaces.Dtos;
 using FluentResults;
 
@@ -43,29 +45,59 @@ public sealed class CreateSpaceUseCase : IUseCase<CreateSpaceCommand, SpaceResul
         CreateSpaceCommand command,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(command);
-
-        var validation = new CreateSpaceCommandValidator().Validate(command);
-        if (!validation.IsValid)
+        var validation = Validate(command);
+        if (validation.IsFailed)
         {
-            return validation.ToFailureResult<SpaceResultDto>();
-        }
-
-        var actorValidation = SessionSpaceAuthorizationPolicy.ValidateActor(command.Actor);
-        if (actorValidation.IsFailed)
-        {
-            return Result.Fail<SpaceResultDto>(actorValidation.Errors);
-        }
-
-        if (UserRepository is null || SpaceRepository is null || BootstrapWriter is null
-            || UnitOfWork is null || TransactionExecutor is null || Clock is null)
-        {
-            return Result.Fail<SpaceResultDto>(CommonError.DependencyUnavailable());
+            return Result.Fail<SpaceResultDto>(validation.Errors);
         }
 
         return await TransactionExecutor.ExecuteAsync(
             ct => CreateInTransactionAsync(command, ct),
             cancellationToken: cancellationToken);
+    }
+
+    public Task<Result<IdempotentExecutionResult<SpaceResultDto>>> ExecuteIdempotentAsync(
+        CreateSpaceCommand command,
+        IdempotencyReservation reservation,
+        int resultVersion,
+        IdempotentRequestExecutor executor,
+        CancellationToken cancellationToken = default) =>
+        executor.ExecuteAsync(
+            reservation,
+            resultVersion,
+            ct =>
+            {
+                var validation = Validate(command);
+                return validation.IsSuccess
+                    ? CreateInTransactionAsync(command, ct)
+                    : Task.FromResult(Result.Fail<SpaceResultDto>(validation.Errors));
+            },
+            static value => new IdempotencyRecovery.Replayable<SpaceCreationReplayDto>(SpaceCreationReplayDto.FromResult(value)),
+            cancellationToken);
+
+    private Result Validate(CreateSpaceCommand command)
+    {
+        ArgumentNullException.ThrowIfNull(command);
+
+        var validation = new CreateSpaceCommandValidator().Validate(command);
+        if (!validation.IsValid)
+        {
+            return validation.ToFailureResult();
+        }
+
+        var actorValidation = SessionSpaceAuthorizationPolicy.ValidateActor(command.Actor);
+        if (actorValidation.IsFailed)
+        {
+            return Result.Fail(actorValidation.Errors);
+        }
+
+        if (UserRepository is null || SpaceRepository is null || BootstrapWriter is null
+            || UnitOfWork is null || TransactionExecutor is null || Clock is null)
+        {
+            return Result.Fail(CommonError.DependencyUnavailable());
+        }
+
+        return Result.Ok();
     }
 
     private async Task<Result<SpaceResultDto>> CreateInTransactionAsync(

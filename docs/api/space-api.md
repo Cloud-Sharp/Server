@@ -2,14 +2,14 @@
 
 `/api/v2/spaces`에 구현된 Space 유즈케이스 SP-01~SP-10의 현재 Session HTTP 계약이다. [Space·접근제어 설계](../../.llm/api/spaces-access.md) · [Space 유즈케이스](../use-cases/space-use-cases.md#1-space) · [Space 저장소](../repositories/space-repositories.md)
 
-현재 10개 경로는 모두 `UserSessionOnly` 정책을 사용한다. 생성 멱등성·재생·복구, MCP 조회, 전역 관리자 우회와 감사 기록, 삭제 완료 Worker는 후속 범위다.
+현재 10개 경로는 모두 `UserSessionOnly` 정책을 사용한다. Space 생성은 멱등 키 검증과 최초 응답 재생을 지원한다. MCP 조회, 전역 관리자 우회와 감사 기록, 삭제 완료 Worker는 후속 범위다.
 
 `S`는 `/api/v2/spaces/{spacePublicId}`를 뜻한다.
 
 | ID | API | 메서드·경로 | 인증·권한 | 허용 Space 상태 | 요청 | 성공 응답 |
 |---|---|---|---|---|---|---|
 | SP-01 | [접근 가능한 Space 목록 조회](#sp-01-접근-가능한-space-목록-조회) | `GET /api/v2/spaces` | Session | `ACTIVE`, `ARCHIVED` | cursor query | 200, `items`와 `nextCursor` |
-| SP-02 | [Space 생성](#sp-02-space-생성) | `POST /api/v2/spaces` | Session | 신규 `ACTIVE` | JSON | 201, Space, `ETag`, `Location` |
+| SP-02 | [Space 생성](#sp-02-space-생성) | `POST /api/v2/spaces` | Session | 신규 `ACTIVE` | `Idempotency-Key`, JSON | 201, Space, `ETag`, `Location` |
 | SP-03 | [Space 상세 조회](#sp-03-space-상세-조회) | `GET S` | Session, `SPACE_VIEW` | `ACTIVE`, `ARCHIVED` | — | 200, Space, `ETag` |
 | SP-04 | [Space 정보 수정](#sp-04-space-정보-수정) | `PATCH S` | Session, `SPACE_UPDATE` | `ACTIVE` | `If-Match`, JSON | 200, Space, `ETag` |
 | SP-05 | [Space 보관](#sp-05-space-보관) | `POST S/archive` | Session, `SPACE_UPDATE` | `ACTIVE` | `If-Match` | 200, Space, `ETag` |
@@ -36,6 +36,8 @@
 | 404 | `RESOURCE_NOT_FOUND` | Space 미존재, 기본 접근 거부, `DELETING`·`DELETED`, 단건 조회 권한 부족. 동일한 코드·메시지·details를 반환한다. |
 | 409 | `SPACE_ARCHIVED` | 기본 접근이 확인된 `ARCHIVED` Space에 메타데이터 수정·보관·quota 변경·소유권 이전 요청 |
 | 409 | `SPACE_INVALID_STATE` | 재활성화 등 현재 상태에서 허용되지 않는 상태 전이 요청 |
+| 409 | `IDEMPOTENCY_KEY_REUSED` | 같은 요청자 범위와 생성 키에 서로 다른 입력 |
+| 409 | `IDEMPOTENCY_REQUEST_IN_PROGRESS` | 같은 생성 키와 입력의 첫 요청을 처리 중 |
 | 412 | `PRECONDITION_FAILED` | 현재 버전과 다른 `If-Match` 또는 저장 시 낙관적 동시성 충돌 |
 | 415 | `REQUEST_VALIDATION_FAILED` | JSON 요청의 미지원 미디어 타입 |
 | 428 | `PRECONDITION_REQUIRED` | 필수 `If-Match` 누락 |
@@ -71,7 +73,8 @@
 
 - `name`은 필수 문자열이며 양끝 공백을 제거한 뒤 1~200자다. `description`은 선택 문자열 또는 `null`이며, 양끝 공백을 제거한 뒤 빈 문자열이면 `null`로 저장한다. `allowedBytes`는 선택 필드이며 0 이상의 64비트 정수 또는 `null`을 받는다. 생략과 `null`은 모두 무제한이다. [생성 명령](../../src/CloudSharp.Core/UseCases/Spaces/Creations/CreateSpaceCommand.cs)
 - 요청자를 OWNER로 지정하고 사용량·예약량을 0으로 초기화한다. Space와 관리형 ADMIN·MEMBER·VIEWER Role을 함께 커밋한다. 201 응답은 생성한 Space와 `ETag`, 상대 경로 `Location: /api/v2/spaces/{spacePublicId}`를 반환한다.
-- `Idempotency-Key`는 선택 헤더이며 현재 단계에서는 값을 검증·저장하지 않고 무시한다. 헤더의 생략·값·반복 여부와 관계없이 유효한 POST 요청은 각각 새 Space와 세 관리형 Role을 생성한다. 키 형식 검증, 24시간 재생, 동시 실행 제어, 지문 충돌, 커밋 후 복구는 후속 범위다. [멱등 키 후속 계약](../../.llm/api/common-contract.md#9-idempotency-key)
+- 출력 가능한 ASCII 문자로 구성된 16~128자 `Idempotency-Key` 값 하나가 필요하다. 헤더 누락·복수 값·형식 오류는 400 `REQUEST_VALIDATION_FAILED`를 반환하며 오류 세부 항목은 `idempotencyKey` / `INVALID_IDEMPOTENCY_KEY`다.
+- 같은 요청자 범위에서 키와 정규화한 입력이 일치하면 완료 후 24시간 동안 최초 201 본문, `Location`, `ETag`를 재생한다. 그사이 Space를 수정해도 재생 결과는 생성 시점의 값을 사용한다. 이름·설명의 양끝 공백, 빈 설명과 `null`, 허용 용량의 생략과 `null`은 각 생성 규칙에 따라 정규화한다. 같은 키의 다른 입력이나 처리 중 요청은 위 409 오류를 반환한다. [공통 멱등성 설계](http-idempotency-filter-design.md)
 
 ## SP-03 Space 상세 조회
 
@@ -111,5 +114,5 @@
 ## 현재 구현과 후속 계약
 
 - API는 `ICurrentActorAccessor`로 인증된 요청자를 얻는다. 단건 경로의 공통 endpoint filter가 UUIDv7을 검증하고 `ISpaceAuthorizationService`를 호출한 뒤 인가 결과를 기존 유즈케이스에 전달한다. 인가는 handler의 `If-Match` 처리보다 먼저 실행되며, Core 인가 오류는 위 상태·권한·마스킹 규칙으로 매핑한다. 버전은 `ETagFormatter`로 헤더에 기록한다. [ASP.NET 인가 설계](../../.llm/auth/aspnet-filters.md) · [Space 엔드포인트](../../src/CloudSharp.Api/Endpoints/Spaces/SpaceEndpoints.cs)
-- SP-01~SP-10의 Session 경로와 SP-07~SP-09의 DI 생성자 연결을 구현했다. SP-02는 `CreateSpaceUseCase`를 직접 호출하며 PostgreSQL에 Space와 관리형 Role을 커밋한다. [API 라우트 등록](../../src/CloudSharp.Api/Program.cs) · [Space DI 등록](../../src/CloudSharp.Api/DependencyInjection/SpaceServiceCollectionExtensions.cs)
-- 생성 키의 동시 실행 제어, 완료 응답 재생, 커밋 후 Redis 실패 복구와 Outbox 감사, 전역 관리자 우회, MCP 조회, 삭제 완료 Worker는 현재 구현 범위에 포함하지 않는다. 후속 목표 계약은 [공통 API 계약](../../.llm/api/common-contract.md), [Space·접근제어 설계](../../.llm/api/spaces-access.md), [인가 설계](../../.llm/auth/authorization.md), [Space 상태 전이](../../.llm/domains/space.md)를 따른다.
+- SP-01~SP-10의 Session 경로와 SP-07~SP-09의 DI 생성자 연결을 구현했다. SP-02는 `CreateSpaceUseCase`의 멱등 실행 경로를 호출해 PostgreSQL에서 Space와 관리형 Role, 재생 결과를 같은 트랜잭션에 커밋한다. [API 라우트 등록](../../src/CloudSharp.Api/Program.cs) · [Space DI 등록](../../src/CloudSharp.Api/DependencyInjection/SpaceServiceCollectionExtensions.cs)
+- Outbox 감사, 전역 관리자 우회, MCP 조회, 삭제 완료 Worker는 후속 범위다. 후속 목표 계약은 [공통 API 계약](../../.llm/api/common-contract.md), [Space·접근제어 설계](../../.llm/api/spaces-access.md), [인가 설계](../../.llm/auth/authorization.md), [Space 상태 전이](../../.llm/domains/space.md)를 따른다.
