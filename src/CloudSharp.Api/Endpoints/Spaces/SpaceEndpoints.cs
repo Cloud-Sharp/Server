@@ -194,7 +194,7 @@ public static class SpaceEndpoints
             request.Cursor,
             request.Limit,
             request.Sort,
-            string.Equals(request.Direction, "ASC", StringComparison.Ordinal));
+            Descending: request.Direction == "DESC");
         var result = await useCase.ExecuteAsync(query, cancellationToken);
         return result.ToSpaceHttpResult(value => Results.Ok(SpaceResponseMapper.ToResponse(value)));
     }
