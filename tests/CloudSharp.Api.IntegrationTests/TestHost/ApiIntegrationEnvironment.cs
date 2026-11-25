@@ -89,7 +89,7 @@ internal sealed class ApiIntegrationEnvironment : IAsyncDisposable
         await using (var scope = Factory.Services.CreateAsyncScope())
         {
             var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE users RESTART IDENTITY CASCADE");
+            await context.Database.ExecuteSqlRawAsync("TRUNCATE TABLE users, idempotency_requests RESTART IDENTITY CASCADE");
         }
 
         await TestRedis.GetDatabase().ExecuteAsync("FLUSHDB");

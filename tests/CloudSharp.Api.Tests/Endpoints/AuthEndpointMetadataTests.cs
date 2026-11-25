@@ -34,8 +34,7 @@ public class AuthEndpointMetadataTests
             EnvironmentName = Environments.Production,
         });
         builder.Services.AddCloudSharpHttp();
-        builder.Services.AddSingleton<IUseCase<RegistrationCommand, RegistrationResultDto>>(
-            harness.RegistrationUseCase);
+        builder.Services.AddSingleton<IUseCase<RegistrationCommand, RegistrationResultDto>>(harness.RegistrationUseCase);
         builder.Services.AddSingleton<IUseCase<LoginCommand, LoginResultDto>>(harness.LoginUseCase);
         builder.Services.AddSingleton(harness.GetProfileUseCase);
         builder.Services.AddSingleton<IUseCase<PasswordChangeCommand, PasswordChangeResultDto>>(

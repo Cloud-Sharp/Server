@@ -1,7 +1,9 @@
 using System.Diagnostics;
 using System.Text.Json;
 using CloudSharp.Api.Observability;
+using CloudSharp.Core.Abstractions.Idempotency;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Idempotency;
 using CloudSharp.Core.UseCases;
 using FluentResults;
 using Microsoft.Extensions.Logging;
@@ -123,6 +125,26 @@ public class LoggingUseCaseDecoratorTests
             traceId: null,
             exceptionType: nameof(InvalidOperationException));
         AssertNoSecrets(entry);
+    }
+
+    [Test]
+    public void ExecuteAsync_ShouldForwardRecoveredCompletionWithoutLoggingFault()
+    {
+        var request = new IdempotencyRequestIdentity(
+            new IdempotencyScope("actor", "POST", "/spaces"), "test-idempotency-key", "fingerprint", "create-space");
+        var reservation = new IdempotencyReservation(request, Guid.NewGuid());
+        var completion = new IdempotencyRecord.Completed(
+            reservation, 1, new IdempotencyRecovery.SecretNotReplayable(null), DateTimeOffset.UnixEpoch);
+        var expected = new IdempotencyCompletionRecoveredException(completion);
+        var useCase = new StubUseCase((_, _) => Task.FromException<Result<TestOutput>>(expected));
+        var logger = new CapturingLogger();
+        var decorator = CreateDecorator(useCase, logger);
+
+        var actual = Assert.ThrowsAsync<IdempotencyCompletionRecoveredException>(
+            async () => await decorator.ExecuteAsync(new TestInput(InputSecret)));
+
+        Assert.That(actual, Is.SameAs(expected));
+        Assert.That(logger.Entries, Is.Empty);
     }
 
     [Test]

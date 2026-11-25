@@ -11,6 +11,7 @@
 
 ## 구현된 API
 
+- [Idempotency-Key 사용법](../src/CloudSharp.Api/README.md#idempotency-key) — 요청 재시도와 새 엔드포인트 등록
 - [Auth API](api/auth-api.md) — 계정 등록, 로그인
 - [User API](api/user-api.md) — 내 프로필 조회, 비밀번호 변경
 

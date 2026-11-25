@@ -19,7 +19,7 @@ Failure handling:
 - Cancellation observed after commit and before token issuance: no token is issued and the committed account is kept. Cancellation during storage propagates without undoing the account commit.
 - Ports report known dependency outages as `DEPENDENCY_UNAVAILABLE`; unexpected exceptions and cancellation propagate.
 
-The future `POST /api/v2/auth/registrations` endpoint requires an `Idempotency-Key` header (see `.llm/api/common-contract.md`). The registration response contains a secret token and is therefore not replayable — a retried request with the same key must return `SECRET_RESPONSE_NOT_REPLAYABLE`, and a client that lost the response logs in instead.
+`POST /api/v2/auth/registrations` requires `Idempotency-Key`. A retry with the same key and input within 24 hours of account creation returns `409 SECRET_RESPONSE_NOT_REPLAYABLE` with the original `userPublicId`. A client that lost the response can log in to get a Session. [Registration API](../../../../docs/api/auth-api.md#au-01-계정-등록)
 
 ## Login
 

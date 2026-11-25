@@ -2,12 +2,15 @@ using System.Data;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Infrastructure.Persistence.DbContext;
+using CloudSharp.Infrastructure.Persistence.Idempotency;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Transactions;
 
-internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITransactionExecutor
+internal sealed class EfCoreTransactionExecutor(
+    AppDbContext dbContext,
+    IdempotencyTransactionContext? idempotencyContext = null) : ITransactionExecutor
 {
     public async Task<Result> ExecuteAsync(
         Func<CancellationToken, Task<Result>> operation,
@@ -16,6 +19,7 @@ internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITrans
     {
         ArgumentNullException.ThrowIfNull(operation);
         EnsureNoActiveTransaction();
+        idempotencyContext?.GetTransaction(typeof(void));
 
         var strategy = dbContext.Database.CreateExecutionStrategy();
         try
@@ -59,6 +63,7 @@ internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITrans
     {
         ArgumentNullException.ThrowIfNull(operation);
         EnsureNoActiveTransaction();
+        var idempotency = idempotencyContext?.GetTransaction(typeof(T));
 
         var strategy = dbContext.Database.CreateExecutionStrategy();
         try
@@ -71,14 +76,19 @@ internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITrans
                         isolationLevel,
                         strategyCancellationToken);
 
-                    var result = await operation(strategyCancellationToken);
+                    var result = idempotency is null
+                        ? await operation(strategyCancellationToken)
+                        : await ExecuteIdempotentOperationAsync(idempotency, operation, strategyCancellationToken);
                     if (result.IsFailed)
                     {
                         await transaction.RollbackAsync(CancellationToken.None);
+                        idempotency?.MarkRolledBack();
                         return result;
                     }
 
+                    idempotency?.MarkCommitPending();
                     await transaction.CommitAsync(strategyCancellationToken);
+                    idempotency?.MarkCommitted();
                     return result;
                 }
                 finally
@@ -89,8 +99,34 @@ internal sealed class EfCoreTransactionExecutor(AppDbContext dbContext) : ITrans
         }
         catch (Exception exception) when (PostgresAvailabilityErrors.IsDependencyUnavailable(exception))
         {
+            if (idempotency is not null)
+            {
+                await idempotency.RecoverAfterCommitFailureAsync(cancellationToken);
+            }
+
             return Result.Fail<T>(CommonError.DependencyUnavailable());
         }
+    }
+
+    private static async Task<Result<T>> ExecuteIdempotentOperationAsync<T>(
+        IdempotencyTransactionContext.Transaction idempotency,
+        Func<CancellationToken, Task<Result<T>>> operation,
+        CancellationToken cancellationToken)
+    {
+        var prepared = await idempotency.PrepareAsync(cancellationToken);
+        if (prepared.IsFailed)
+        {
+            return Result.Fail<T>(prepared.Errors);
+        }
+
+        var result = await operation(cancellationToken);
+        if (result.IsFailed)
+        {
+            return result;
+        }
+
+        var completion = await idempotency.SaveCompletionAsync(result.Value, cancellationToken);
+        return completion.IsSuccess ? result : Result.Fail<T>(completion.Errors);
     }
 
     private void EnsureNoActiveTransaction()

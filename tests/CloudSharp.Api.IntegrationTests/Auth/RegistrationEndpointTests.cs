@@ -4,6 +4,9 @@ using System.Text.Json;
 using CloudSharp.Api.IntegrationTests.TestHost;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Users;
+using CloudSharp.Infrastructure.Persistence.DbContext;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using NUnit.Framework;
 
 namespace CloudSharp.Api.IntegrationTests.Auth;
@@ -13,6 +16,108 @@ namespace CloudSharp.Api.IntegrationTests.Auth;
 [NonParallelizable]
 public sealed class RegistrationEndpointTests : ApiIntegrationTestBase
 {
+    [Test]
+    public async Task Register_ShouldRequireIdempotencyKeyBeforeCreatingAccount()
+    {
+        using var response = await Api.SendJsonAsync(
+            HttpMethod.Post,
+            "/api/v2/auth/registrations",
+            TestData.NewRegistration(),
+            useDefaultIdempotencyKey: false);
+
+        var error = await IntegrationAssert.AssertErrorAsync(
+            response, HttpStatusCode.BadRequest, "REQUEST_VALIDATION_FAILED");
+        Assert.That(error.Error.Details.Any(detail =>
+            detail.Field == "idempotencyKey" && detail.Code == "INVALID_IDEMPOTENCY_KEY"), Is.True);
+        Assert.That(await CountUsersAsync(), Is.Zero);
+    }
+
+    [Test]
+    public async Task Register_ShouldReturnOnlyOriginalPublicIdForCompletedKey()
+    {
+        var request = TestData.NewRegistration(displayName: " Cloud User ");
+        var key = Guid.NewGuid().ToString("N");
+        using var response = await Api.SendJsonAsync(
+            HttpMethod.Post, "/api/v2/auth/registrations", request, configure: WithKey(key));
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+        var first = await TestApiClient.ReadJsonAsync<AuthSessionWireResponse>(response);
+
+        using var retry = await Api.SendJsonAsync(
+            HttpMethod.Post,
+            "/api/v2/auth/registrations",
+            request with { DisplayName = "Cloud User" },
+            configure: WithKey(key));
+
+        await IntegrationAssert.AssertErrorAsync(retry, HttpStatusCode.Conflict, "SECRET_RESPONSE_NOT_REPLAYABLE");
+        var retryBody = await TestApiClient.ReadBodyAsync(retry);
+        using var document = JsonDocument.Parse(retryBody);
+        IntegrationAssert.AssertPropertyNames(document.RootElement, "requestId", "error", "userPublicId");
+        Assert.That(document.RootElement.GetProperty("userPublicId").GetGuid(), Is.EqualTo(first.User.UserPublicId));
+        IntegrationAssert.AssertDoesNotContain(retryBody, first.AccessToken, "A repeat must omit the issued token.");
+        IntegrationAssert.AssertDoesNotContain(retryBody, request.Password, "A repeat must omit the password.");
+        Assert.That(await CountUsersAsync(), Is.EqualTo(1));
+        Assert.That(await GetSessionIndexCountAsync(await GetUserIdAsync(first.User.UserPublicId)), Is.EqualTo(1));
+    }
+
+    [Test]
+    public async Task Register_ShouldRejectCompletedKeyWithChangedPassword()
+    {
+        var request = TestData.NewRegistration();
+        var key = Guid.NewGuid().ToString("N");
+        using var response = await Api.SendJsonAsync(
+            HttpMethod.Post, "/api/v2/auth/registrations", request, configure: WithKey(key));
+        Assert.That(response.StatusCode, Is.EqualTo(HttpStatusCode.Created));
+
+        using var retry = await Api.SendJsonAsync(
+            HttpMethod.Post,
+            "/api/v2/auth/registrations",
+            request with { Password = request.Password + "!" },
+            configure: WithKey(key));
+
+        await IntegrationAssert.AssertErrorAsync(retry, HttpStatusCode.Conflict, ErrorCodes.Idempotency.KeyReused);
+        Assert.That(await CountUsersAsync(), Is.EqualTo(1));
+    }
+
+    private static Action<HttpRequestMessage> WithKey(string key) =>
+        request => request.Headers.TryAddWithoutValidation("Idempotency-Key", key);
+
+    [Test]
+    public async Task Register_ShouldReturnInProgressWhileSameKeyIsBeingProcessed()
+    {
+        var request = TestData.NewRegistration();
+        var key = Guid.NewGuid().ToString("N");
+        await using var scope = Environment.Factory.Services.CreateAsyncScope();
+        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        await using var blocker = await context.Database.BeginTransactionAsync();
+        await context.Database.ExecuteSqlRawAsync("LOCK TABLE users IN SHARE MODE");
+        var first = Api.SendJsonAsync(HttpMethod.Post, "/api/v2/auth/registrations", request, configure: WithKey(key));
+
+        HttpStatusCode firstStatus;
+        try
+        {
+            using var timeout = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+            while (await context.Database.SqlQuery<int>(
+                       $"SELECT COUNT(*)::int AS \"Value\" FROM idempotency_requests WHERE idempotency_key = {key} AND state = 'IN_PROGRESS'")
+                       .SingleAsync(timeout.Token) == 0)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(25), timeout.Token);
+            }
+
+            using var second = await Api.SendJsonAsync(
+                HttpMethod.Post, "/api/v2/auth/registrations", request, configure: WithKey(key)).WaitAsync(timeout.Token);
+            await IntegrationAssert.AssertErrorAsync(second, HttpStatusCode.Conflict, ErrorCodes.Idempotency.RequestInProgress);
+        }
+        finally
+        {
+            await blocker.RollbackAsync();
+            using var created = await first;
+            firstStatus = created.StatusCode;
+        }
+
+        Assert.That(firstStatus, Is.EqualTo(HttpStatusCode.Created));
+        Assert.That(await CountUsersAsync(), Is.EqualTo(1));
+    }
+
     [Test]
     public async Task Register_ShouldCreateAccountAndSession()
     {

@@ -18,12 +18,12 @@ CloudSharp Production v1의 계정 등록, 로그인·로그아웃, 내 계정 �
 
 | ID | 유즈케이스 | API | 행위자 | 결과와 계약 | 현황 |
 |---|---|---|---|---|---|
-| AU-01 | [계정 등록](../../src/CloudSharp.Core/UseCases/Auth/Registrations/RegistrationUseCase.cs) | `POST /api/v2/auth/registrations` | 익명 | 201, 활성 계정과 첫 Session을 생성한다. `Location: /api/v2/me`를 반환한다. | 구현, `Idempotency-Key` 후속 |
+| AU-01 | [계정 등록](../../src/CloudSharp.Core/UseCases/Auth/Registrations/RegistrationUseCase.cs) | `POST /api/v2/auth/registrations` | 익명, `Idempotency-Key` 필수 | 201, 활성 계정과 첫 Session을 생성한다. `Location: /api/v2/me`를 반환한다. | 구현 |
 | AU-02 | [로그인](../../src/CloudSharp.Core/UseCases/Auth/Logins/LoginUseCase.cs) | `POST /api/v2/auth/sessions` | 익명 | 200, 이메일과 비밀번호를 확인하고 새 Session을 발급한다. | 구현 |
 | AU-03 | 현재 Session 로그아웃 | `DELETE /api/v2/auth/sessions/current` | Session | 204, 요청에 사용한 Session만 폐기한다. | 후속 |
 | AU-04 | 전체 로그아웃 | `DELETE /api/v2/auth/sessions` | Session | 204, 사용자 `securityVersion`을 높이고 모든 Session을 폐기한다. | 후속 |
 
-- **등록.** 이메일과 선택 입력인 사용자명의 중복을 확인하고 계정을 PostgreSQL 트랜잭션에서 저장한다. 이메일·사용자명 충돌은 각각 409 `USER_EMAIL_CONFLICT`, `USER_NAME_CONFLICT`다. 커밋 후 Redis에 Session을 저장하지 못해 503을 반환해도 이미 생성한 계정은 유지된다. 이 경우 로그인으로 복구할 수 있다. [등록 테스트](../../tests/CloudSharp.Api.IntegrationTests/Auth/RegistrationEndpointTests.cs) · [Redis 장애 테스트](../../tests/CloudSharp.Api.IntegrationTests/Failure/RedisOutageTests.cs)
+- **등록.** 이메일과 선택 입력인 사용자명의 중복을 확인하고 계정과 멱등성 완료 기록을 PostgreSQL 트랜잭션에서 저장한다. 이메일·사용자명 충돌은 각각 409 `USER_EMAIL_CONFLICT`, `USER_NAME_CONFLICT`다. 완료된 키의 같은 입력은 409 `SECRET_RESPONSE_NOT_REPLAYABLE`과 `userPublicId`를 반환한다. 커밋 후 Redis에 Session을 저장하지 못해 최초 요청이 503을 반환해도 계정은 유지되며 로그인으로 복구할 수 있다. [등록 테스트](../../tests/CloudSharp.Api.IntegrationTests/Auth/RegistrationEndpointTests.cs) · [Redis 장애 테스트](../../tests/CloudSharp.Api.IntegrationTests/Failure/RedisOutageTests.cs)
 - **로그인.** `loginId`는 이메일만 받으며 앞뒤 공백과 대소문자를 무시해 조회한다. 계정 없음, 비활성 계정, 비밀번호 불일치, 의미상 잘못된 입력은 모두 401 `AUTH_INVALID_CREDENTIALS`다. 로그인할 때마다 별도의 Session을 발급한다. [로그인 테스트](../../tests/CloudSharp.Api.IntegrationTests/Auth/LoginEndpointTests.cs)
 - **로그아웃.** 목표 계약에서 폐기 작업은 멱등하다. 이미 폐기된 토큰으로 다시 호출하면 작업에 진입하기 전에 인증이 실패할 수 있다. [로그아웃 API 명세](../../.llm/api/auth-users.md#3-로그인과-로그아웃)
 
@@ -55,7 +55,6 @@ CloudSharp Production v1의 계정 등록, 로그인·로그아웃, 내 계정 �
 
 ## 후속 구현
 
-- 계정 등록은 현재 `Idempotency-Key`를 요구하지 않는다. 목표 계약은 키를 필수로 검증하며, 성공한 등록을 같은 키와 입력으로 재요청하면 기존 토큰을 재발급하지 않고 409 `SECRET_RESPONSE_NOT_REPLAYABLE`을 반환한다. [멱등성 계약](../../.llm/api/common-contract.md#9-idempotency-key)
 - 인증 요청 제한, Session 활동 갱신, MCP 인증을 추가한다.
 
 Core 유닛 테스트는 계정·Session 모델과 유즈케이스를 검증한다. Docker 통합 테스트는 구현된 네 API의 HTTP 동작과 PostgreSQL·Redis 연동을 검증한다. [Auth Core 테스트 케이스](../tests/core/auth-test-cases.md) · [Auth Docker 통합 테스트 문서](../../tests/CloudSharp.Api.IntegrationTests/README.md)

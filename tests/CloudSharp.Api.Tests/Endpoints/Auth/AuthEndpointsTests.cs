@@ -9,7 +9,6 @@ using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using FluentAssertions;
-using Microsoft.AspNetCore.Http;
 using NUnit.Framework;
 
 namespace CloudSharp.Api.Tests.Endpoints.Auth;

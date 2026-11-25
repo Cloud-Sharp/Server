@@ -5,10 +5,11 @@ using CloudSharp.Api.Endpoints.Spaces;
 using CloudSharp.Api.Endpoints.Users;
 using CloudSharp.Api.Middleware;
 using CloudSharp.Api.Observability;
+using CloudSharp.Api.OpenApi;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+builder.Services.AddOpenApi(options => options.AddOperationTransformer<IdempotencyHeaderOperationTransformer>());
 builder.Services.AddInviteCapabilityLogProtection();
 builder.Services.AddCloudSharpApplication(builder.Configuration);
 builder.Services.AddCloudSharpHttp();

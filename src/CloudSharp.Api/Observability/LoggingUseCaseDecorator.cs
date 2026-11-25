@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using CloudSharp.Core.Abstractions.Idempotency;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.UseCases;
 using FluentResults;
@@ -30,7 +31,7 @@ internal sealed class LoggingUseCaseDecorator<TInput, TOutput>(
             TryLogCompletion(startTimestamp, "Canceled");
             throw;
         }
-        catch (Exception exception)
+        catch (Exception exception) when (exception is not IdempotencyCompletionRecoveredException)
         {
             TryLogCompletion(startTimestamp, "Faulted", exception: exception);
             throw;

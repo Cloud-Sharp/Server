@@ -3,7 +3,10 @@ using CloudSharp.Api.Contracts.ProblemDetails;
 using CloudSharp.Api.Endpoints.Auth.Mapping;
 using CloudSharp.Api.Endpoints.Auth.Requests;
 using CloudSharp.Api.Endpoints.Auth.Responses;
+using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Middleware;
+using CloudSharp.Core.Common.Idempotency;
+using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.UseCases;
 using CloudSharp.Core.UseCases.Auth.Dtos;
 using CloudSharp.Core.UseCases.Auth.Logins;
@@ -17,6 +20,33 @@ namespace CloudSharp.Api.Endpoints.Auth;
 public static class AuthEndpoints
 {
     private const string CacheControlNoStore = "no-store";
+    private const string RegistrationPath = "/api/v2/auth/registrations";
+    internal const string RegistrationOperationId = "register-account";
+    internal const int RegistrationResultVersion = 1;
+
+    private static readonly IdempotencyEndpointPolicy RegistrationIdempotency = IdempotencyEndpointPolicy.Create<User>(
+        RegistrationOperationId,
+        RegistrationResultVersion,
+        context => IdempotencyHttp.ForAnonymous(
+            context,
+            IdempotencyHttp.GetArgument<RegistrationRequest>(context).Email.Trim().ToUpperInvariant(),
+            RegistrationPath),
+        context =>
+        {
+            var request = IdempotencyHttp.GetArgument<RegistrationRequest>(context);
+            var displayName = request.DisplayName?.Trim();
+            return new
+            {
+                Email = request.Email.Trim(),
+                UserName = request.UserName?.Trim(),
+                DisplayName = string.IsNullOrEmpty(displayName) ? null : displayName,
+                request.Password,
+            };
+        },
+        user => new IdempotencyRecovery.SecretNotReplayable(user.PublicId),
+        (_, completion) => completion.Recovery is IdempotencyRecovery.SecretNotReplayable secret
+            ? IdempotencyHttp.SecretNotReplayable("userPublicId", secret.ResourcePublicId)
+            : throw new InvalidOperationException("Registration requires a secret response recovery record."));
 
     public static IEndpointRouteBuilder MapAuthEndpoints(this IEndpointRouteBuilder endpoints)
     {
@@ -28,6 +58,7 @@ public static class AuthEndpoints
 
         group.MapPost("/registrations", RegisterAsync)
             .AllowAnonymous()
+            .RequireIdempotency(RegistrationIdempotency)
             .WithName("RegisterAccount")
             .WithSummary("계정을 등록하고 Session을 발급합니다.")
             .Produces<AuthSessionResponse>(StatusCodes.Status201Created)
@@ -55,15 +86,9 @@ public static class AuthEndpoints
     {
         httpContext.Response.Headers["Cache-Control"] = CacheControlNoStore;
 
-        var command = new RegistrationCommand(
-            request.Email,
-            request.UserName,
-            request.DisplayName,
-            request.Password);
-
+        var command = new RegistrationCommand(request.Email, request.UserName, request.DisplayName, request.Password);
         var result = await useCase.ExecuteAsync(command, cancellationToken);
-        return result.ToHttpResult(value =>
-            Results.Created("/api/v2/me", AuthResponseMapper.ToResponse(value)));
+        return result.ToHttpResult(value => Results.Created("/api/v2/me", AuthResponseMapper.ToResponse(value)));
     }
 
     internal static async Task<IResult> LoginAsync(

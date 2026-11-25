@@ -1,9 +1,11 @@
+using CloudSharp.Core.Abstractions.Idempotency;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Domain.Invites;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
+using CloudSharp.Infrastructure.Persistence.Idempotency;
 using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.Infrastructure.Persistence.Transactions;
 using Microsoft.EntityFrameworkCore;
@@ -50,6 +52,9 @@ public static class PersistenceServiceCollectionExtensions
                     .MapEnum<SpaceMembershipStatus>(MembershipStatusEnumName, nameTranslator: EnumNameTranslator)
                     .MapEnum<SpaceInviteStatus>(InviteStatusEnumName, nameTranslator: EnumNameTranslator)));
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
+        services.AddScoped<IdempotencyTransactionContext>();
+        services.AddScoped<IIdempotencyTransactionContext>(provider =>
+            provider.GetRequiredService<IdempotencyTransactionContext>());
         services.AddScoped<IUnitOfWork, EfCoreUnitOfWork>();
         services.AddScoped<IUserRepository, UserRepository>();
         services.AddScoped<ISpaceRepository, SpaceRepository>();
@@ -65,6 +70,8 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ISpaceInviteReader, SpaceInviteReader>();
         services.AddScoped<ISpaceInviteTargetReader, SpaceInviteTargetReader>();
         services.AddScoped<DapperDbSession>();
+        services.AddSingleton<IdempotencyRecoverySerializer>();
+        services.AddScoped<IIdempotencyStore, PostgresIdempotencyStore>();
 
         return services;
     }

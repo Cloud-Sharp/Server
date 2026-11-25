@@ -214,7 +214,6 @@ public sealed class InviteAcceptanceEndpointTests : InviteIntegrationTestBase
     }
 
     [Test]
-    [Explicit("Requires persisted invite idempotency and response recovery.")]
     public async Task Accept_AfterConsumingLastSlot_ShouldReplayOriginalResultWithSameKeyAfterRedisReset()
     {
         var owner = await RegisterSpaceUserAsync();
@@ -249,7 +248,6 @@ public sealed class InviteAcceptanceEndpointTests : InviteIntegrationTestBase
     }
 
     [Test]
-    [Explicit("Requires persisted invite idempotency and independent key scopes.")]
     public async Task Accept_WithSameKeyForAnotherActorOrInvite_ShouldUseIndependentResults()
     {
         var owner = await RegisterSpaceUserAsync();

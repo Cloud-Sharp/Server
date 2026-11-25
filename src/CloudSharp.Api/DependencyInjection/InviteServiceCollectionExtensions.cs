@@ -1,3 +1,4 @@
+using CloudSharp.Api.Endpoints.Invites;
 using CloudSharp.Core.UseCases.Invites.Acceptances;
 using CloudSharp.Core.UseCases.Invites.Creations;
 using CloudSharp.Core.UseCases.Invites.Details;
@@ -5,6 +6,7 @@ using CloudSharp.Core.UseCases.Invites.Dtos;
 using CloudSharp.Core.UseCases.Invites.Listings;
 using CloudSharp.Core.UseCases.Invites.PublicInfo;
 using CloudSharp.Core.UseCases.Invites.Revocations;
+using CloudSharp.Infrastructure.Persistence.Idempotency;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CloudSharp.Api.DependencyInjection;
@@ -18,6 +20,8 @@ internal static class InviteServiceCollectionExtensions
         services.AddLoggedUseCase<RevokeSpaceInviteCommand, RevokeSpaceInviteResultDto, RevokeSpaceInviteUseCase>();
         services.AddLoggedUseCase<GetPublicSpaceInviteQuery, PublicSpaceInviteDto, GetPublicSpaceInviteUseCase>();
         services.AddLoggedUseCase<AcceptSpaceInviteCommand, AcceptSpaceInviteResultDto, AcceptSpaceInviteUseCase>();
+        services.AddIdempotencyReplayType<AcceptSpaceInviteResultDto>(
+            InviteIdempotency.AcceptPolicy.OperationId, InviteIdempotency.AcceptPolicy.ResultVersion);
         services.AddLoggedUseCase<GetSpaceInviteQuery, SpaceInviteResultDto, GetSpaceInviteUseCase>();
     }
 }
