@@ -20,6 +20,31 @@ public sealed class MountAccessGrant
         IEnumerable<MountPermission> permissions) =>
         CreateCore(targetType, targetId, permissions, allowEmpty: false);
 
+    public static MountAccessGrant Reconstitute(
+        MountGrantTargetType targetType,
+        long targetId,
+        IEnumerable<MountPermission> permissions)
+    {
+        if (!Enum.IsDefined(targetType))
+        {
+            throw new ArgumentOutOfRangeException(nameof(targetType), targetType, "Unsupported mount grant target type.");
+        }
+
+        if (targetId <= 0)
+        {
+            throw new ArgumentException("Mount grant target id must be positive.", nameof(targetId));
+        }
+
+        ArgumentNullException.ThrowIfNull(permissions);
+        var grant = FromValidated(targetType, targetId, permissions);
+        if (grant.Permissions.Count == 0 || grant.Permissions.Any(permission => !Enum.IsDefined(permission)))
+        {
+            throw new ArgumentException("Mount grant permissions must be nonempty and contain only defined values.", nameof(permissions));
+        }
+
+        return grant;
+    }
+
     internal static Result<MountAccessGrant> CreateForMutation(
         MountGrantTargetType targetType,
         long targetId,

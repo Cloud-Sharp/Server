@@ -44,6 +44,7 @@
 - [Space Role Repository](repositories/space-role-repositories.md)
 - [Space Membership Repository](repositories/space-membership-repositories.md)
 - [Space Invite Repository](repositories/space-invite-repositories.md)
+- [Mount Repository](repositories/mount-repositories.md) — 구현 대상 포트 8개와 저장 선행 조건
 
 ## 설계·운영 문서
 
