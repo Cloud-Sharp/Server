@@ -108,6 +108,19 @@ public static class ErrorCodes
         public const string UsageExhausted = "INVITE_USAGE_EXHAUSTED";
     }
 
+    public static class Mount
+    {
+        public const string SpaceIdInvalid = "MOUNT_SPACE_ID_INVALID";
+        public const string NameInvalid = "MOUNT_NAME_INVALID";
+        public const string VisibilityInvalid = "MOUNT_VISIBILITY_INVALID";
+        public const string TargetTypeInvalid = "MOUNT_GRANT_TARGET_TYPE_INVALID";
+        public const string TargetIdInvalid = "MOUNT_GRANT_TARGET_ID_INVALID";
+        public const string PermissionsInvalid = "MOUNT_PERMISSIONS_INVALID";
+        public const string GrantsInvalid = "MOUNT_GRANTS_INVALID";
+        public const string SettingsRequired = "MOUNT_SETTINGS_REQUIRED";
+        public const string InvalidState = "MOUNT_INVALID_STATE";
+    }
+
     public static class Session
     {
         public const string TokenHashInvalid = "TOKEN_HASH_INVALID";
