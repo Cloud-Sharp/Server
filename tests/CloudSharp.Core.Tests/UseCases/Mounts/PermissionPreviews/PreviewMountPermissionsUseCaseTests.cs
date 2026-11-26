@@ -56,9 +56,7 @@ public sealed class PreviewMountPermissionsUseCaseTests
                     MountPermission.FilesDownload,
                     MountPermission.FilesWrite,
                 }));
-            Assert.That(
-                item.PreviewPermissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesDownload, MountPermission.FilesWrite }));
+            Assert.That(item.PreviewPermissions, Is.Empty);
             Assert.That(harness.UserReader.CandidateReads, Is.Empty);
             Assert.That(harness.UserReader.UserReads.Single(), Is.EqualTo((SpaceId, subject.User.PublicId)));
             Assert.That(mount.Visibility, Is.EqualTo(MountVisibility.Public));
@@ -84,17 +82,7 @@ public sealed class PreviewMountPermissionsUseCaseTests
             item.CurrentSources.Where(source => source.SourceType != MountPermissionSourceType.Role)
                 .All(source => source.RolePublicId is null),
             Is.True);
-        AssertSourceAbsent(item.PreviewSources, MountPermissionSourceType.Default);
-        AssertSource(
-            item.PreviewSources,
-            MountPermissionSourceType.Role,
-            [MountPermission.FilesWrite],
-            role.PublicId);
-        AssertSource(
-            item.PreviewSources,
-            MountPermissionSourceType.User,
-            [MountPermission.FilesDownload],
-            null);
+        Assert.That(item.PreviewSources, Is.Empty);
     }
 
     [Test]

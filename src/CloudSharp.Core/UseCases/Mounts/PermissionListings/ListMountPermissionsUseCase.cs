@@ -1,5 +1,10 @@
 using CloudSharp.Core.Abstractions.Persistence;
+using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Domain.Spaces;
+using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
 using FluentResults;
 
@@ -13,7 +18,7 @@ public sealed class ListMountPermissionsUseCase : IUseCase<ListMountPermissionsQ
 
     public ListMountPermissionsUseCase() { }
 
-    internal ListMountPermissionsUseCase(
+    public ListMountPermissionsUseCase(
         ISpaceAuthorizationReader authorizationReader,
         IMountReader mountReader,
         IMountGrantReader grantReader)
@@ -23,7 +28,7 @@ public sealed class ListMountPermissionsUseCase : IUseCase<ListMountPermissionsQ
         GrantReader = grantReader;
     }
 
-    public Task<Result<MountPermissionPageDto>> ExecuteAsync(
+    public async Task<Result<MountPermissionPageDto>> ExecuteAsync(
         ListMountPermissionsQuery query,
         CancellationToken cancellationToken = default)
     {
@@ -32,9 +37,78 @@ public sealed class ListMountPermissionsUseCase : IUseCase<ListMountPermissionsQ
         var validation = new ListMountPermissionsQueryValidator().Validate(query);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<MountPermissionPageDto>());
+            return validation.ToFailureResult<MountPermissionPageDto>();
         }
 
-        throw new NotImplementedException();
+        if (AuthorizationReader is null || MountReader is null || GrantReader is null)
+        {
+            return Result.Fail<MountPermissionPageDto>(CommonError.DependencyUnavailable());
+        }
+
+        var snapshotResult = await AuthorizationReader.ReadAsync(
+            query.SpacePublicId,
+            query.Actor.UserId,
+            cancellationToken);
+        if (snapshotResult.IsFailed)
+        {
+            return Result.Fail<MountPermissionPageDto>(snapshotResult.Errors);
+        }
+
+        var authorization = SessionSpaceAuthorizationPolicy.Evaluate(
+            new SpaceAuthorizationQuery(
+                query.Actor,
+                query.SpacePublicId,
+                Array.Empty<SpacePermission>(),
+                new[] { SpaceStatus.Active, SpaceStatus.Archived },
+                allowSystemAdminBypass: false),
+            snapshotResult.Value);
+        if (authorization.IsFailed)
+        {
+            return Result.Fail<MountPermissionPageDto>(authorization.Errors);
+        }
+
+        var authorizationSnapshot = snapshotResult.Value!;
+        var space = authorizationSnapshot.Space;
+        var mountResult = await MountReader.ReadAsync(space.Id, query.MountPublicId, cancellationToken);
+        if (mountResult.IsFailed)
+        {
+            return Result.Fail<MountPermissionPageDto>(mountResult.Errors);
+        }
+
+        var mount = mountResult.Value;
+        if (mount is null || mount.SpaceId != space.Id)
+        {
+            return Result.Fail<MountPermissionPageDto>(CommonError.ResourceNotFound());
+        }
+
+        var access = MountAccessEvaluator.Evaluate(authorizationSnapshot, query.Actor.UserId, mount);
+        if (!access.Permissions.Contains(MountPermission.FilesRead))
+        {
+            return Result.Fail<MountPermissionPageDto>(CommonError.ResourceNotFound());
+        }
+
+        if (!access.IsManager)
+        {
+            return Result.Fail<MountPermissionPageDto>(SpaceAuthorizationError.PermissionDenied());
+        }
+
+        var grantsResult = await GrantReader.ReadAsync(
+            space.Id,
+            mount.Id,
+            query.TargetType,
+            query.Cursor,
+            query.Limit,
+            cancellationToken);
+        if (grantsResult.IsFailed)
+        {
+            return Result.Fail<MountPermissionPageDto>(grantsResult.Errors);
+        }
+
+        var page = grantsResult.Value;
+        var items = page.Grants.Select(snapshot => new MountPermissionGrantDto(
+            snapshot.Grant.TargetType,
+            snapshot.TargetPublicId,
+            snapshot.Grant.Permissions)).ToArray();
+        return Result.Ok(new MountPermissionPageDto(items, page.NextCursor));
     }
 }
