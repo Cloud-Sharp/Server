@@ -1,4 +1,8 @@
+using CloudSharp.Core.Abstractions.Persistence;
+using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Common.Time;
+using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
 using FluentResults;
 
@@ -7,7 +11,31 @@ namespace CloudSharp.Core.UseCases.Mounts.UserPermissionReplacements;
 public sealed class ReplaceMountUserPermissionsUseCase
     : IUseCase<ReplaceMountUserPermissionsCommand, MountPermissionResultDto>
 {
-    public Task<Result<MountPermissionResultDto>> ExecuteAsync(
+    private MountGrantMutationWorkflow MutationWorkflow { get; }
+
+    public ReplaceMountUserPermissionsUseCase()
+        : this(null!, null!, null!, null!, null!, null!, null!) { }
+
+    public ReplaceMountUserPermissionsUseCase(
+        ISpaceAuthorizationReader authorizationReader,
+        IMountReader mountReader,
+        IMountCreationGrantTargetReader grantTargetReader,
+        IMountMutationWriter writer,
+        IUnitOfWork unitOfWork,
+        ITransactionExecutor transactionExecutor,
+        IClock clock)
+    {
+        MutationWorkflow = new MountGrantMutationWorkflow(
+            authorizationReader,
+            mountReader,
+            grantTargetReader,
+            writer,
+            unitOfWork,
+            transactionExecutor,
+            clock);
+    }
+
+    public async Task<Result<MountPermissionResultDto>> ExecuteAsync(
         ReplaceMountUserPermissionsCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -16,9 +44,17 @@ public sealed class ReplaceMountUserPermissionsUseCase
         var validation = new ReplaceMountUserPermissionsCommandValidator().Validate(command);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<MountPermissionResultDto>());
+            return validation.ToFailureResult<MountPermissionResultDto>();
         }
 
-        throw new NotImplementedException();
+        return await MutationWorkflow.ExecuteAsync(
+            command.Actor,
+            command.SpacePublicId,
+            command.MountPublicId,
+            MountGrantTargetType.User,
+            command.UserPublicId,
+            command.ExpectedVersion,
+            command.Permissions,
+            cancellationToken);
     }
 }

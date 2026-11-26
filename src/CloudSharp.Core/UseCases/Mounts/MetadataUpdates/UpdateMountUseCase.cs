@@ -1,4 +1,7 @@
+using CloudSharp.Core.Abstractions.Persistence;
+using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Common.Time;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
 using FluentResults;
 
@@ -6,7 +9,29 @@ namespace CloudSharp.Core.UseCases.Mounts.MetadataUpdates;
 
 public sealed class UpdateMountUseCase : IUseCase<UpdateMountCommand, MountResultDto>
 {
-    public Task<Result<MountResultDto>> ExecuteAsync(
+    private MountMutationWorkflow MutationWorkflow { get; }
+
+    public UpdateMountUseCase()
+        : this(null!, null!, null!, null!, null!, null!) { }
+
+    public UpdateMountUseCase(
+        ISpaceAuthorizationReader authorizationReader,
+        IMountDetailsReader detailsReader,
+        IMountMutationWriter writer,
+        IUnitOfWork unitOfWork,
+        ITransactionExecutor transactionExecutor,
+        IClock clock)
+    {
+        MutationWorkflow = new MountMutationWorkflow(
+            authorizationReader,
+            detailsReader,
+            writer,
+            unitOfWork,
+            transactionExecutor,
+            clock);
+    }
+
+    public async Task<Result<MountResultDto>> ExecuteAsync(
         UpdateMountCommand command,
         CancellationToken cancellationToken = default)
     {
@@ -15,9 +40,18 @@ public sealed class UpdateMountUseCase : IUseCase<UpdateMountCommand, MountResul
         var validation = new UpdateMountCommandValidator().Validate(command);
         if (!validation.IsValid)
         {
-            return Task.FromResult(validation.ToFailureResult<MountResultDto>());
+            return validation.ToFailureResult<MountResultDto>();
         }
 
-        throw new NotImplementedException();
+        return await MutationWorkflow.ExecuteAsync(
+            command.Actor,
+            command.SpacePublicId,
+            command.MountPublicId,
+            command.ExpectedVersion,
+            (mount, now) => mount.UpdateSettings(
+                command.Name?.Value,
+                command.Visibility?.Value,
+                now),
+            cancellationToken);
     }
 }

@@ -38,7 +38,7 @@ CloudSharp Production v1의 Mount 조회·개설·설정·보관과 Role·사용
 2. **개설 저장과 재생.** `Mount.Create`로 `ACTIVE`, 버전 1의 Mount를 만든다. Mount, 초기 부여, 루트 `DirectoryEntry`와 `Folder`, 멱등 완료 레코드를 한 PostgreSQL 트랜잭션으로 커밋한다. `Idempotency-Key`는 호출자·메서드·Space 경로에 묶는다. 완료된 동일 요청은 필터에서 재생하므로 필터 진입 전에 최신 활성 Space와 관리 자격을 확인하고, 최초 쓰기는 트랜잭션 안에서도 확인한다. 같은 입력의 완료 요청은 기존 201 본문·`Location`·ETag를 재생한다. 같은 키에 다른 입력은 `409 IDEMPOTENCY_KEY_REUSED`, 처리 중인 동일 요청은 `409 IDEMPOTENCY_REQUEST_IN_PROGRESS`다. [Mount 테이블 설계](../../.llm/database/mounts.md) · [현재 Idempotency-Key 구현](../../src/CloudSharp.Api/README.md#idempotency-key)
 3. **기존 Mount 변경.** MT-04~06과 MT-08~09는 최신 관리 자격과 소속을 확인하고, 트랜잭션에서 읽은 Mount의 버전을 `If-Match`와 대조한다. `IClock.UtcNow`를 도메인 행위에 전달한다. 실제 변경만 Mount 버전을 올리며, 저장 시 읽은 버전으로 낙관적 동시성을 확인한다. 권한 행의 추가·갱신·삭제와 Mount 버전·수정 시각을 한 트랜잭션에 저장한다. [기존 Space 변경 흐름](../../src/CloudSharp.Core/UseCases/Spaces/SpaceMutationWorkflow.cs) · [권한 변경 저장 계약](../../.llm/database/mounts.md#권한-변경과-용량)
 4. **MT-04~06 설정과 상태.** `PATCH`는 `name`, `visibility` 중 하나 이상을 받고 명시적 `null`은 거부한다. `UpdateSettings`로 전달한 필드만 변경하며, 공개 범위를 바꿔도 명시적 부여는 유지한다. 같은 설정은 현재 ETag로 성공한다. `Archive`·`Reactivate`에 잘못된 출발 상태를 전달하면 `409 REQUEST_CONFLICT`다. 재활성화 후의 콘텐츠 쓰기에는 현재 유효 권한이 필요하다.
-5. **MT-08~09 권한 교체.** 같은 Space의 삭제되지 않은 Role, 또는 활성 계정이면서 Space 소유자나 활성 멤버인 사용자를 해석한다. `SetGrant`에 해당 대상의 전체 권한 집합을 넘긴다. 빈 배열은 회수이며 정지된 멤버나 삭제된 Role의 기존 부여도 제거할 수 있다. 동일 집합 재설정과 이미 비어 있는 부여의 회수는 기존 ETag를 반환한다. 응답은 해당 대상의 명시적 부여 결과이며, 기본·Role·나머지 직접 부여는 다음 인가 판단에서 다시 합산한다. [권한 설정 계약](../../.llm/api/mounts.md#권한-설정)
+5. **MT-08~09 권한 교체.** 같은 Space의 삭제되지 않은 Role, 또는 활성 계정이면서 Space 소유자나 활성 멤버인 사용자를 해석한다. `SetGrant`에 해당 대상의 전체 권한 집합을 넘긴다. 빈 배열은 회수이며, 같은 Space에 존재함을 확인할 수 있는 삭제된 Role이나 정지된 멤버에는 현재 부여 자격이 없어도 허용한다. 기존 부여가 있으면 제거하고, 이미 없으면 빈 `permissions`와 현재 Mount 버전을 반환하며 등록·저장 없이 성공한다. 미존재·다른 Space 대상은 빈 배열이어도 404다. 동일 집합 재설정과 이미 비어 있는 유효 대상의 회수도 기존 ETag를 반환한다. 응답은 해당 대상의 명시적 부여 결과이며, 기본·Role·나머지 직접 부여는 다음 인가 판단에서 다시 합산한다. [권한 설정 계약](../../.llm/api/mounts.md#권한-설정)
 
 ## 오류 계약
 
@@ -61,7 +61,3 @@ Mount 소속과 열람 자격을 먼저 확인해 상태나 버전이 노출되�
 - **멤버십.** 정지하면 모든 Mount 접근을 중단하고 직접 부여를 보존한다. 재활성화하면 현재 부여를 다시 평가한다. 제거·탈퇴로 `LEFT`가 될 때는 동일 Space의 모든 Mount에서 사용자의 직접 부여를 일괄 회수하고 영향받은 Mount만 갱신한다. 멤버십 변경과 회수는 한 트랜잭션으로 처리한다. 초기 부여를 포함한 직접 부여와 `LEFT` 전환은 동일 Space·사용자 단위로 직렬화하고 잠금을 획득한 뒤 자격을 다시 확인한다. 소유권 이전 시 기본 접근은 새 소유자 기준으로 계산하며 직접 부여는 각 사용자에게 남는다. [Membership 유즈케이스](space-use-cases.md#3-space-membership) · [직접 부여 저장 계약](../../.llm/database/mounts.md#mount_user_grants)
 - **콘텐츠와 용량.** Space는 Mount 없이 시작할 수 있다. 개설 실패 시 루트와 초기 부여도 롤백하며, 확정된 Mount에는 루트가 하나 있어야 한다. 콘텐츠 조회와 변경은 Space·Mount·대상의 소속을 확인한다. `usedBytes`는 해당 Mount의 `PURGED` 이외 파일 크기 합계이며, 업로드 허용·예약은 Space 전체 quota로 판단한다. Mount 보관은 해당 Mount의 파일 쓰기를 막고 Space 보관은 모든 소속 Mount의 파일 쓰기를 막는다. [루트·용량 도메인 계약](../../.llm/domains/mount.md#루트-폴더와-용량)
 - **검증.** 일반 멤버의 공용·제한 Mount 조회, 소유자·ADMIN의 명시적 편집 권한, 제한 Mount의 404 마스킹을 확인한다. 비가시 항목이 정렬 중간에 있어도 목록 페이지를 채우고, cursor 재사용 시 변경된 멤버십과 Role을 반영하는지 검증한다. 개설의 롤백·재생, 동시 권한 변경의 ETag 충돌, 직접 부여와 탈퇴의 경합, 두 종류의 보관 상태도 검증한다. [기존 Mount 도메인 테스트](../../tests/CloudSharp.Core.Tests/Domain/Mounts/MountTests.cs)
-
-## 구현 전 확정할 계약
-
-- MT-08~09에서 빈 배열을 보냈지만 대상이 더 이상 부여 자격을 갖지 않고 기존 부여도 없는 경우의 응답을 확정한다. 현재 설계는 기존 부여의 정리와 이미 비어 있는 유효 대상의 멱등 성공을 명시한다. [권한 설정과 미리보기](../../.llm/api/mounts.md#권한-설정)
