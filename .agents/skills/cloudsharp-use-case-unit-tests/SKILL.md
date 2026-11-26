@@ -1,7 +1,8 @@
 ---
 name: cloudsharp-use-case-unit-tests
 description: >
-  CloudSharp Core 유즈케이스의 업무 로직을 구현하기 전에 검증할 동작과 테스트 시나리오를 정한다.
+  CloudSharp Core 유즈케이스의 업무 로직을 구현하기 전에 ExecuteAsync의 기대 동작을 검증하는
+  NUnit 테스트 코드와 검증에 필요한 Core 포트 계약을 작성한다.
   ExecuteAsync의 결과, 인가 이후의 상태 검증, 저장과 동시성 계약을 테스트로 고정할 때 사용한다.
   테스트 코드를 작성하거나 수정할 때는 aspnet-unit-testing을 함께 적용한다.
 ---
@@ -10,7 +11,9 @@ description: >
 
 ## 테스트 작성 스킬 연결
 
-이 스킬로 기대 동작과 시나리오를 정한다. 테스트 코드를 작성하거나 수정하기 전에 [aspnet-unit-testing](../../../.claude/skills/aspnet-unit-testing/SKILL.md)을 읽고, NUnit 이름·케이스 구성·단언·테스트 데이터 작성 규칙을 적용한다. 파일이 없는 체크아웃에서는 저장소 루트의 `CLAUDE.md`에 있는 Unit tests 규칙과 인접 Core 테스트를 따른다. 패키지와 API는 현재 테스트 프로젝트의 설정을 기준으로 한다.
+이 스킬의 산출물은 `ExecuteAsync`의 기대 동작을 검증하는 NUnit 테스트 코드와 그 검증에 필요한 Core 포트 계약이다. 업무 로직과 Infrastructure 어댑터 구현은 후속 범위다.
+
+테스트 코드를 작성하거나 수정하기 전에 [aspnet-unit-testing](../../../.claude/skills/aspnet-unit-testing/SKILL.md)을 읽고, NUnit 이름·케이스 구성·단언·테스트 데이터 작성 규칙을 적용한다. 파일이 없는 체크아웃에서는 저장소 루트의 `CLAUDE.md`에 있는 Unit tests 규칙과 인접 Core 테스트를 따른다. 패키지와 API는 현재 테스트 프로젝트의 설정을 기준으로 한다.
 
 업무 로직이 미구현인 상태에서 테스트 우선 작업을 요청받았다면, `aspnet-unit-testing`의 전체 통과 기준에는 이 스킬의 예상 실패 기준을 적용한다.
 
@@ -24,7 +27,7 @@ description: >
 
 - 실제 도메인 객체, 고정 UTC 시각, 요청 범위의 인가 컨텍스트를 사용한다. 가능한 경우 실제 인가 정책으로 컨텍스트를 만들고, 인가 후 상태·소유권·버전이 바뀌는 케이스에서는 인가에 사용한 스냅샷과 포트가 반환하는 최신 스냅샷을 따로 준비한다.
 - 기존 `tests/TestSupport/Fakes/`의 저장소, Unit of Work, 트랜잭션, `FakeClock`을 재사용한다. 픽스처 한 곳에서만 필요한 호출 기록이나 실패 주입은 해당 픽스처의 작은 더블로 둔다.
-- 주입 경계가 없으면 기존 Core 포트를 먼저 재사용한다. 필요한 경우에만 내부 의존성 생성자와 테스트에 필요한 최소 포트 계약을 추가한다. 기존 `InternalsVisibleTo`를 활용하고 공개 생성자 및 API DI 해석을 보존한다. 테스트 우선 단계에서 핸들러는 기존 검증을 수행하고 유효한 입력은 미구현 경로로 진행한다.
+- 기존 Core 포트를 우선 재사용한다. 기존 계약으로 검증에 필요한 의존성을 표현할 수 없으면 최소한의 포트 인터페이스와 필요한 입출력 타입을 작성한다. 주입 경계가 필요한 경우 내부 의존성 생성자를 추가한다. 기존 `InternalsVisibleTo`를 활용하고 공개 생성자 및 API DI 해석을 보존한다. 테스트 우선 단계에서 핸들러는 기존 검증을 수행하고 유효한 입력은 미구현 경로로 진행한다.
 
 ## 동작 단언
 
@@ -44,6 +47,6 @@ description: >
 dotnet test tests/CloudSharp.Core.Tests/CloudSharp.Core.Tests.csproj --filter 'FullyQualifiedName~<FixtureName>'
 ```
 
-미구현 상태에서는 빌드 성공, 테스트 발견, 기존 입력 검증의 통과, 업무 테스트의 예상 실패를 확인한다. 컴파일·준비·검증 실패는 원인을 확인하고 수정한다. 공유 더블이나 Core 골격을 건드렸다면 관련 기존 테스트를 별도 필터로 실행한다. 최종 보고에는 새 픽스처, 실제 실행 결과, 예상 실패의 원인을 적는다.
+미구현 상태에서는 빌드 성공, 테스트 발견, 기존 입력 검증의 통과, 업무 테스트의 예상 실패를 확인한다. 컴파일·준비·검증 실패는 원인을 확인하고 수정한다. 공유 더블이나 Core 골격을 건드렸다면 관련 기존 테스트를 별도 필터로 실행한다. 최종 보고에는 작성한 테스트, 추가하거나 재사용한 Core 포트, 실제 테스트 실행 결과와 예상 실패의 원인을 적는다.
 
 이 스킬의 프로젝트 사본은 `.agents/skills/cloudsharp-use-case-unit-tests/SKILL.md`와 `.claude/skills/cloudsharp-use-case-unit-tests/SKILL.md`에 같은 내용으로 유지한다.
