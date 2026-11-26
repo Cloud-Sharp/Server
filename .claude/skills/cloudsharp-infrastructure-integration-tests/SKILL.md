@@ -1,12 +1,14 @@
 ---
 name: cloudsharp-infrastructure-integration-tests
 description: >
-  CloudSharp Infrastructure 어댑터의 통합 테스트 케이스를 설계한다.
-  PostgreSQL, Redis 등 실제 외부 시스템에서 확인해야 할 포트·저장소 계약을 찾고,
-  서로 다른 회귀를 잡는 소수의 시나리오와 관찰 지점을 정할 때 사용한다.
+  CloudSharp Infrastructure 어댑터의 동작을 구현하기 전에 NUnit 통합 테스트를 작성한다.
+  PostgreSQL, Redis 등 실제 외부 시스템과의 포트·저장소 계약을
+  서로 다른 회귀를 잡는 소수의 시나리오로 검증할 때 사용한다.
 ---
 
-# CloudSharp Infrastructure 통합 테스트 설계
+# CloudSharp Infrastructure 통합 테스트 우선 작성
+
+Infrastructure 테스트의 목표는 **외부 시스템과의 계약이 실제로 지켜지는지를 적은 수의 의미 있는 통합 테스트로 검증하는 것**이다. TDD에서는 새 동작이나 변경할 동작을 구현하기 전에 기대 계약을 NUnit 통합 테스트로 작성한다.
 
 | 검증 계층 | 검증할 계약 | 진입점과 의존성 |
 |---|---|---|
@@ -22,7 +24,7 @@ description: >
 2. **기존 테스트가 놓칠 수 있는 구체적인 회귀**를 계약마다 적는다. 정상 경로는 변경된 매핑·쿼리·외부 쓰기를 입증할 수 있는 대표 시나리오부터 검토한다. 실패나 경계 사례는 실제 공급자의 제약, 정렬·커서, 경합, 만료처럼 별도의 결함을 드러낼 때 추가한다.
 3. 같은 회귀를 잡는 기존 케이스를 재사용하거나 보강한다. 여러 입력이 같은 외부 동작을 거치면 그 차이를 가장 잘 드러내는 입력을 고른다. DB 없이 확인할 수 있는 순수 매핑·직렬화·오류 분류는 유닛 테스트에서 검증한다. 통합 테스트에는 실제 저장 형식이나 공급자 동작에 의존하는 시나리오를 남긴다.
 
-설계 결과에는 케이스별로 **계약과 잡을 회귀 · 준비할 외부 상태와 호출할 포트 · 기대 결과와 독립적으로 관찰할 외부 상태 · 기존 케이스 재사용 또는 추가**를 적는다. 새 케이스마다 기존 검증과 구별되는 근거가 있어야 한다.
+케이스를 고를 때 **검증할 계약과 잡을 회귀 · 준비할 외부 상태와 호출할 포트 · 기대 결과와 독립적으로 관찰할 외부 상태 · 기존 케이스 재사용 또는 추가**를 정한다. 새 케이스마다 기존 검증과 구별되는 근거가 있어야 한다.
 
 ## 외부 결과 확인
 
@@ -35,14 +37,17 @@ description: >
 - PostgreSQL `SpaceRepositoryIntegrationTests.UpdateAsync_OnExternallyChangedVersion_ShouldFailWithPreconditionFailed`는 다른 scope가 버전을 갱신한 뒤 실제 저장이 오래된 변경을 거부하는지 확인한다. 여러 쓰기의 원자성이 변경 대상이면 `SpaceMembershipPersistenceIntegrationTests.DeleteAsync_OnStaleMembershipVersion_ShouldRollbackSp10ShapedTransfer`처럼 실패 후 DB의 상태를 다시 읽는다.
 - Redis `RedisSessionStoreIntegrationTests.StoreAsync_ShouldKeepBodyTtlWithinAbsoluteExpiry`는 실제 Redis에 저장된 세션 TTL이 절대 만료 시점을 넘지 않는지 확인한다. 세션 제한의 원자성이 변경 대상이면 같은 픽스처의 `StoreAsync_WithConcurrentIssuance_ShouldKeepAtMostTenSessions`를 참고한다.
 
-## 테스트 작성과 실행
+## 테스트 작성과 완료 기준
 
-테스트 코드도 요청받았다면 `tests/CloudSharp.Infrastructure.Tests/`의 인접 픽스처와 NUnit 관례를 따른다. 외부 시스템을 사용하는 통합 픽스처에는 기존 `[Category("Integration")]`를 사용한다. 저장소 루트에서 `<FixtureName>`을 실제 클래스 이름으로 바꿔 실행한다.
+`tests/CloudSharp.Infrastructure.Tests/`의 인접 픽스처와 NUnit 관례를 따른다. 외부 시스템을 사용하는 통합 픽스처에는 기존 `[Category("Integration")]`를 사용한다. 포트 호출의 기대 결과와 외부 시스템에서 관찰할 상태를 단언한다. 저장소 루트에서 `<FixtureName>`을 실제 클래스 이름으로 바꿔 실행한다.
 
 ```powershell
 dotnet test tests/CloudSharp.Infrastructure.Tests/CloudSharp.Infrastructure.Tests.csproj --filter 'FullyQualifiedName~<FixtureName>'
 ```
 
-통합 테스트 전체가 검증 범위에 들면 `--filter 'TestCategory=Integration'`을 사용한다. 테스트가 실제로 발견되어 실행됐는지 확인하고, Docker나 공급자 준비 실패로 실행하지 못한 범위를 기록한다.
+통합 테스트 전체가 검증 범위에 들면 `--filter 'TestCategory=Integration'`을 사용한다.
+
+- 구현 전(Red)에는 빌드 성공, 테스트 발견, 실제 외부 시스템 준비를 확인하고 기대 계약을 충족하지 못해 실패하는지 확인한다. 빌드·픽스처·Docker·연결 오류로 실행하지 못했다면 원인과 검증하지 못한 범위를 기록한다.
+- 구현 후(Green)에는 같은 테스트를 다시 실행해 포트 결과와 외부 시스템 상태가 계약을 충족하는지 확인한다.
 
 이 스킬은 `.agents/skills/cloudsharp-infrastructure-integration-tests/SKILL.md`와 `.claude/skills/cloudsharp-infrastructure-integration-tests/SKILL.md`에 같은 내용으로 유지한다.
