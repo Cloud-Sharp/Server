@@ -8,6 +8,7 @@
 
 - [Auth 유즈케이스](use-cases/auth-use-cases.md) — 인증·내 계정 API, Session 수명주기와 구현 현황
 - [Space 유즈케이스](use-cases/space-use-cases.md) — Space·Role·Membership·Invite의 API별 행위자, 상태, 결과와 구현 경계
+- [Mount 유즈케이스](use-cases/mount-use-cases.md) — 목록·개설·설정·보관, Role·사용자별 권한과 미리보기
 
 ## 구현된 API
 

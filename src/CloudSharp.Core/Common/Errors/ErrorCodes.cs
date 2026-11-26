@@ -8,6 +8,7 @@ public static class ErrorCodes
 {
     public static class Common
     {
+        public const string CursorInvalid = "CURSOR_INVALID";
         public const string DependencyUnavailable = "DEPENDENCY_UNAVAILABLE";
         public const string PreconditionFailed = "PRECONDITION_FAILED";
         public const string PreconditionRequired = "PRECONDITION_REQUIRED";
@@ -110,6 +111,7 @@ public static class ErrorCodes
 
     public static class Mount
     {
+        public const string PublicIdInvalid = "MOUNT_PUBLIC_ID_INVALID";
         public const string SpaceIdInvalid = "MOUNT_SPACE_ID_INVALID";
         public const string NameInvalid = "MOUNT_NAME_INVALID";
         public const string VisibilityInvalid = "MOUNT_VISIBILITY_INVALID";
@@ -119,6 +121,10 @@ public static class ErrorCodes
         public const string GrantsInvalid = "MOUNT_GRANTS_INVALID";
         public const string SettingsRequired = "MOUNT_SETTINGS_REQUIRED";
         public const string InvalidState = "MOUNT_INVALID_STATE";
+        public const string ExpectedVersionInvalid = "MOUNT_EXPECTED_VERSION_INVALID";
+        public const string ListLimitInvalid = "MOUNT_LIST_LIMIT_INVALID";
+        public const string ListSortInvalid = "MOUNT_LIST_SORT_INVALID";
+        public const string PreviewInputRequired = "MOUNT_PREVIEW_INPUT_REQUIRED";
     }
 
     public static class Session
