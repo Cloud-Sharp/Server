@@ -11,6 +11,9 @@ public sealed class CommonError : CloudSharpError
     public static CommonError DependencyUnavailable() =>
         new(new ErrorDefinition(ErrorCodes.Common.DependencyUnavailable), "A required dependency is unavailable.");
 
+    public static CommonError ResourceNotFound() =>
+        new(new ErrorDefinition(ErrorCodes.Common.ResourceNotFound), "Resource was not found.");
+
     public static CommonError PreconditionFailed() =>
         new(new ErrorDefinition(ErrorCodes.Common.PreconditionFailed), "Resource version does not match the request.");
 

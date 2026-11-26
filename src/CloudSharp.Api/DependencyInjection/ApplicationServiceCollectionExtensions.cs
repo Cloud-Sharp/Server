@@ -20,6 +20,7 @@ public static class ApplicationServiceCollectionExtensions
         services.AddIdempotencyServices();
         services.AddUserServices();
         services.AddSpaceServices();
+        services.AddMountServices();
         services.AddMembershipServices();
         services.AddInviteServices();
 
