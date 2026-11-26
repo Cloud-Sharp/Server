@@ -13,6 +13,7 @@ public static class ErrorCodes
         public const string PreconditionFailed = "PRECONDITION_FAILED";
         public const string PreconditionRequired = "PRECONDITION_REQUIRED";
         public const string RequestConflict = "REQUEST_CONFLICT";
+        public const string ResourceNotFound = "RESOURCE_NOT_FOUND";
     }
 
     public static class Idempotency
