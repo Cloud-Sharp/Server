@@ -57,7 +57,8 @@ internal sealed class MountMutationTestHarness
             permissions ?? (AuthorizationReader.Snapshot is { } snapshot
                 ? MountPermissionPolicy.Evaluate(snapshot, Actor.UserId, mount).Permissions
                 : MountScopedPermissions.All),
-            TestMountReadSnapshots.SpaceId);
+            TestMountReadSnapshots.SpaceId,
+            AuthorizationReader.Snapshot?.Space.Status ?? SpaceStatus.Active);
     public FakePersistenceSession PersistenceSession { get; } = new();
     public RecordingAuthorizationReader AuthorizationReader { get; }
     public RecordingMountReader MountReader { get; }

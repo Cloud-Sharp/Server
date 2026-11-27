@@ -138,6 +138,26 @@ public class MountAuthorizationPolicyTests
     }
 
     [Test]
+    public void Evaluate_ShouldAllowManagementReadOnArchivedSpace()
+    {
+        var actor = Actor();
+        var role = Role(11, permissions: [SpacePermission.MountView, SpacePermission.MountManage]);
+        var mount = Mount(11);
+
+        var result = MountAuthorizationPolicy.Evaluate(
+            Query(mount, [SpacePermission.MountManage]),
+            Member(actor, [role], spaceStatus: SpaceStatus.Archived),
+            mount);
+
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.SpaceStatus, Is.EqualTo(SpaceStatus.Archived));
+            Assert.That(result.Value.EffectivePermissions, Does.Contain(SpacePermission.MountManage));
+        });
+    }
+
+    [Test]
     public void Query_ShouldRejectRequiredPermissionOutsideMountScope()
     {
         var mount = Mount(10);

@@ -189,24 +189,60 @@ public class MountPermissionPolicyTests
         }));
     }
 
-    [Test]
-    public void Evaluate_ShouldRemoveWriteAndManagementInArchivedSpace()
+    [TestCase(SpaceStatus.Archived, MountStatus.Active)]
+    [TestCase(SpaceStatus.Active, MountStatus.Archived)]
+    public void Evaluate_ShouldKeepPermissionsRegardlessOfSpaceAndMountStatus(
+        SpaceStatus spaceStatus,
+        MountStatus mountStatus)
     {
         var actor = Actor();
         var role = Role(22, permissions: [.. ViewerBase, SpacePermission.FilesWrite, SpacePermission.MountManage]);
-        var mount = Mount(10);
+        var mount = Mount(10, status: mountStatus);
 
         var evaluation = MountPermissionPolicy.Evaluate(
-            Member(actor, [role], spaceStatus: SpaceStatus.Archived),
+            Member(actor, [role], spaceStatus: spaceStatus),
             actor.UserId,
             mount);
 
         Assert.That(evaluation.Permissions, Is.EquivalentTo(new[]
         {
             SpacePermission.MountView,
+            SpacePermission.MountManage,
+            SpacePermission.FilesRead,
+            SpacePermission.FilesDownload,
+            SpacePermission.FilesWrite,
+        }));
+    }
+
+    [TestCase(SpaceStatus.Archived, MountStatus.Active)]
+    [TestCase(SpaceStatus.Active, MountStatus.Archived)]
+    [TestCase(SpaceStatus.Archived, MountStatus.Archived)]
+    public void ExercisablePermissions_ShouldRemoveFileWritesUnlessSpaceAndMountAreActive(
+        SpaceStatus spaceStatus,
+        MountStatus mountStatus)
+    {
+        var permissions = MountScopedPermissions.All.ToHashSet();
+
+        var exercisable = MountPermissionPolicy.ExercisablePermissions(permissions, spaceStatus, mountStatus);
+
+        Assert.That(exercisable, Is.EquivalentTo(new[]
+        {
+            SpacePermission.MountView,
+            SpacePermission.MountManage,
             SpacePermission.FilesRead,
             SpacePermission.FilesDownload,
         }));
+    }
+
+    [Test]
+    public void ExercisablePermissions_ShouldKeepAllPermissionsWhenSpaceAndMountAreActive()
+    {
+        var permissions = MountScopedPermissions.All.ToHashSet();
+
+        var exercisable = MountPermissionPolicy.ExercisablePermissions(
+            permissions, SpaceStatus.Active, MountStatus.Active);
+
+        Assert.That(exercisable, Is.EquivalentTo(MountScopedPermissions.All));
     }
 
     [Test]

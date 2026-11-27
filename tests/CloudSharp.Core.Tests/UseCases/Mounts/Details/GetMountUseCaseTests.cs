@@ -2,6 +2,7 @@ using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Mounts.Details;
 using FluentResults;
 using NUnit.Framework;
@@ -41,6 +42,34 @@ public sealed class GetMountUseCaseTests
             Assert.That(dto.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
             Assert.That(dto.ArchivedAt, Is.EqualTo(mount.ArchivedAt));
             Assert.That(reader.Reads.Single(), Is.EqualTo((SpaceId, mount.PublicId)));
+        });
+    }
+
+    [TestCase(SpaceStatus.Archived, MountStatus.Active)]
+    [TestCase(SpaceStatus.Active, MountStatus.Archived)]
+    public async Task ExecuteAsync_ShouldHideFileWritesUnlessSpaceAndMountAreActive(
+        SpaceStatus spaceStatus,
+        MountStatus mountStatus)
+    {
+        // Arrange
+        var mount = Mount(105, status: mountStatus);
+        var query = new GetMountQuery(MountContext(Actor(), mount, spaceStatus: spaceStatus));
+
+        // Act
+        var result = await new GetMountUseCase(new RecordingMountReader(mount)).ExecuteAsync(query);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.Mount.MyAccess.Permissions, Is.EquivalentTo(new[]
+            {
+                SpacePermission.MountView,
+                SpacePermission.MountManage,
+                SpacePermission.FilesRead,
+                SpacePermission.FilesDownload,
+            }));
+            Assert.That(result.Value.Mount.MyAccess.CanManage, Is.True);
         });
     }
 

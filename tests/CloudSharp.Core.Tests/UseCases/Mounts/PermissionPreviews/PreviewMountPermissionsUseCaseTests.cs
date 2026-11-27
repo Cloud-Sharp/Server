@@ -181,8 +181,11 @@ public sealed class PreviewMountPermissionsUseCaseTests
         });
     }
 
-    [Test]
-    public async Task ExecuteAsync_ShouldSuppressManagementInArchivedSpace()
+    [TestCase(SpaceStatus.Archived, MountStatus.Active)]
+    [TestCase(SpaceStatus.Active, MountStatus.Archived)]
+    public async Task ExecuteAsync_ShouldHideFileWritesUnlessSpaceAndMountAreActive(
+        SpaceStatus spaceStatus,
+        MountStatus mountStatus)
     {
         // Arrange
         var actor = Actor();
@@ -190,12 +193,13 @@ public sealed class PreviewMountPermissionsUseCaseTests
         var subject = PreviewUser(700, [role]);
         var mount = Mount(
             340,
+            status: mountStatus,
             overwrites:
             [
                 Overwrite(MountOverwriteTargetType.Role, role.Id, allow: [SpacePermission.MountManage]),
                 Overwrite(MountOverwriteTargetType.User, subject.User.Id, allow: [SpacePermission.FilesWrite]),
             ]);
-        var harness = new Harness(Owner(actor, SpaceStatus.Archived), mount, subject);
+        var harness = new Harness(Owner(actor, spaceStatus), mount, subject);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(actor, mount, userPublicId: subject.User.PublicId));
@@ -205,8 +209,12 @@ public sealed class PreviewMountPermissionsUseCaseTests
         var item = result.Value.Items.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(item.CurrentPermissions,
-                Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.FilesRead }));
+            Assert.That(item.CurrentPermissions, Is.EquivalentTo(new[]
+            {
+                SpacePermission.MountView,
+                SpacePermission.MountManage,
+                SpacePermission.FilesRead,
+            }));
             Assert.That(item.PreviewPermissions, Is.EquivalentTo(item.CurrentPermissions));
         });
     }

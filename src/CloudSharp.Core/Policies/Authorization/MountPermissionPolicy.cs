@@ -15,9 +15,9 @@ namespace CloudSharp.Core.Policies.Authorization;
 /// <item>사용자 덮어쓰기를 마지막에 적용한다. 거부를 빼고 허용을 더한다.</item>
 /// <item>암묵적 권한: 최종 <see cref="SpacePermission.MountView"/>가 없으면 모두 비우고,
 /// <see cref="SpacePermission.FilesRead"/>가 없으면 다운로드·쓰기를 뺀다.</item>
-/// <item>보관된 Space에서는 <see cref="SpacePermission.MountManage"/>와 <see cref="SpacePermission.FilesWrite"/>를 뺀다.</item>
 /// </list>
-/// Mount 상태와 요구 권한 검사는 <see cref="MountAuthorizationPolicy"/>가 수행한다.
+/// Space·Mount 상태는 권한에서 빼지 않는다. endpoint가 허용 상태를 선언하고 <see cref="MountAuthorizationPolicy"/>가
+/// 요구 권한보다 먼저 검사한다. 응답에 표시할 권한은 <see cref="ExercisablePermissions"/>로 상태를 반영한다.
 /// </summary>
 public static class MountPermissionPolicy
 {
@@ -95,13 +95,23 @@ public static class MountPermissionPolicy
         }
 
         ApplyImplicitPermissions(permissions);
-        if (space.Status == SpaceStatus.Archived)
-        {
-            permissions.Remove(SpacePermission.MountManage);
-            permissions.Remove(SpacePermission.FilesWrite);
-        }
-
         return new MountPermissionEvaluation(permissions.ToFrozenSet(), sources);
+    }
+
+    /// <summary>
+    /// 유효 권한 중 현재 Space·Mount 상태에서 행사할 수 있는 권한이다. 콘텐츠 변경은 Space와 Mount가 모두
+    /// ACTIVE일 때만 가능하므로 그 밖에는 <see cref="SpacePermission.FilesWrite"/>를 뺀다. 인가에는 쓰지 않고
+    /// 응답의 myAccess와 미리보기 표시에 사용한다.
+    /// </summary>
+    public static IReadOnlySet<SpacePermission> ExercisablePermissions(
+        IReadOnlySet<SpacePermission> permissions,
+        SpaceStatus spaceStatus,
+        MountStatus mountStatus)
+    {
+        ArgumentNullException.ThrowIfNull(permissions);
+        return spaceStatus == SpaceStatus.Active && mountStatus == MountStatus.Active
+            ? permissions.ToFrozenSet()
+            : permissions.Where(permission => permission != SpacePermission.FilesWrite).ToFrozenSet();
     }
 
     /// <summary>

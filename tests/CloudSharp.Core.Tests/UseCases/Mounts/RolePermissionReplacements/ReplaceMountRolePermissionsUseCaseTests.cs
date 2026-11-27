@@ -166,6 +166,29 @@ public sealed class ReplaceMountRolePermissionsUseCaseTests
     }
 
     [Test]
+    public async Task ExecuteAsync_ShouldDelegateFileWritesOnArchivedMount()
+    {
+        // Arrange
+        var mount = StoredMount(status: MountStatus.Archived);
+        var harness = Administrator(mount);
+        var target = harness.SeedRole();
+        var command = Command(harness, mount, target.PublicId, allow: [SpacePermission.FilesWrite]);
+
+        // Act
+        var result = await harness.ReplaceRolePermissionsUseCase.ExecuteAsync(command);
+
+        // Assert
+        AssertPermissionResult(
+            result,
+            MountOverwriteTargetType.Role,
+            target.PublicId,
+            [SpacePermission.FilesWrite],
+            [],
+            mount.Version + 1);
+        AssertSuccessfulWrite(harness, mount.Version);
+    }
+
+    [Test]
     public async Task ExecuteAsync_ShouldReturnPreconditionFailureBeforeTargetLookup()
     {
         // Arrange
@@ -451,11 +474,13 @@ public sealed class ReplaceMountRolePermissionsUseCaseTests
     private static Mount StoredMount(
         MountVisibility visibility = MountVisibility.Public,
         long spaceId = TestMountReadSnapshots.SpaceId,
-        IEnumerable<MountPermissionOverwrite>? overwrites = null) =>
+        IEnumerable<MountPermissionOverwrite>? overwrites = null,
+        MountStatus status = MountStatus.Active) =>
         TestMountReadSnapshots.Mount(
             MountId,
             spaceId,
             visibility,
+            status: status,
             updatedAt: Now.AddHours(-1),
             overwrites: overwrites);
 

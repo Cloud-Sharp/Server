@@ -183,9 +183,11 @@ public static class TestMountReadSnapshots
         CurrentActor actor,
         Mount mount,
         IEnumerable<SpacePermission>? permissions = null,
-        long? spaceId = null) =>
+        long? spaceId = null,
+        SpaceStatus spaceStatus = SpaceStatus.Active) =>
         new(
             SpaceContext(actor, spaceId: spaceId ?? mount.SpaceId),
+            spaceStatus,
             mount.Id,
             mount.PublicId,
             permissions ?? MountScopedPermissions.All);

@@ -155,13 +155,19 @@ public sealed class ListMountsUseCaseTests
 
     [TestCase(SpaceStatus.Active, true)]
     [TestCase(SpaceStatus.Archived, false)]
-    public async Task ExecuteAsync_ShouldApplySpaceManagementPermissionToAccessibleMounts(
+    public async Task ExecuteAsync_ShouldKeepMountManagementAndLimitCreationAndWritesToActiveSpace(
         SpaceStatus spaceStatus,
-        bool canManage)
+        bool isActive)
     {
         // Arrange
         var actor = Actor();
-        var role = Role(105, permissions: [SpacePermission.MountView, SpacePermission.MountManage]);
+        var role = Role(105, permissions:
+        [
+            SpacePermission.MountView,
+            SpacePermission.MountManage,
+            SpacePermission.FilesRead,
+            SpacePermission.FilesWrite,
+        ]);
         var visible = Candidate(31);
         var hidden = Candidate(32, MountVisibility.Private);
         var snapshot = Member(actor, [role], spaceStatus: spaceStatus);
@@ -175,9 +181,10 @@ public sealed class ListMountsUseCaseTests
         var item = result.Value.Items.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(result.Value.CanCreateMount, Is.EqualTo(canManage));
+            Assert.That(result.Value.CanCreateMount, Is.EqualTo(isActive));
             Assert.That(item.MountPublicId, Is.EqualTo(visible.Mount.PublicId));
-            Assert.That(item.MyAccess.CanManage, Is.EqualTo(canManage));
+            Assert.That(item.MyAccess.CanManage, Is.True);
+            Assert.That(item.MyAccess.Permissions.Contains(SpacePermission.FilesWrite), Is.EqualTo(isActive));
         });
     }
 

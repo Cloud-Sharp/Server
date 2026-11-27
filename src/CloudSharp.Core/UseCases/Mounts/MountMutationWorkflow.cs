@@ -174,7 +174,7 @@ internal static class MountDtoMapper
             mount.Name,
             mount.Visibility,
             mount.Status,
-            MountAccessDto.From(access),
+            MountAccessDto.From(access, space.Status, mount.Status),
             mount.CreatedAt,
             mount.UpdatedAt,
             mount.ArchivedAt);

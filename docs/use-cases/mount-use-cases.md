@@ -6,7 +6,7 @@ CloudSharp Production v1의 Mount 조회·개설·설정·보관·사용량과 R
 
 - `S`는 `/api/v2/spaces/{spacePublicId}`, `M`은 `S/mounts/{mountPublicId}`다. 행위자는 활성 계정의 Session 사용자다. 리소스 식별자는 UUIDv7 PublicId를 사용한다.
 - 권한은 Discord 채널 권한처럼 계산한다. Space Role의 Mount 범위 권한(`MOUNT_VIEW`, `MOUNT_MANAGE`, `FILES_READ`, `FILES_DOWNLOAD`, `FILES_WRITE`)이 기본값이고, `PRIVATE`은 기본 `MOUNT_VIEW`를 거부한다. Role 덮어쓰기(거부 후 허용), 사용자 덮어쓰기(거부 후 허용) 순으로 적용한다. Space 소유자와 활성 `ADMIN`은 덮어쓰기를 우회한다.
-- 암묵적 권한: 최종 `MOUNT_VIEW`가 없으면 모든 유효 Mount 권한을 비운다. 예를 들어 `PRIVATE` Mount에서 일반 멤버에게 `MOUNT_MANAGE`만 허용하면 해당 멤버는 Mount를 조회하거나 관리할 수 없다. `FILES_READ`가 없으면 `FILES_DOWNLOAD`·`FILES_WRITE`도 뺀다. 보관된 Space에서는 `MOUNT_MANAGE`·`FILES_WRITE`를 뺀다.
+- 암묵적 권한: 최종 `MOUNT_VIEW`가 없으면 모든 유효 Mount 권한을 비운다. 예를 들어 `PRIVATE` Mount에서 일반 멤버에게 `MOUNT_MANAGE`만 허용하면 해당 멤버는 Mount를 조회하거나 관리할 수 없다. `FILES_READ`가 없으면 `FILES_DOWNLOAD`·`FILES_WRITE`도 뺀다. Space·Mount 상태는 유효 권한에서 빼지 않고 endpoint의 허용 상태로 검사한다. 응답의 `myAccess`와 미리보기는 Space나 Mount가 보관 상태이면 `FILES_WRITE`를 표시하지 않는다.
 - 요구 권한은 endpoint에서 선언한다. Mount 경로(`M`)는 `MountAuthorizationFilter`, 목록과 개설은 `SpaceAuthorizationFilter`가 평가하고, 유즈케이스는 인가된 context(`AuthorizedMountContext` 또는 `AuthorizedSpaceContext`)를 Command·Query로 받는다. 유즈케이스는 권한을 다시 검사하지 않고 트랜잭션 안에서 최신 Space 상태, Mount 소속, 버전만 확인한다. `DELETING`·`DELETED` Space는 404로 처리한다.
 - 목록과 단건의 `myAccess.permissions`는 Mount 범위 유효 권한이고 `myAccess.canManage`는 유효 `MOUNT_MANAGE`의 보유 여부다. [Mount 권한 정책](../../src/CloudSharp.Core/Policies/Authorization/MountPermissionPolicy.cs) · [Mount 인가 필터](../../src/CloudSharp.Api/Endpoints/Mounts/MountAuthorizationFilter.cs) · [Space 유즈케이스](space-use-cases.md)
 

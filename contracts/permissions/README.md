@@ -105,7 +105,7 @@ Permission enum과 안정된 code 매핑, Session 인가 계약·Core 정책·In
 Mount 권한은 Discord 채널 권한처럼 Space 권한을 덮어쓴다. Space Role의 Mount 범위 권한(`MOUNT_VIEW`, `MOUNT_MANAGE`, `FILES_READ`, `FILES_DOWNLOAD`, `FILES_WRITE`)이 기본값이고, 각 Mount의 Role·사용자 덮어쓰기가 그 Mount 안에서만 허용·거부한다. 별도의 Mount 전용 권한 코드는 없다.
 
 - `PRIVATE`은 기본 `MOUNT_VIEW`를 거부한다. Role 덮어쓰기는 거부 후 허용, 사용자 덮어쓰기는 그 뒤에 거부 후 허용으로 적용한다. Space 소유자와 활성 `ADMIN`은 덮어쓰기를 우회한다.
-- 최종 `MOUNT_VIEW`가 없으면 그 Mount의 권한은 모두 무효이며 목록에서 제외되고 단건 요청은 `404 RESOURCE_NOT_FOUND`다. `FILES_READ`가 없으면 `FILES_DOWNLOAD`·`FILES_WRITE`도 무효다. `ARCHIVED` Space에서는 `MOUNT_MANAGE`·`FILES_WRITE`를 제거한다.
+- 최종 `MOUNT_VIEW`가 없으면 그 Mount의 권한은 모두 무효이며 목록에서 제외되고 단건 요청은 `404 RESOURCE_NOT_FOUND`다. `FILES_READ`가 없으면 `FILES_DOWNLOAD`·`FILES_WRITE`도 무효다. Space·Mount 상태는 권한에서 빼지 않고 아래 표의 허용 상태로 검사한다. 응답의 `myAccess`는 Space나 Mount가 `ARCHIVED`이면 `FILES_WRITE`를 표시하지 않는다.
 - Mount 경로는 endpoint에 `MountAuthorizationFilter`로 요구 권한·허용 Space 상태·허용 Mount 상태를 선언한다. Mount 개설은 Space filter로 Space의 `MOUNT_MANAGE`를 요구한다. 덮어쓰기 변경은 `MOUNT_MANAGE`와 함께 바뀌는 권한을 요청자가 가져야 한다.
 
 | Method / Path | Mount 유효 권한 | 허용 Space 상태 | 권한 거부 |

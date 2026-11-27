@@ -187,18 +187,26 @@ public sealed class PreviewMountPermissionsUseCase : IUseCase<PreviewMountPermis
         return Result.Ok(new MountPermissionPreviewPageDto(items, nextCursor));
     }
 
+    /// <summary>myAccess와 같은 기준으로 현재 Space·Mount 상태에서 행사할 수 있는 권한을 반환한다.</summary>
     private static MountPermissionEvaluation EvaluateSubject(
         Space space,
         Mount mount,
         MountPreviewUserSnapshot subject,
-        MountVisibility? visibility = null) =>
-        MountPermissionPolicy.Evaluate(
+        MountVisibility? visibility = null)
+    {
+        var evaluation = MountPermissionPolicy.Evaluate(
             space,
             subject.User.Id,
             subject.Membership,
             subject.Roles,
             mount,
             visibility);
+        return evaluation with
+        {
+            Permissions = MountPermissionPolicy.ExercisablePermissions(
+                evaluation.Permissions, space.Status, mount.Status),
+        };
+    }
 
     private static MountPermissionPreviewDto ToPreviewDto(
         Guid userPublicId,

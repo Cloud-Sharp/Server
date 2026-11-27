@@ -35,7 +35,7 @@ quota 변경, Space 삭제, 소유권 이전에는 해당 Space의 소유권이 
 5. 현재 Role들의 덮어쓰기를 한 번에 적용한다. 거부 합집합을 빼고 허용 합집합을 더하므로 Role 간에는 허용이 이긴다.
 6. 사용자 덮어쓰기를 마지막에 적용한다. 거부를 빼고 허용을 더하므로 Role 덮어쓰기보다 우선한다.
 7. **암묵적 권한.** 최종 `MOUNT_VIEW`가 없으면 그 Mount의 권한을 모두 비운다. `FILES_READ`가 없으면 `FILES_DOWNLOAD`·`FILES_WRITE`도 뺀다.
-8. Space가 보관 상태이면 `MOUNT_MANAGE`·`FILES_WRITE`를 뺀다. [Mount 권한 정책](../../src/CloudSharp.Core/Policies/Authorization/MountPermissionPolicy.cs)
+8. Space·Mount 상태는 유효 권한에서 빼지 않는다. endpoint의 허용 상태를 요구 권한보다 먼저 검사하므로 보관된 Space에서도 `MOUNT_MANAGE`로 관리 조회를 할 수 있다. 응답의 `myAccess`와 미리보기는 Space나 Mount가 보관 상태이면 `FILES_WRITE`를 표시하지 않는다. [Mount 권한 정책](../../src/CloudSharp.Core/Policies/Authorization/MountPermissionPolicy.cs)
 
 | 상황 | 유효 권한 | 결과 |
 |---|---|---|
