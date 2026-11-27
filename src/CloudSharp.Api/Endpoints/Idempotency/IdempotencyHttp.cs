@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
@@ -53,14 +52,8 @@ internal static class IdempotencyHttp
             ? contentType.MediaType?.ToLowerInvariant()
             : null;
         var element = JsonSerializer.SerializeToElement(new { mediaType, input });
-        var buffer = new ArrayBufferWriter<byte>();
-        using (var writer = new Utf8JsonWriter(buffer))
-        {
-            WriteCanonical(writer, element);
-        }
-
         return context.RequestServices.GetRequiredService<ITokenHasher>()
-            .Hash($"idempotency:fingerprint:{Encoding.UTF8.GetString(buffer.WrittenSpan)}");
+            .Hash($"idempotency:fingerprint:{CanonicalJson.Serialize(element)}");
     }
 
     internal static IResult Replay(HttpContext context, IdempotencyRecord.Completed record)
@@ -77,33 +70,6 @@ internal static class IdempotencyHttp
 
     internal static IResult SecretNotReplayable(string idPropertyName, Guid? publicId) =>
         new SecretReplayResult(idPropertyName, publicId);
-
-    private static void WriteCanonical(Utf8JsonWriter writer, JsonElement element)
-    {
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.Object:
-                writer.WriteStartObject();
-                foreach (var property in element.EnumerateObject().OrderBy(static property => property.Name, StringComparer.Ordinal))
-                {
-                    writer.WritePropertyName(property.Name);
-                    WriteCanonical(writer, property.Value);
-                }
-                writer.WriteEndObject();
-                break;
-            case JsonValueKind.Array:
-                writer.WriteStartArray();
-                foreach (var item in element.EnumerateArray())
-                {
-                    WriteCanonical(writer, item);
-                }
-                writer.WriteEndArray();
-                break;
-            default:
-                element.WriteTo(writer);
-                break;
-        }
-    }
 
     private sealed class SecretReplayResult(string idPropertyName, Guid? publicId) : IResult
     {

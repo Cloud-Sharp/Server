@@ -56,7 +56,7 @@ public sealed class GetMountUseCase : IUseCase<GetMountQuery, MountResultDto>
             mount.Name,
             mount.Visibility,
             mount.Status,
-            MountAccessDto.From(context.EffectivePermissions),
+            MountAccessDto.From(context.EffectivePermissions, context.SpaceStatus, mount.Status),
             mount.CreatedAt,
             mount.UpdatedAt,
             mount.ArchivedAt);

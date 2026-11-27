@@ -1,5 +1,6 @@
 using CloudSharp.Api.Auth.CurrentUser;
 using CloudSharp.Api.Contracts.Mapping;
+using CloudSharp.Api.Contracts.Paging;
 using CloudSharp.Api.Contracts.ProblemDetails;
 using CloudSharp.Api.Endpoints.Memberships.Mapping;
 using CloudSharp.Api.Endpoints.Memberships.Requests;
@@ -112,14 +113,20 @@ internal static class MembershipEndpoints
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!PageCursor.TryOpen(httpContext, request, request.Cursor, out var position))
+        {
+            return PageCursor.Invalid();
+        }
+
         var query = new ListSpaceMembershipsQuery(
             SpaceAuthorizationFilter.GetRequiredContext(httpContext),
-            request.Cursor,
+            position,
             request.Limit,
             request.Sort,
             Descending: request.Direction == "DESC");
         var result = await useCase.ExecuteAsync(query, cancellationToken);
-        return result.ToSpaceHttpResult(page => Results.Ok(MembershipResponseMapper.ToResponse(page)));
+        return result.ToSpaceHttpResult(page => Results.Ok(MembershipResponseMapper.ToResponse(
+            page with { NextCursor = PageCursor.Seal(httpContext, request, page.NextCursor) })));
     }
 
     private static async Task<IResult> GetMembershipAsync(

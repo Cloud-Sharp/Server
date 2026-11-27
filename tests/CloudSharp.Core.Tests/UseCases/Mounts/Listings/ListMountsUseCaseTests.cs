@@ -47,7 +47,6 @@ public sealed class ListMountsUseCaseTests
             Assert.That(result.Value.CanCreateMount, Is.False);
             Assert.That(harness.CandidateReader.Reads.Count, Is.GreaterThan(1));
             Assert.That(harness.CandidateReader.Reads.All(read => read.SpaceId == SpaceId), Is.True);
-            Assert.That(harness.CandidateReader.Reads.All(read => read.UserId == actor.UserId), Is.True);
             Assert.That(harness.CandidateReader.Reads.All(read => read.BatchSize == 3), Is.True);
             Assert.That(harness.CandidateReader.Reads.All(read => read.Descending), Is.True);
         });
@@ -155,13 +154,19 @@ public sealed class ListMountsUseCaseTests
 
     [TestCase(SpaceStatus.Active, true)]
     [TestCase(SpaceStatus.Archived, false)]
-    public async Task ExecuteAsync_ShouldApplySpaceManagementPermissionToAccessibleMounts(
+    public async Task ExecuteAsync_ShouldKeepMountManagementAndLimitCreationAndWritesToActiveSpace(
         SpaceStatus spaceStatus,
-        bool canManage)
+        bool isActive)
     {
         // Arrange
         var actor = Actor();
-        var role = Role(105, permissions: [SpacePermission.MountView, SpacePermission.MountManage]);
+        var role = Role(105, permissions:
+        [
+            SpacePermission.MountView,
+            SpacePermission.MountManage,
+            SpacePermission.FilesRead,
+            SpacePermission.FilesWrite,
+        ]);
         var visible = Candidate(31);
         var hidden = Candidate(32, MountVisibility.Private);
         var snapshot = Member(actor, [role], spaceStatus: spaceStatus);
@@ -175,9 +180,10 @@ public sealed class ListMountsUseCaseTests
         var item = result.Value.Items.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(result.Value.CanCreateMount, Is.EqualTo(canManage));
+            Assert.That(result.Value.CanCreateMount, Is.EqualTo(isActive));
             Assert.That(item.MountPublicId, Is.EqualTo(visible.Mount.PublicId));
-            Assert.That(item.MyAccess.CanManage, Is.EqualTo(canManage));
+            Assert.That(item.MyAccess.CanManage, Is.True);
+            Assert.That(item.MyAccess.Permissions.Contains(SpacePermission.FilesWrite), Is.EqualTo(isActive));
         });
     }
 
@@ -350,7 +356,6 @@ public sealed class ListMountsUseCaseTests
 
         public Task<Result<MountListCandidatePage>> ReadAsync(
             long spaceId,
-            long userId,
             string? cursor,
             int batchSize,
             string? sort,
@@ -358,7 +363,7 @@ public sealed class ListMountsUseCaseTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            reads.Add(new MountListRead(spaceId, userId, cursor, batchSize, sort, descending));
+            reads.Add(new MountListRead(spaceId, cursor, batchSize, sort, descending));
             if (Failure is { } failure)
             {
                 return Task.FromResult(Result.Fail<MountListCandidatePage>(failure));
@@ -385,7 +390,6 @@ public sealed class ListMountsUseCaseTests
 
     private sealed record MountListRead(
         long SpaceId,
-        long UserId,
         string? Cursor,
         int BatchSize,
         string? Sort,

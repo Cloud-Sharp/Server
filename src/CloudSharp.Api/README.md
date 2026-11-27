@@ -37,8 +37,27 @@ Endpoints/{Feature}/
 - `MapGroup` + `RequireAuthorization` at group level
 - Result→HTTP via shared `ToHttpResult` mapper
 - Internal `long Id` never appears in responses; `PublicId` (UUIDv7) only
+- List endpoints open and seal cursors with `PageCursor`; never pass `request.Cursor` to a query or return a reader cursor as-is (see [Page cursors](#page-cursors))
 
 Read `.llm/api/<area>.md` and `.llm/auth/aspnet-filters.md` before writing endpoints.
+
+## Page cursors
+
+Cursor binding is an HTTP concern. Readers return an unsigned keyset position token; the API binds it to the request and signs it with [`PageCursor`](Contracts/Paging/PageCursor.cs). The binding covers the actor, HTTP method, route pattern and values, and the bound request DTO without `Cursor` and `Limit`, so adding a filter to a request DTO needs no Core or Infrastructure change.
+
+```csharp
+if (!PageCursor.TryOpen(httpContext, request, request.Cursor, out var position))
+{
+    return PageCursor.Invalid(); // 400 CURSOR_INVALID
+}
+
+var query = new ListThingsQuery(context, position, request.Limit, request.Sort, request.Direction == "DESC");
+var result = await useCase.ExecuteAsync(query, cancellationToken);
+return result.ToHttpResult(page => Results.Ok(ThingResponseMapper.ToResponse(
+    page with { NextCursor = PageCursor.Seal(httpContext, request, page.NextCursor) })));
+```
+
+Use the same request instance for `TryOpen` and `Seal`. Keep every query filter on the request DTO so it is part of the binding.
 
 ## Idempotency-Key
 

@@ -8,6 +8,7 @@ using CloudSharp.Core.Domain.Users;
 using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
+using CloudSharp.Infrastructure.Persistence.Repositories;
 using Dapper;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
@@ -380,36 +381,17 @@ public sealed class SpaceInvitePersistenceIntegrationTests
     }
 
     [Test]
-    public async Task ReadPageAsync_WithMalformedTamperedOrMismatchedCursor_ShouldReturnCursorInvalid()
+    public async Task ReadPageAsync_WithMalformedOrWrongKindCursor_ShouldReturnCursorInvalid()
     {
         var owner = await SeedUserAsync();
         var space = await SeedSpaceAsync(owner.Id);
-        var otherSpace = await SeedSpaceAsync(owner.Id);
-        for (var index = 0; index < 3; index++)
-        {
-            await SeedInviteAsync(space.Id, owner.Id, PublicId(61 + index));
-        }
-
         await using var scope = CreateScope();
-        var first = await scope.InviteReader.ReadPageAsync(
-            space.Id, cursor: null, limit: 1, sort: null, descending: false);
-        Assert.That(first.IsSuccess, Is.True, first.ToString());
-        Assert.That(first.Value.NextCursor, Is.Not.Null.And.Not.Empty);
-        var cursor = first.Value.NextCursor!;
-        var last = cursor[^1] == 'A' ? 'B' : 'A';
-        var tampered = cursor[..^1] + last;
 
-        var malformedResult = await scope.InviteReader.ReadPageAsync(
-            space.Id, "not-a-cursor", limit: 1, sort: null, descending: false);
-        var tamperedResult = await scope.InviteReader.ReadPageAsync(
-            space.Id, tampered, limit: 1, sort: null, descending: false);
-        var directionMismatch = await scope.InviteReader.ReadPageAsync(
-            space.Id, cursor, limit: 1, sort: null, descending: true);
-        var spaceMismatch = await scope.InviteReader.ReadPageAsync(
-            otherSpace.Id, cursor, limit: 1, sort: null, descending: false);
-
-        foreach (var result in new[] { malformedResult, tamperedResult, directionMismatch, spaceMismatch })
+        foreach (var cursor in new[] { "not-a-cursor", KeysetCursor.Issue(Guid.CreateVersion7()) })
         {
+            var result = await scope.InviteReader.ReadPageAsync(
+                space.Id, cursor, limit: 1, sort: null, descending: false);
+
             AssertError(result, ErrorCodes.Space.ListCursorInvalid);
         }
     }

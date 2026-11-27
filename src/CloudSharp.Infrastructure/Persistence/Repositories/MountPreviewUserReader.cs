@@ -1,5 +1,4 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
@@ -8,7 +7,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Repositories;
 
-internal sealed class MountPreviewUserReader(AppDbContext dbContext, ITokenHasher tokenHasher) : IMountPreviewUserReader
+internal sealed class MountPreviewUserReader(AppDbContext dbContext) : IMountPreviewUserReader
 {
     public Task<Result<MountPreviewUserSnapshot?>> ReadUserAsync(
         long spaceId,
@@ -31,13 +30,12 @@ internal sealed class MountPreviewUserReader(AppDbContext dbContext, ITokenHashe
     {
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
-        var scope = FormattableString.Invariant($"preview:{spaceId}");
-        MountReadCursor.Position? position = null;
+        KeysetCursor.Position? position = null;
         if (cursor is not null)
         {
-            if (!MountReadCursor.TryRead(tokenHasher, scope, cursor, out var parsed) || parsed.CreatedAtTicks is not null)
+            if (!KeysetCursor.TryRead(cursor, out var parsed) || parsed.SortValue is not null)
             {
-                return Task.FromResult(Result.Fail<MountPreviewCandidatePage>(MountReadCursor.Invalid()));
+                return Task.FromResult(Result.Fail<MountPreviewCandidatePage>(KeysetCursor.Invalid()));
             }
 
             position = parsed;
@@ -60,7 +58,7 @@ internal sealed class MountPreviewUserReader(AppDbContext dbContext, ITokenHashe
                 var candidates = groups.Take(batchSize).Select(group =>
                 {
                     var subject = ToDomain(group);
-                    return new MountPreviewCandidate(subject, MountReadCursor.Issue(tokenHasher, scope, subject.User.PublicId));
+                    return new MountPreviewCandidate(subject, KeysetCursor.Issue(subject.User.PublicId));
                 }).ToArray();
                 return new MountPreviewCandidatePage(candidates, groups.Length > batchSize);
             },

@@ -55,6 +55,7 @@ public static class MountAuthorizationPolicy
 
         return Result.Ok(new AuthorizedMountContext(
             spaceAuthorization.Value,
+            snapshot.Space.Status,
             mount.Id,
             mount.PublicId,
             permissions));

@@ -64,7 +64,6 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
         {
             var readResult = await CandidateReader.ReadAsync(
                 space.Id,
-                context.UserId,
                 traversalCursor,
                 query.Limit + 1,
                 query.Sort,
@@ -119,7 +118,7 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
                     mount.Status,
                     mount.CreatedAt,
                     mount.UpdatedAt,
-                    MountAccessDto.From(access));
+                    MountAccessDto.From(access, space.Status, mount.Status));
                 accessible.Add((item, candidate.CursorAfter));
                 if (accessible.Count > query.Limit)
                 {

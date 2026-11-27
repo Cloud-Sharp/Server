@@ -1,10 +1,12 @@
 using CloudSharp.Api.Auth.Authentication;
 using CloudSharp.Api.Auth.CurrentUser;
 using CloudSharp.Api.Contracts.Mapping;
+using CloudSharp.Api.Contracts.Paging;
 using CloudSharp.Api.Contracts.ProblemDetails;
 using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Endpoints.Invites;
 using CloudSharp.Api.Endpoints.Memberships;
+using CloudSharp.Api.Endpoints.Mounts;
 using CloudSharp.Api.Endpoints.Spaces.Mapping;
 using CloudSharp.Api.Endpoints.Spaces.Requests;
 using CloudSharp.Api.Endpoints.Spaces.Responses;
@@ -205,6 +207,7 @@ public static class SpaceEndpoints
 
         group.MapMembershipEndpoints();
         group.MapInviteManagementEndpoints();
+        group.MapMountEndpoints();
         return endpoints;
     }
 
@@ -212,17 +215,24 @@ public static class SpaceEndpoints
         [AsParameters] ListSpacesRequest request,
         IUseCase<ListSpacesQuery, SpacePageDto> useCase,
         ICurrentActorAccessor currentActorAccessor,
+        HttpContext httpContext,
         CancellationToken cancellationToken)
     {
         var actor = GetRequiredActor(currentActorAccessor);
+        if (!PageCursor.TryOpen(httpContext, request, request.Cursor, out var position))
+        {
+            return PageCursor.Invalid();
+        }
+
         var query = new ListSpacesQuery(
             actor,
-            request.Cursor,
+            position,
             request.Limit,
             request.Sort,
             Descending: request.Direction == "DESC");
         var result = await useCase.ExecuteAsync(query, cancellationToken);
-        return result.ToSpaceHttpResult(value => Results.Ok(SpaceResponseMapper.ToResponse(value)));
+        return result.ToSpaceHttpResult(value => Results.Ok(SpaceResponseMapper.ToResponse(
+            value with { NextCursor = PageCursor.Seal(httpContext, request, value.NextCursor) })));
     }
 
     private static async Task<IResult> CreateSpaceAsync(

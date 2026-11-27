@@ -34,7 +34,7 @@
 | IN-01-01 | 인가된 `ACTIVE`와 `ARCHIVED` Space에서 각각 목록을 조회한다. 다른 Space, `REVOKED`·`EXPIRED`, 만료 시각이 지난 `ACTIVE` 초대도 준비한다. | 요청한 Space의 저장 상태가 `ACTIVE`인 항목만 반환한다. 만료 시각이 지났어도 저장 상태가 `ACTIVE`이면 포함한다. DTO의 PublicId, 상태, 만료 시각, 최대·현재 사용 횟수, 생성·수정·폐기 시각을 확인한다. 토큰, URL, 해시, 항목 버전은 응답에 없다. |
 | IN-01-02 | 결과가 없는 Space를 조회하고, 결과가 있는 Space의 마지막 페이지를 조회한다. | 빈 페이지는 `items=[]`, `nextCursor=null`이다. 마지막 페이지도 `nextCursor=null`이다. |
 | IN-01-03 | 기본 요청과 `Limit=1`, `Limit=100`을 사용한다. 같은 정렬 키를 가진 항목을 페이지 경계에 두고 다음 커서로 이어서 조회한다. | Core는 기본 한도 50·내림차순과 요청 한도를 읽기 포트에 전달한다. 페이지 검증에서는 각 페이지가 한도를 지키고 요청 방향을 `CreatedAt`과 PublicId에 모두 적용해 중복·누락 없이 이어지는지 확인한다. |
-| IN-01-04 | 서명을 변조한 커서를 보내거나 다른 Space·행위자 범위·정렬·방향에 재사용한다. | 읽기 포트는 `SPACE_LIST_CURSOR_INVALID`, API는 400 `CURSOR_INVALID`다. 응답에 타 Space 데이터가 없다. |
+| IN-01-04 | 서명을 변조한 커서를 보내거나 다른 Space·행위자 범위·정렬·방향에 재사용한다. | API의 `PageCursor`가 서명과 묶음을 검사해 400 `CURSOR_INVALID`를 반환하고 유즈케이스를 호출하지 않는다. 읽기 포트는 형식이 틀린 위치 토큰만 `SPACE_LIST_CURSOR_INVALID`로 거부한다. 응답에 타 Space 데이터가 없다. |
 | IN-01-05 | `Space=null`, `Limit=0/101`, 빈 문자열·공백인 `Cursor` 또는 `Sort`를 각각 전달한다. | 차례로 `SPACE_AUTHORIZATION_CONTEXT_REQUIRED` / `Space`, `SPACE_LIST_LIMIT_INVALID` / `Limit`, `SPACE_LIST_CURSOR_INVALID` / `Cursor`, `SPACE_LIST_SORT_INVALID` / `Sort`다. |
 | IN-01-06 | 목록 조회 포트의 실패를 주입한다. | 실패가 빈 페이지로 바뀌지 않는다. 초대 상태와 버전은 유지된다. |
 | IN-01-07 | `Sort`를 생략하거나 `createdAt`, `CREATEDAT`로 조회한다. `CreatedAt`과 PublicId 순서가 다른 항목과 지원하지 않는 정렬도 준비한다. | 허용 정렬은 대소문자를 구분하지 않는 `createdAt`뿐이며 생략 시 기본 필드도 `createdAt`이다. 먼저 `CreatedAt`, 같은 시각은 PublicId로 요청 방향에 따라 정렬한다. 다른 정렬은 `SPACE_LIST_SORT_INVALID` / `Sort`다. |

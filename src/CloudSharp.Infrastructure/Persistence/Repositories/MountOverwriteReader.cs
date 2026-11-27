@@ -1,6 +1,5 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
-using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
@@ -9,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Repositories;
 
-internal sealed class MountOverwriteReader(AppDbContext dbContext, ITokenHasher tokenHasher) : IMountOverwriteReader
+internal sealed class MountOverwriteReader(AppDbContext dbContext) : IMountOverwriteReader
 {
     public Task<Result<MountOverwritePage>> ReadAsync(
         long spaceId,
@@ -26,13 +25,12 @@ internal sealed class MountOverwriteReader(AppDbContext dbContext, ITokenHasher 
             return Task.FromResult(Result.Fail<MountOverwritePage>(MountError.TargetTypeInvalid()));
         }
 
-        var scope = FormattableString.Invariant($"grants:{spaceId}:{mountId}:{targetType}");
-        MountReadCursor.Position? position = null;
+        KeysetCursor.Position? position = null;
         if (cursor is not null)
         {
-            if (!MountReadCursor.TryRead(tokenHasher, scope, cursor, out var parsed) || parsed.CreatedAtTicks is not null)
+            if (!KeysetCursor.TryRead(cursor, out var parsed) || parsed.SortValue is not null)
             {
-                return Task.FromResult(Result.Fail<MountOverwritePage>(MountReadCursor.Invalid()));
+                return Task.FromResult(Result.Fail<MountOverwritePage>(KeysetCursor.Invalid()));
             }
 
             position = parsed;
@@ -66,7 +64,7 @@ internal sealed class MountOverwriteReader(AppDbContext dbContext, ITokenHasher 
                         MountOverwriteMask.Decode(row.DenyMask)),
                     row.PublicId)).ToArray();
                 var next = rows.Length > limit
-                    ? MountReadCursor.Issue(tokenHasher, scope, items[^1].TargetPublicId)
+                    ? KeysetCursor.Issue(items[^1].TargetPublicId)
                     : null;
                 return new MountOverwritePage(items, next);
             },

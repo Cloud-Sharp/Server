@@ -1,19 +1,17 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
-using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Repositories;
 
-internal sealed class MountListCandidateReader(AppDbContext dbContext, ITokenHasher tokenHasher) : IMountListCandidateReader
+internal sealed class MountListCandidateReader(AppDbContext dbContext) : IMountListCandidateReader
 {
     private const string CreatedAtSort = "CREATED_AT";
 
     public Task<Result<MountListCandidatePage>> ReadAsync(
         long spaceId,
-        long userId,
         string? cursor,
         int batchSize,
         string? sort,
@@ -30,16 +28,12 @@ internal sealed class MountListCandidateReader(AppDbContext dbContext, ITokenHas
             return Task.FromResult(Result.Fail<MountListCandidatePage>(error));
         }
 
-        var scope = FormattableString.Invariant(
-            $"list:{spaceId}:{userId}:{CreatedAtSort}:{descending}");
-        MountReadCursor.Position? position = null;
+        KeysetCursor.Position? position = null;
         if (cursor is not null)
         {
-            if (!MountReadCursor.TryRead(tokenHasher, scope, cursor, out var parsed)
-                || parsed.CreatedAtTicks is null or < 0
-                || parsed.CreatedAtTicks > DateTime.MaxValue.Ticks)
+            if (!KeysetCursor.TryRead(cursor, out var parsed) || parsed.SortValue is null)
             {
-                return Task.FromResult(Result.Fail<MountListCandidatePage>(MountReadCursor.Invalid()));
+                return Task.FromResult(Result.Fail<MountListCandidatePage>(KeysetCursor.Invalid()));
             }
 
             position = parsed;
@@ -49,9 +43,8 @@ internal sealed class MountListCandidateReader(AppDbContext dbContext, ITokenHas
             async (context, ct) =>
             {
                 var mounts = context.Mounts.AsNoTracking().Where(mount => mount.SpaceId == spaceId);
-                if (position is { CreatedAtTicks: { } ticks, PublicId: var publicId })
+                if (position is { SortValue: { } createdAt, PublicId: var publicId })
                 {
-                    var createdAt = new DateTimeOffset(ticks, TimeSpan.Zero);
                     mounts = descending
                         ? mounts.Where(mount => mount.CreatedAt < createdAt
                             || (mount.CreatedAt == createdAt && mount.PublicId.CompareTo(publicId) < 0))
@@ -72,7 +65,7 @@ internal sealed class MountListCandidateReader(AppDbContext dbContext, ITokenHas
                 var candidates = groups.Take(batchSize).Select(group =>
                 {
                     var mount = MountSnapshotQuery.ToDomain(group);
-                    var after = MountReadCursor.Issue(tokenHasher, scope, mount.PublicId, mount.CreatedAt.UtcTicks);
+                    var after = KeysetCursor.Issue(mount.PublicId, mount.CreatedAt);
                     return new MountListCandidate(mount, after);
                 }).ToArray();
                 return new MountListCandidatePage(candidates, groups.Length > batchSize);

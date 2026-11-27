@@ -1,4 +1,5 @@
 using CloudSharp.Api.Contracts.Mapping;
+using CloudSharp.Api.Contracts.Paging;
 using CloudSharp.Api.Contracts.ProblemDetails;
 using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Endpoints.Invites.Mapping;
@@ -85,14 +86,20 @@ internal static class InviteManagementEndpoints
         HttpContext httpContext,
         CancellationToken cancellationToken)
     {
+        if (!PageCursor.TryOpen(httpContext, request, request.Cursor, out var position))
+        {
+            return PageCursor.Invalid();
+        }
+
         var query = new ListSpaceInvitesQuery(
             SpaceAuthorizationFilter.GetRequiredContext(httpContext),
-            request.Cursor,
+            position,
             request.Limit,
             request.Sort,
             Descending: request.Direction == "DESC");
         var result = await useCase.ExecuteAsync(query, cancellationToken);
-        return result.ToSpaceHttpResult(page => Results.Ok(InviteManagementResponseMapper.ToResponse(page)));
+        return result.ToSpaceHttpResult(page => Results.Ok(InviteManagementResponseMapper.ToResponse(
+            page with { NextCursor = PageCursor.Seal(httpContext, request, page.NextCursor) })));
     }
 
     private static async Task<IResult> CreateInviteAsync(

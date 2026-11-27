@@ -22,6 +22,7 @@
 - [Space Invite API](api/space-invite-api.md) — 초대 목록·생성·폐기·관리 상세, 공개 조회와 수락
 - [Space Membership API](api/space-membership-api.md) — 멤버 목록·상세, Role 교체, 정지·활성화·제거와 본인 탈퇴
 - [Space Role API](api/space-role-api.md) — 관리형 Role 목록과 유효 Permission
+- [Mount API](api/mount-api.md) — Mount 조회·개설·설정·보관, 권한 덮어쓰기와 미리보기
 
 ## Core 테스트
 

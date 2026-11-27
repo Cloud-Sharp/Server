@@ -19,8 +19,8 @@ Mount 목록·상세·개설·사용량, 권한 덮어쓰기와 미리보기에 
 ## 조회와 cursor
 
 - 기존 [ISpaceAuthorizationReader](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceAuthorizationReader.cs)를 재사용해 요청자의 최신 Space·Membership·Role을 읽는다. Mount 가시성, 관리 자격, 유효 권한은 Core가 판단한다. EF 조회는 공용 `ExecuteReadAsync`와 `AsNoTracking`으로 독립 스냅샷을 만든다. [Space Repository](space-repositories.md#저장소-계약)
-- RP-20의 기본 정렬은 `CREATED_AT DESC`이며, 같은 생성 시각은 Mount PublicId로 정렬한다. cursor는 Space·요청 사용자·정렬 조건에 묶는다. RP-26은 Space·Mount·대상 유형에 맞는 cursor를 확인한다. 잘못된 cursor는 `CURSOR_INVALID`를 반환한다.
-- RP-27의 후보 조회는 현재 Space 내부 ID, cursor, 배치 크기를 받는다. Mount와 제안 공개 범위에 cursor를 바인딩하는 작업은 MT-10 연결 단계에서 다룬다. [공통 cursor 계약](../../.llm/api/common-contract.md#7-cursor-pagination)
+- RP-20의 기본 정렬은 `CREATED_AT DESC`이며, 같은 생성 시각은 Mount PublicId로 정렬한다. RP-20·RP-26·RP-27의 cursor는 정렬값과 PublicId만 담은 위치 토큰이다. 형식이 틀렸거나 정렬값 유무가 목록 종류와 맞지 않으면 `CURSOR_INVALID`를 반환한다.
+- 요청자·Space·Mount·대상 유형·공개 범위·정렬에 cursor를 묶고 서명하는 일은 API의 [PageCursor](../../src/CloudSharp.Api/Contracts/Paging/PageCursor.cs)가 맡는다. 그래서 RP-27의 후보 조회는 현재 Space 내부 ID, cursor, 배치 크기만 받는다. [공통 cursor 계약](../../.llm/api/common-contract.md#7-cursor-pagination)
 
 ## 저장 선행 조건과 트랜잭션
 
