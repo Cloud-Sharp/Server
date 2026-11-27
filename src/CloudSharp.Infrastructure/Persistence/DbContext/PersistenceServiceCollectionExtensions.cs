@@ -74,7 +74,9 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ISpaceInviteTargetReader, SpaceInviteTargetReader>();
         services.AddScoped<IMountListCandidateReader, MountListCandidateReader>();
         services.AddScoped<IMountCreationGrantTargetReader, MountCreationGrantTargetReader>();
+        services.AddScoped<IMountCreationWriter, MountCreationWriter>();
         services.AddScoped<IMountReader, MountReader>();
+        services.AddScoped<IMountMutationWriter, MountMutationWriter>();
         services.AddScoped<IMountGrantReader, MountGrantReader>();
         services.AddScoped<IMountPreviewUserReader, MountPreviewUserReader>();
         services.AddScoped<DapperDbSession>();
