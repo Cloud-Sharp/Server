@@ -60,11 +60,13 @@ public static class TestMountReadSnapshots
             createdAt: Now.AddDays(-30),
             updatedAt: Now);
 
+    /// <summary>기본 Role 권한은 Space 조회, 파일 조회와 MOUNT_VIEW다.</summary>
     public static SpaceRole Role(
         long id,
         long spaceId = SpaceId,
         SpaceRoleSystemKey? systemKey = null,
-        DateTimeOffset? deletedAt = null) =>
+        DateTimeOffset? deletedAt = null,
+        IEnumerable<SpacePermission>? permissions = null) =>
         SpaceRole.Reconstitute(
             id,
             PublicId(100_000 + id),
@@ -79,7 +81,7 @@ public static class TestMountReadSnapshots
             Now.AddDays(-20),
             Now,
             deletedAt,
-            [SpacePermission.SpaceView, SpacePermission.FilesRead]);
+            permissions ?? [SpacePermission.SpaceView, SpacePermission.FilesRead, SpacePermission.MountView]);
 
     public static SpaceMembership Membership(
         long userId,
@@ -132,7 +134,7 @@ public static class TestMountReadSnapshots
         MountVisibility visibility = MountVisibility.Public,
         MountStatus status = MountStatus.Active,
         long version = 3,
-        IEnumerable<MountAccessGrant>? grants = null,
+        IEnumerable<MountPermissionOverwrite>? overwrites = null,
         DateTimeOffset? createdAt = null,
         DateTimeOffset? updatedAt = null)
     {
@@ -149,14 +151,44 @@ public static class TestMountReadSnapshots
             created,
             updated,
             status == MountStatus.Archived ? updated : null,
-            grants ?? []);
+            overwrites ?? []);
     }
 
-    public static MountAccessGrant Grant(
-        MountGrantTargetType targetType,
+    public static MountPermissionOverwrite Overwrite(
+        MountOverwriteTargetType targetType,
         long targetId,
-        params MountPermission[] permissions) =>
-        MountAccessGrant.Create(targetType, targetId, permissions).Value;
+        SpacePermission[]? allow = null,
+        SpacePermission[]? deny = null) =>
+        MountPermissionOverwrite.Create(targetType, targetId, allow ?? [], deny ?? []).Value;
+
+    /// <summary>endpoint 필터를 통과한 Space context를 만든다. 권한을 생략하면 모든 Space 권한을 갖는다.</summary>
+    public static AuthorizedSpaceContext SpaceContext(
+        CurrentActor actor,
+        IEnumerable<SpacePermission>? permissions = null,
+        long spaceId = SpaceId,
+        SpaceAuthorizationSource source = SpaceAuthorizationSource.Membership) =>
+        new(
+            spaceId,
+            PublicId(spaceId),
+            actor.ActorType,
+            actor.UserId,
+            source == SpaceAuthorizationSource.Membership ? 50_000 + actor.UserId : null,
+            permissions ?? Enum.GetValues<SpacePermission>(),
+            source);
+
+    /// <summary>
+    /// endpoint 필터를 통과한 Mount context를 만든다. 권한을 생략하면 Mount 범위 권한을 모두 갖는다.
+    /// </summary>
+    public static AuthorizedMountContext MountContext(
+        CurrentActor actor,
+        Mount mount,
+        IEnumerable<SpacePermission>? permissions = null,
+        long? spaceId = null) =>
+        new(
+            SpaceContext(actor, spaceId: spaceId ?? mount.SpaceId),
+            mount.Id,
+            mount.PublicId,
+            permissions ?? MountScopedPermissions.All);
 
     public static MountPreviewUserSnapshot PreviewUser(
         long userId,

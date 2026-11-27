@@ -44,24 +44,21 @@ public sealed class CreateMountUseCaseTests
         // Assert
         Assert.That(result.IsSuccess, Is.True);
         var mount = harness.Writer.Registrations.Single();
-        Assert.That(mount.Grants, Is.Empty);
-        AssertCreatedMount(
-            harness,
-            result,
-            [MountPermission.FilesRead, MountPermission.FilesDownload]);
+        Assert.That(mount.Overwrites, Is.Empty);
+        AssertCreatedMount(harness, result, MountScopedPermissions.All);
     }
 
     [TestCase("None")]
     [TestCase("Role")]
     [TestCase("User")]
-    public async Task ExecuteAsync_ShouldCreateMountWithApplicableInitialGrantAccess(string writeSource)
+    public async Task ExecuteAsync_ShouldCreateMountWithInitialOverwritesAndAdministratorAccess(string grantTarget)
     {
         // Arrange
         var setup = AdministratorHarness();
         var harness = setup.Harness;
-        var roleTarget = writeSource == "Role" ? setup.AdminRole : setup.RoleTarget;
-        var userTarget = writeSource == "User" ? setup.ActorUser : setup.UserTarget;
-        var userMembership = writeSource == "User" ? setup.ActorMembership : setup.UserMembership;
+        var roleTarget = grantTarget == "Role" ? setup.AdminRole : setup.RoleTarget;
+        var userTarget = grantTarget == "User" ? setup.ActorUser : setup.UserTarget;
+        var userMembership = grantTarget == "User" ? setup.ActorMembership : setup.UserMembership;
         SeedTargets(setup, roleTarget, userTarget, userMembership);
         var command = GrantCommand(harness, roleTarget.PublicId, userTarget.PublicId);
 
@@ -71,15 +68,17 @@ public sealed class CreateMountUseCaseTests
         // Assert
         Assert.That(result.IsSuccess, Is.True);
         var mount = harness.Writer.Registrations.Single();
-        var roleGrant = mount.Grants.Single(grant => grant.TargetType == MountGrantTargetType.Role);
-        var userGrant = mount.Grants.Single(grant => grant.TargetType == MountGrantTargetType.User);
+        var roleOverwrite = mount.Overwrites.Single(overwrite => overwrite.TargetType == MountOverwriteTargetType.Role);
+        var userOverwrite = mount.Overwrites.Single(overwrite => overwrite.TargetType == MountOverwriteTargetType.User);
         Assert.Multiple(() =>
         {
-            Assert.That(mount.Grants, Has.Count.EqualTo(2));
-            Assert.That(roleGrant.TargetId, Is.EqualTo(roleTarget.Id));
-            Assert.That(roleGrant.Permissions, Is.EquivalentTo(new[] { MountPermission.FilesWrite }));
-            Assert.That(userGrant.TargetId, Is.EqualTo(userTarget.Id));
-            Assert.That(userGrant.Permissions, Is.EquivalentTo(new[] { MountPermission.FilesWrite }));
+            Assert.That(mount.Overwrites, Has.Count.EqualTo(2));
+            Assert.That(roleOverwrite.TargetId, Is.EqualTo(roleTarget.Id));
+            Assert.That(roleOverwrite.Allow, Is.EquivalentTo(new[] { SpacePermission.MountManage }));
+            Assert.That(roleOverwrite.Deny, Is.EquivalentTo(new[] { SpacePermission.FilesWrite }));
+            Assert.That(userOverwrite.TargetId, Is.EqualTo(userTarget.Id));
+            Assert.That(userOverwrite.Allow, Is.EquivalentTo(new[] { SpacePermission.MountManage }));
+            Assert.That(userOverwrite.Deny, Is.Empty);
             Assert.That(harness.TargetReader.ReadCount, Is.EqualTo(1));
             Assert.That(harness.TargetReader.SpaceId, Is.EqualTo(SpaceId));
             Assert.That(harness.TargetReader.RequestedRolePublicIds, Is.EquivalentTo(new[] { roleTarget.PublicId }));
@@ -87,10 +86,52 @@ public sealed class CreateMountUseCaseTests
             Assert.That(harness.TargetReader.WasInTransaction, Is.True);
         });
 
-        var expectedPermissions = writeSource == "None"
-            ? new[] { MountPermission.FilesRead, MountPermission.FilesDownload }
-            : new[] { MountPermission.FilesRead, MountPermission.FilesDownload, MountPermission.FilesWrite };
-        AssertCreatedMount(harness, result, expectedPermissions);
+        AssertCreatedMount(harness, result, MountScopedPermissions.All);
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldPermitCreationWithDelegatedSpacePermission()
+    {
+        // Arrange
+        var actor = TestSpaceAuthorizationSnapshots.Session();
+        var snapshot = TestSpaceAuthorizationSnapshots.MemberSnapshot(
+            permissions: [SpacePermission.MountManage, SpacePermission.MountView]);
+        var harness = new Harness(actor, snapshot);
+        var user = CreateUser(actor.UserId, actor.UserPublicId);
+        harness.TargetReader.Users[user.PublicId] = new MountCreationUserTarget(user, snapshot.Membership);
+        var command = ValidCommand(
+            harness,
+            userOverwrites: [new InitialMountUserOverwrite(user.PublicId, [SpacePermission.MountView], [])]);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(command);
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        AssertCreatedMount(harness, result, [SpacePermission.MountView, SpacePermission.MountManage]);
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldReturnPermissionDeniedForInitialOverwriteBeyondActorPermissions()
+    {
+        // Arrange
+        var actor = TestSpaceAuthorizationSnapshots.Session();
+        var snapshot = TestSpaceAuthorizationSnapshots.MemberSnapshot(
+            permissions: [SpacePermission.MountManage, SpacePermission.MountView]);
+        var harness = new Harness(actor, snapshot);
+        var user = CreateUser(actor.UserId, actor.UserPublicId);
+        harness.TargetReader.Users[user.PublicId] = new MountCreationUserTarget(user, snapshot.Membership);
+        var command = ValidCommand(
+            harness,
+            userOverwrites: [new InitialMountUserOverwrite(user.PublicId, [SpacePermission.FilesWrite], [])]);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(command);
+
+        // Assert
+        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
+        Assert.That(harness.TargetReader.ReadCount, Is.EqualTo(1));
+        AssertRejectedInsideTransaction(harness);
     }
 
     [Test]
@@ -104,39 +145,6 @@ public sealed class CreateMountUseCaseTests
 
         // Assert
         AssertError(result, ErrorCodes.Auth.SpaceNotFound);
-        Assert.That(harness.TargetReader.ReadCount, Is.Zero);
-        AssertRejectedInsideTransaction(harness);
-    }
-
-    [TestCase("SuspendedMember")]
-    [TestCase("UnrelatedSystemAdministrator")]
-    public async Task ExecuteAsync_ShouldReturnSpaceAccessDeniedWithoutStagingChanges(string scenario)
-    {
-        // Arrange
-        var harness = scenario == "SuspendedMember"
-            ? AdministratorHarness(SpaceMembershipStatus.Suspended).Harness
-            : UnrelatedSystemAdministratorHarness();
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(ValidCommand(harness));
-
-        // Assert
-        AssertError(result, ErrorCodes.Auth.SpaceAccessDenied);
-        Assert.That(harness.TargetReader.ReadCount, Is.Zero);
-        AssertRejectedInsideTransaction(harness);
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldReturnSpacePermissionDeniedWithoutStagingChanges()
-    {
-        // Arrange
-        var harness = OrdinaryMemberHarness();
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(ValidCommand(harness));
-
-        // Assert
-        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
         Assert.That(harness.TargetReader.ReadCount, Is.Zero);
         AssertRejectedInsideTransaction(harness);
     }
@@ -283,7 +291,7 @@ public sealed class CreateMountUseCaseTests
     private static void AssertCreatedMount(
         Harness harness,
         Result<MountResultDto> result,
-        IEnumerable<MountPermission> expectedPermissions)
+        IEnumerable<SpacePermission> expectedPermissions)
     {
         var mount = harness.Writer.Registrations.Single();
         var dto = result.Value.Mount;
@@ -388,36 +396,6 @@ public sealed class CreateMountUseCaseTests
             actorMembership);
     }
 
-    private static Harness OrdinaryMemberHarness()
-    {
-        var actor = TestSpaceAuthorizationSnapshots.Session();
-        var role = TestSpaceAuthorizationSnapshots.Role(
-            id: AdminRoleId,
-            spaceId: SpaceId,
-            permissions: [SpacePermission.SpaceView]);
-        var membership = TestSpaceAuthorizationSnapshots.Membership(
-            userId: actor.UserId,
-            spaceId: SpaceId,
-            roleIds: role.Id);
-        return new Harness(
-            actor,
-            new SpaceAuthorizationSnapshot(
-                TestSpaceAuthorizationSnapshots.Space(ownerUserId: SpaceOwnerUserId, id: SpaceId),
-                membership,
-                [role]));
-    }
-
-    private static Harness UnrelatedSystemAdministratorHarness()
-    {
-        var actor = TestSpaceAuthorizationSnapshots.Session(systemRole: SystemRole.SystemAdmin);
-        return new Harness(
-            actor,
-            new SpaceAuthorizationSnapshot(
-                TestSpaceAuthorizationSnapshots.Space(ownerUserId: SpaceOwnerUserId, id: SpaceId),
-                null,
-                []));
-    }
-
     private static void SeedTargets(
         AdministratorSetup setup,
         SpaceRole roleTarget,
@@ -484,21 +462,20 @@ public sealed class CreateMountUseCaseTests
         Guid userPublicId) =>
         ValidCommand(
             harness,
-            roleGrants: [new InitialMountRoleGrant(rolePublicId, [MountPermission.FilesWrite])],
-            userGrants: [new InitialMountUserGrant(userPublicId, [MountPermission.FilesWrite])]);
+            roleOverwrites: [new InitialMountRoleOverwrite(rolePublicId, [SpacePermission.MountManage], [SpacePermission.FilesWrite])],
+            userOverwrites: [new InitialMountUserOverwrite(userPublicId, [SpacePermission.MountManage], [])]);
 
     private static CreateMountCommand ValidCommand(
         Harness harness,
-        IReadOnlyList<InitialMountRoleGrant>? roleGrants = null,
-        IReadOnlyList<InitialMountUserGrant>? userGrants = null,
+        IReadOnlyList<InitialMountRoleOverwrite>? roleOverwrites = null,
+        IReadOnlyList<InitialMountUserOverwrite>? userOverwrites = null,
         string name = "  Design  ") =>
         new(
-            harness.Actor,
-            TestSpaceAuthorizationSnapshots.SpacePublicId,
+            harness.SpaceContext(),
             name,
             MountVisibility.Private,
-            roleGrants,
-            userGrants);
+            roleOverwrites,
+            userOverwrites);
 
     private static User CreateUser(long id, Guid publicId) =>
         User.Reconstitute(
@@ -528,8 +505,11 @@ public sealed class CreateMountUseCaseTests
 
     private sealed class Harness
     {
+        private readonly SpaceAuthorizationSnapshot? snapshot;
+
         public Harness(CurrentActor actor, SpaceAuthorizationSnapshot? snapshot)
         {
+            this.snapshot = snapshot;
             Actor = actor;
             AuthorizationReader = new AuthorizationReader(PersistenceSession, snapshot);
             TargetReader = new GrantTargetReader(PersistenceSession);
@@ -542,6 +522,25 @@ public sealed class CreateMountUseCaseTests
 
         public CurrentActor Actor { get; }
         public FakePersistenceSession PersistenceSession { get; } = new();
+
+        /// <summary>endpoint의 Space 필터가 넘긴 context. snapshot이 없으면 모든 권한을 가진 것으로 둔다.</summary>
+        public AuthorizedSpaceContext SpaceContext()
+        {
+            var isOwner = snapshot?.Space.OwnerUserId == Actor.UserId;
+            var permissions = snapshot is null
+                ? Enum.GetValues<SpacePermission>()
+                : SpacePermissionPolicy.Evaluate(snapshot.Space, Actor.UserId, snapshot.Membership, snapshot.Roles)
+                    .ToArray();
+            return new AuthorizedSpaceContext(
+                SpaceId,
+                TestSpaceAuthorizationSnapshots.SpacePublicId,
+                Actor.ActorType,
+                Actor.UserId,
+                isOwner ? null : snapshot?.Membership?.Id,
+                permissions,
+                isOwner ? SpaceAuthorizationSource.Owner : SpaceAuthorizationSource.Membership);
+        }
+
         public AuthorizationReader AuthorizationReader { get; }
         public GrantTargetReader TargetReader { get; }
         public MountWriter Writer { get; }

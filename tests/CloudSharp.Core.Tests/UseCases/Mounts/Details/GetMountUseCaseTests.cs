@@ -1,12 +1,8 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
-using CloudSharp.Core.Domain.Spaces;
-using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Mounts.Details;
-using CloudSharp.Core.UseCases.Mounts.Dtos;
-using CloudSharp.TestSupport.Fakes;
 using FluentResults;
 using NUnit.Framework;
 using static CloudSharp.Core.Tests.TestSupport.Builders.TestMountReadSnapshots;
@@ -17,28 +13,16 @@ namespace CloudSharp.Core.Tests.UseCases.Mounts.Details;
 public sealed class GetMountUseCaseTests
 {
     [Test]
-    public async Task ExecuteAsync_ShouldReturnLatestSnapshotAndEffectiveAccess()
+    public async Task ExecuteAsync_ShouldReturnLatestSnapshotWithAuthorizedPermissions()
     {
         // Arrange
-        var actor = Actor();
-        var role = Role(101);
-        var mount = Mount(
-            100,
-            visibility: MountVisibility.Private,
-            version: 9,
-            grants:
-            [
-                Grant(
-                    MountGrantTargetType.Role,
-                    role.Id,
-                    MountPermission.FilesRead,
-                    MountPermission.FilesWrite),
-                Grant(MountGrantTargetType.User, actor.UserId, MountPermission.FilesDownload),
-            ]);
-        var harness = new Harness(Member(actor, [role]), mount);
+        var mount = Mount(100, visibility: MountVisibility.Private, version: 9);
+        var reader = new RecordingMountReader(mount);
+        var permissions = new[] { SpacePermission.MountView, SpacePermission.MountManage, SpacePermission.FilesRead };
+        var query = new GetMountQuery(MountContext(Actor(), mount, permissions));
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
+        var result = await new GetMountUseCase(reader).ExecuteAsync(query);
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
@@ -51,64 +35,24 @@ public sealed class GetMountUseCaseTests
             Assert.That(dto.Name, Is.EqualTo(mount.Name));
             Assert.That(dto.Visibility, Is.EqualTo(mount.Visibility));
             Assert.That(dto.Status, Is.EqualTo(mount.Status));
-            Assert.That(
-                dto.MyAccess.Permissions,
-                Is.EquivalentTo(new[]
-                {
-                    MountPermission.FilesRead,
-                    MountPermission.FilesDownload,
-                    MountPermission.FilesWrite,
-                }));
-            Assert.That(dto.MyAccess.CanManage, Is.False);
+            Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(permissions));
+            Assert.That(dto.MyAccess.CanManage, Is.True);
             Assert.That(dto.CreatedAt, Is.EqualTo(mount.CreatedAt));
             Assert.That(dto.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
             Assert.That(dto.ArchivedAt, Is.EqualTo(mount.ArchivedAt));
-            Assert.That(harness.MountReader.Reads.Single(), Is.EqualTo((SpaceId, mount.PublicId)));
+            Assert.That(reader.Reads.Single(), Is.EqualTo((SpaceId, mount.PublicId)));
         });
     }
 
-    [TestCase(SpaceStatus.Archived, MountStatus.Active)]
-    [TestCase(SpaceStatus.Active, MountStatus.Archived)]
-    public async Task ExecuteAsync_ShouldSuppressWriteAccess(
-        SpaceStatus spaceStatus,
-        MountStatus mountStatus)
-    {
-        // Arrange
-        var actor = Actor();
-        var mount = Mount(
-            110,
-            status: mountStatus,
-            grants:
-            [
-                Grant(
-                    MountGrantTargetType.User,
-                    actor.UserId,
-                    MountPermission.FilesRead,
-                    MountPermission.FilesDownload,
-                    MountPermission.FilesWrite),
-            ]);
-        var harness = new Harness(Owner(actor, spaceStatus), mount);
-
-        // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
-
-        // Assert
-        Assert.That(result.IsSuccess, Is.True);
-        Assert.That(
-            result.Value.Mount.MyAccess.Permissions,
-            Is.EquivalentTo(new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
-    }
-
     [Test]
-    public async Task ExecuteAsync_ShouldDisableManagementForArchivedSpace()
+    public async Task ExecuteAsync_ShouldReportNoManagementWithoutMountManage()
     {
         // Arrange
-        var actor = Actor();
-        var mount = Mount(120);
-        var harness = new Harness(Owner(actor, SpaceStatus.Archived), mount);
+        var mount = Mount(110);
+        var query = new GetMountQuery(MountContext(Actor(), mount, [SpacePermission.MountView]));
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
+        var result = await new GetMountUseCase(new RecordingMountReader(mount)).ExecuteAsync(query);
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
@@ -117,124 +61,88 @@ public sealed class GetMountUseCaseTests
 
     [TestCase("Missing")]
     [TestCase("CrossSpace")]
-    [TestCase("Unreadable")]
-    public async Task ExecuteAsync_ShouldReturnResourceNotFound(string scenario)
+    [TestCase("Replaced")]
+    public async Task ExecuteAsync_ShouldReturnResourceNotFoundWhenAuthorizedMountIsGone(string scenario)
     {
         // Arrange
-        var actor = Actor();
-        var mount = Mount(
-            130,
-            spaceId: scenario == "CrossSpace" ? SpaceId + 1 : SpaceId,
-            visibility: scenario == "Unreadable" ? MountVisibility.Private : MountVisibility.Public);
-        var loadedMount = scenario == "Missing" ? null : mount;
-        var authorization = scenario == "Unreadable" ? Member(actor) : Owner(actor);
-        var harness = new Harness(authorization, loadedMount);
+        var authorized = Mount(120);
+        var stored = scenario switch
+        {
+            "Missing" => null,
+            "CrossSpace" => Mount(120, spaceId: SpaceId + 1),
+            "Replaced" => Mount(121),
+            _ => throw new ArgumentOutOfRangeException(nameof(scenario), scenario, null),
+        };
+        var query = new GetMountQuery(MountContext(Actor(), authorized));
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
+        var result = await new GetMountUseCase(new RecordingMountReader(stored)).ExecuteAsync(query);
 
         // Assert
         AssertError(result, ErrorCodes.Common.ResourceNotFound);
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldReturnMountIdValidationErrorWithoutDependencyCalls()
+    public async Task ExecuteAsync_ShouldReturnContextValidationErrorWithoutDependencyCalls()
     {
         // Arrange
-        var actor = Actor();
-        var harness = new Harness(Owner(actor), null);
+        var reader = new RecordingMountReader(null);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, Guid.Empty));
+        var result = await new GetMountUseCase(reader).ExecuteAsync(new GetMountQuery(null!));
 
         // Assert
-        AssertValidationError(
-            result,
-            ErrorCodes.Mount.PublicIdInvalid,
-            nameof(GetMountQuery.MountPublicId));
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.AuthorizationReader.Reads, Is.Empty);
-            Assert.That(harness.MountReader.Reads, Is.Empty);
-        });
+        AssertError(result, ErrorCodes.Mount.AuthorizationContextRequired);
+        Assert.That(reader.Reads, Is.Empty);
     }
 
     [Test]
     public async Task ExecuteAsync_ShouldPropagateMountReaderFailure()
     {
         // Arrange
-        var actor = Actor();
-        var mount = Mount(140);
-        var failure = CommonError.DependencyUnavailable();
-        var harness = new Harness(Owner(actor), mount);
-        harness.MountReader.Failure = failure;
+        var mount = Mount(130);
+        var reader = new RecordingMountReader(mount);
+        var failure = ReadError(ErrorCodes.Common.DependencyUnavailable);
+        reader.Failure = failure;
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
+        var result = await new GetMountUseCase(reader).ExecuteAsync(new GetMountQuery(MountContext(Actor(), mount)));
 
         // Assert
         Assert.That(result.IsFailed, Is.True);
-        Assert.Multiple(() =>
-        {
-            Assert.That(result.Errors.Single(), Is.SameAs(failure));
-            Assert.That(
-                result.Errors.Single().Metadata[CloudSharpError.ErrorCodeMetadataKey],
-                Is.EqualTo(ErrorCodes.Common.DependencyUnavailable));
-        });
+        Assert.That(result.Errors.Single(), Is.SameAs(failure));
     }
 
-    private static GetMountQuery Query(CurrentActor actor, Guid mountPublicId) =>
-        new(actor, SpacePublicId, mountPublicId);
+    [Test]
+    public async Task ExecuteAsync_ShouldReturnDependencyUnavailableWithoutReader()
+    {
+        // Arrange
+        var mount = Mount(140);
 
-    private static void AssertError(Result<MountResultDto> result, string errorCode)
+        // Act
+        var result = await new GetMountUseCase().ExecuteAsync(new GetMountQuery(MountContext(Actor(), mount)));
+
+        // Assert
+        AssertError(result, ErrorCodes.Common.DependencyUnavailable);
+    }
+
+    private static void AssertError<T>(Result<T> result, string errorCode)
     {
         Assert.That(result.IsFailed, Is.True);
-        Assert.That(
-            result.Errors.Single().Metadata[CloudSharpError.ErrorCodeMetadataKey],
-            Is.EqualTo(errorCode));
-    }
-
-    private static void AssertValidationError(
-        Result<MountResultDto> result,
-        string expectedErrorCode,
-        string expectedPropertyName)
-    {
-        Assert.That(result.IsFailed, Is.True);
-        var error = result.Errors.Single();
-        Assert.Multiple(() =>
-        {
-            Assert.That(error.Metadata[CloudSharpError.ErrorCodeMetadataKey], Is.EqualTo(expectedErrorCode));
-            Assert.That(error.Metadata["PropertyName"], Is.EqualTo(expectedPropertyName));
-        });
-    }
-
-    private sealed class Harness
-    {
-        public Harness(SpaceAuthorizationSnapshot authorization, Mount? mount)
-        {
-            AuthorizationReader = new FakeSpaceAuthorizationReader(authorization);
-            MountReader = new RecordingMountReader(mount);
-        }
-
-        public FakeSpaceAuthorizationReader AuthorizationReader { get; }
-        public RecordingMountReader MountReader { get; }
-        public GetMountUseCase UseCase => new(AuthorizationReader, MountReader);
+        Assert.That(result.Errors.Single().Metadata[CloudSharpError.ErrorCodeMetadataKey], Is.EqualTo(errorCode));
     }
 
     private sealed class RecordingMountReader(Mount? mount) : IMountReader
     {
-        private readonly List<(long SpaceId, Guid MountPublicId)> reads = [];
-
+        public List<(long SpaceId, Guid MountPublicId)> Reads { get; } = [];
         public IError? Failure { get; set; }
-        public IReadOnlyList<(long SpaceId, Guid MountPublicId)> Reads => reads;
 
         public Task<Result<Mount?>> ReadAsync(
             long spaceId,
             Guid mountPublicId,
             CancellationToken cancellationToken = default)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            reads.Add((spaceId, mountPublicId));
+            Reads.Add((spaceId, mountPublicId));
             return Task.FromResult(Failure is { } failure
                 ? Result.Fail<Mount?>(failure)
                 : Result.Ok(mount));

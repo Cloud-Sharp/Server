@@ -1,4 +1,5 @@
-using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Policies.Authorization;
 
 namespace CloudSharp.Core.UseCases.Mounts.Dtos;
 
@@ -8,20 +9,18 @@ public sealed record MountPermissionPreviewPageDto(
 
 public sealed record MountPermissionPreviewDto(
     Guid UserPublicId,
-    IReadOnlySet<MountPermission> CurrentPermissions,
-    IReadOnlySet<MountPermission> PreviewPermissions,
+    IReadOnlySet<SpacePermission> CurrentPermissions,
+    IReadOnlySet<SpacePermission> PreviewPermissions,
     IReadOnlyList<MountPermissionSourceDto> CurrentSources,
     IReadOnlyList<MountPermissionSourceDto> PreviewSources);
 
-/// <summary>RolePublicId는 SourceType이 Role인 경우에만 값이 있다.</summary>
+/// <summary>계산에 적용된 근거다. RolePublicId는 SourceType이 Role인 경우에만 값이 있다.</summary>
 public sealed record MountPermissionSourceDto(
     MountPermissionSourceType SourceType,
-    IReadOnlySet<MountPermission> Permissions,
-    Guid? RolePublicId);
-
-public enum MountPermissionSourceType
+    IReadOnlySet<SpacePermission> Allow,
+    IReadOnlySet<SpacePermission> Deny,
+    Guid? RolePublicId)
 {
-    Default,
-    Role,
-    User,
+    public static MountPermissionSourceDto From(MountPermissionSource source) =>
+        new(source.SourceType, source.Allow, source.Deny, source.RolePublicId);
 }

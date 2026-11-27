@@ -1,4 +1,5 @@
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Tests.TestSupport.Builders;
@@ -18,16 +19,10 @@ public sealed class UpdateMountUseCaseTests
     public async Task ExecuteAsync_ShouldChangeOnlySuppliedSettings(string changedField)
     {
         // Arrange
-        var mount = StoredMount(grants:
+        var mount = StoredMount(overwrites:
         [
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                TestMountReadSnapshots.ActorUserId,
-                MountPermission.FilesWrite),
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.Role,
-                OtherRoleTargetId,
-                MountPermission.FilesDownload),
+            TestMountReadSnapshots.Overwrite(MountOverwriteTargetType.User, TestMountReadSnapshots.ActorUserId, allow: [SpacePermission.MountManage]),
+            TestMountReadSnapshots.Overwrite(MountOverwriteTargetType.Role, OtherRoleTargetId, allow: [SpacePermission.MountView]),
         ]);
         var harness = Owner(mount);
         var command = changedField == "Name"
@@ -48,11 +43,11 @@ public sealed class UpdateMountUseCaseTests
         {
             Assert.That(update.Name, Is.EqualTo(expectedName));
             Assert.That(update.Visibility, Is.EqualTo(expectedVisibility));
-            Assert.That(update.Grants, Is.EquivalentTo(mount.Grants));
+            Assert.That(update.Overwrites, Is.EquivalentTo(mount.Overwrites));
             Assert.That(dto.Name, Is.EqualTo(expectedName));
             Assert.That(dto.Visibility, Is.EqualTo(expectedVisibility));
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(
-                new[] { MountPermission.FilesRead, MountPermission.FilesDownload, MountPermission.FilesWrite }));
+                MountScopedPermissions.All));
             Assert.That(dto.MyAccess.CanManage, Is.True);
             Assert.That(dto.CreatedAt, Is.EqualTo(mount.CreatedAt));
             Assert.That(dto.UpdatedAt, Is.EqualTo(Now));
@@ -97,19 +92,16 @@ public sealed class UpdateMountUseCaseTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldEditArchivedMountWithoutRestoringWriteAccess()
+    public async Task ExecuteAsync_ShouldAllowDelegatedManagementOfArchivedMount()
     {
         // Arrange
         var mount = StoredMount(
             MountStatus.Archived,
-            grants:
+            overwrites:
             [
-                TestMountReadSnapshots.Grant(
-                    MountGrantTargetType.User,
-                    TestMountReadSnapshots.ActorUserId,
-                    MountPermission.FilesWrite),
+                TestMountReadSnapshots.Overwrite(MountOverwriteTargetType.User, TestMountReadSnapshots.ActorUserId, allow: [SpacePermission.MountManage]),
             ]);
-        var harness = Owner(mount);
+        var harness = OrdinaryMember(mount);
         var command = Command(harness, mount, name: new MountNameChange("Archived Mount Renamed"));
 
         // Act
@@ -123,8 +115,7 @@ public sealed class UpdateMountUseCaseTests
             Assert.That(result.Value.Mount.Status, Is.EqualTo(MountStatus.Archived));
             Assert.That(result.Value.Mount.ArchivedAt, Is.EqualTo(mount.ArchivedAt));
             Assert.That(result.Value.Mount.MyAccess.Permissions, Is.EquivalentTo(
-                new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
-            Assert.That(result.Value.Mount.MyAccess.Permissions, Does.Not.Contain(MountPermission.FilesWrite));
+                new[] { SpacePermission.MountView, SpacePermission.MountManage, SpacePermission.FilesRead }));
             Assert.That(result.Value.Mount.MyAccess.CanManage, Is.True);
         });
     }
@@ -171,30 +162,6 @@ public sealed class UpdateMountUseCaseTests
 
         // Assert
         AssertError(result, ErrorCodes.Common.ResourceNotFound);
-        AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
-    }
-
-    [TestCase(MountVisibility.Public, ErrorCodes.Auth.SpacePermissionDenied)]
-    [TestCase(MountVisibility.Private, ErrorCodes.Common.ResourceNotFound)]
-    public async Task ExecuteAsync_ShouldCheckReadabilityAndManagerEligibilityBeforeVersion(
-        MountVisibility visibility,
-        string expectedError)
-    {
-        // Arrange
-        var mount = StoredMount(visibility: visibility);
-        var harness = OrdinaryMember(mount);
-        var command = Command(
-            harness,
-            mount,
-            expectedVersion: mount.Version - 1,
-            name: new MountNameChange("Renamed Mount"));
-
-        // Act
-        var result = await harness.UpdateUseCase.ExecuteAsync(command);
-
-        // Assert
-        AssertError(result, expectedError);
         AssertRejectedWithoutWrites(harness);
         Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
@@ -302,14 +269,14 @@ public sealed class UpdateMountUseCaseTests
         MountStatus status = MountStatus.Active,
         MountVisibility visibility = MountVisibility.Public,
         long spaceId = TestMountReadSnapshots.SpaceId,
-        IEnumerable<MountAccessGrant>? grants = null) =>
+        IEnumerable<MountPermissionOverwrite>? overwrites = null) =>
         TestMountReadSnapshots.Mount(
             MountId,
             spaceId,
             visibility,
             status,
             updatedAt: Now.AddHours(-1),
-            grants: grants);
+            overwrites: overwrites);
 
     private static UpdateMountCommand Command(
         MountMutationTestHarness harness,
@@ -318,9 +285,7 @@ public sealed class UpdateMountUseCaseTests
         MountNameChange? name = null,
         MountVisibilityChange? visibility = null) =>
         new(
-            harness.Actor,
-            TestMountReadSnapshots.SpacePublicId,
-            mount.PublicId,
+            harness.MountContext(mount),
             expectedVersion ?? mount.Version,
             name,
             visibility);

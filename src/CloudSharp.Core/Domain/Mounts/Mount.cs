@@ -1,6 +1,7 @@
 using System.Collections.Frozen;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
+using CloudSharp.Core.Domain.Memberships;
 using FluentResults;
 using FluentValidation;
 
@@ -8,7 +9,8 @@ namespace CloudSharp.Core.Domain.Mounts;
 
 public sealed class Mount
 {
-    private FrozenDictionary<GrantTarget, MountAccessGrant> _grants = FrozenDictionary<GrantTarget, MountAccessGrant>.Empty;
+    private FrozenDictionary<OverwriteTarget, MountPermissionOverwrite> _overwrites =
+        FrozenDictionary<OverwriteTarget, MountPermissionOverwrite>.Empty;
 
     public long Id { get; private set; }
     public Guid PublicId { get; private set; }
@@ -20,7 +22,7 @@ public sealed class Mount
     public DateTimeOffset CreatedAt { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; }
     public DateTimeOffset? ArchivedAt { get; private set; }
-    public IReadOnlyCollection<MountAccessGrant> Grants => _grants.Values;
+    public IReadOnlyCollection<MountPermissionOverwrite> Overwrites => _overwrites.Values;
 
     private Mount() { }
 
@@ -29,7 +31,7 @@ public sealed class Mount
         string name,
         MountVisibility visibility,
         DateTimeOffset now,
-        IEnumerable<MountAccessGrant>? grants = null)
+        IEnumerable<MountPermissionOverwrite>? overwrites = null)
     {
         if (spaceId <= 0)
         {
@@ -53,19 +55,20 @@ public sealed class Mount
             return Result.Fail<Mount>(visibilityValidation.Errors);
         }
 
-        var grantsByTarget = new Dictionary<GrantTarget, MountAccessGrant>();
-        if (grants is not null)
+        var overwritesByTarget = new Dictionary<OverwriteTarget, MountPermissionOverwrite>();
+        if (overwrites is not null)
         {
-            foreach (var grant in grants)
+            foreach (var overwrite in overwrites)
             {
-                if (grant is null)
+                if (overwrite is null || overwrite.IsEmpty)
                 {
-                    return Result.Fail<Mount>(MountError.GrantsInvalid("Mount grants must not contain null entries."));
+                    return Result.Fail<Mount>(
+                        MountError.GrantsInvalid("Mount overwrites must not contain null or empty entries."));
                 }
 
-                if (!grantsByTarget.TryAdd(ToTarget(grant), grant))
+                if (!overwritesByTarget.TryAdd(ToTarget(overwrite), overwrite))
                 {
-                    return Result.Fail<Mount>(MountError.GrantsInvalid("Each mount grant target must be unique."));
+                    return Result.Fail<Mount>(MountError.GrantsInvalid("Each mount overwrite target must be unique."));
                 }
             }
         }
@@ -80,7 +83,7 @@ public sealed class Mount
             Version = 1,
             CreatedAt = now,
             UpdatedAt = now,
-            _grants = grantsByTarget.ToFrozenDictionary(),
+            _overwrites = overwritesByTarget.ToFrozenDictionary(),
         });
     }
 
@@ -95,7 +98,7 @@ public sealed class Mount
         DateTimeOffset createdAt,
         DateTimeOffset updatedAt,
         DateTimeOffset? archivedAt,
-        IEnumerable<MountAccessGrant> grants)
+        IEnumerable<MountPermissionOverwrite> overwrites)
     {
         if (id < 0)
         {
@@ -145,18 +148,18 @@ public sealed class Mount
             throw new ArgumentException("ArchivedAt must be present exactly for ARCHIVED status.", nameof(archivedAt));
         }
 
-        ArgumentNullException.ThrowIfNull(grants);
-        var grantsByTarget = new Dictionary<GrantTarget, MountAccessGrant>();
-        foreach (var grant in grants)
+        ArgumentNullException.ThrowIfNull(overwrites);
+        var overwritesByTarget = new Dictionary<OverwriteTarget, MountPermissionOverwrite>();
+        foreach (var overwrite in overwrites)
         {
-            if (grant is null)
+            if (overwrite is null || overwrite.IsEmpty)
             {
-                throw new ArgumentException("Mount grants must not contain null entries.", nameof(grants));
+                throw new ArgumentException("Mount overwrites must not contain null or empty entries.", nameof(overwrites));
             }
 
-            if (!grantsByTarget.TryAdd(ToTarget(grant), grant))
+            if (!overwritesByTarget.TryAdd(ToTarget(overwrite), overwrite))
             {
-                throw new ArgumentException("Each mount grant target must be unique.", nameof(grants));
+                throw new ArgumentException("Each mount overwrite target must be unique.", nameof(overwrites));
             }
         }
 
@@ -172,7 +175,7 @@ public sealed class Mount
             CreatedAt = createdAt,
             UpdatedAt = updatedAt,
             ArchivedAt = archivedAt,
-            _grants = grantsByTarget.ToFrozenDictionary(),
+            _overwrites = overwritesByTarget.ToFrozenDictionary(),
         };
     }
 
@@ -263,10 +266,19 @@ public sealed class Mount
         });
     }
 
-    public Result SetGrant(
-        MountGrantTargetType targetType,
+    /// <summary>대상의 덮어쓰기를 찾는다. 없으면 null이다.</summary>
+    public MountPermissionOverwrite? FindOverwrite(MountOverwriteTargetType targetType, long targetId) =>
+        _overwrites.GetValueOrDefault(new OverwriteTarget(targetType, targetId));
+
+    /// <summary>
+    /// 대상의 허용·거부 집합을 전체 교체한다. 둘 다 비어 있으면 덮어쓰기를 제거한다.
+    /// 같은 집합으로 다시 설정하거나 없는 덮어쓰기를 제거하면 버전을 유지한다.
+    /// </summary>
+    public Result SetOverwrite(
+        MountOverwriteTargetType targetType,
         long targetId,
-        IEnumerable<MountPermission> permissions,
+        IEnumerable<SpacePermission> allow,
+        IEnumerable<SpacePermission> deny,
         DateTimeOffset now)
     {
         var validation = ValidateNow(now);
@@ -275,67 +287,29 @@ public sealed class Mount
             return validation;
         }
 
-        var grantResult = MountAccessGrant.CreateForMutation(targetType, targetId, permissions);
-        if (grantResult.IsFailed)
+        var overwriteResult = MountPermissionOverwrite.CreateForMutation(targetType, targetId, allow, deny);
+        if (overwriteResult.IsFailed)
         {
-            return Result.Fail(grantResult.Errors);
+            return Result.Fail(overwriteResult.Errors);
         }
 
-        var grant = grantResult.Value;
-        var target = new GrantTarget(targetType, targetId);
-        var hasGrant = _grants.TryGetValue(target, out var existing);
+        var overwrite = overwriteResult.Value;
+        var target = new OverwriteTarget(targetType, targetId);
+        var hasOverwrite = _overwrites.TryGetValue(target, out var existing);
 
-        if (grant.Permissions.Count == 0)
+        if (overwrite.IsEmpty)
         {
-            return hasGrant ? ApplyChange(now, () => RemoveGrant(target)) : Result.Ok();
+            return hasOverwrite ? ApplyChange(now, () => RemoveOverwrite(target)) : Result.Ok();
         }
 
-        if (hasGrant && existing!.Permissions.SetEquals(grant.Permissions))
-        {
-            return Result.Ok();
-        }
-
-        return ApplyChange(now, () => StoreGrant(target, grant));
-    }
-
-    public Result RevokePermissions(
-        MountGrantTargetType targetType,
-        long targetId,
-        IEnumerable<MountPermission> permissions,
-        DateTimeOffset now)
-    {
-        var validation = ValidateNow(now);
-        if (validation.IsFailed)
-        {
-            return validation;
-        }
-
-        var requestedResult = MountAccessGrant.CreateForMutation(targetType, targetId, permissions);
-        if (requestedResult.IsFailed)
-        {
-            return Result.Fail(requestedResult.Errors);
-        }
-
-        if (!_grants.TryGetValue(new GrantTarget(targetType, targetId), out var existing))
+        if (hasOverwrite
+            && existing!.Allow.SetEquals(overwrite.Allow)
+            && existing.Deny.SetEquals(overwrite.Deny))
         {
             return Result.Ok();
         }
 
-        var requested = requestedResult.Value.Permissions;
-        var remaining = existing.Permissions.Where(permission => !requested.Contains(permission)).ToArray();
-        if (remaining.Length == existing.Permissions.Count)
-        {
-            return Result.Ok();
-        }
-
-        var target = new GrantTarget(targetType, targetId);
-        if (remaining.Length == 0)
-        {
-            return ApplyChange(now, () => RemoveGrant(target));
-        }
-
-        var replacement = MountAccessGrant.FromValidated(targetType, targetId, remaining);
-        return ApplyChange(now, () => StoreGrant(target, replacement));
+        return ApplyChange(now, () => StoreOverwrite(target, overwrite));
     }
 
     private Result ValidateNow(DateTimeOffset now)
@@ -361,21 +335,22 @@ public sealed class Mount
         return Result.Ok();
     }
 
-    private void StoreGrant(GrantTarget target, MountAccessGrant grant)
+    private void StoreOverwrite(OverwriteTarget target, MountPermissionOverwrite overwrite)
     {
-        var updated = _grants.ToDictionary(pair => pair.Key, pair => pair.Value);
-        updated[target] = grant;
-        _grants = updated.ToFrozenDictionary();
+        var updated = _overwrites.ToDictionary(pair => pair.Key, pair => pair.Value);
+        updated[target] = overwrite;
+        _overwrites = updated.ToFrozenDictionary();
     }
 
-    private void RemoveGrant(GrantTarget target)
+    private void RemoveOverwrite(OverwriteTarget target)
     {
-        _grants = _grants
+        _overwrites = _overwrites
             .Where(pair => pair.Key != target)
             .ToFrozenDictionary(pair => pair.Key, pair => pair.Value);
     }
 
-    private static GrantTarget ToTarget(MountAccessGrant grant) => new(grant.TargetType, grant.TargetId);
+    private static OverwriteTarget ToTarget(MountPermissionOverwrite overwrite) =>
+        new(overwrite.TargetType, overwrite.TargetId);
 
     private static Result ValidateName(string? name)
     {
@@ -407,7 +382,7 @@ public sealed class Mount
         }
     }
 
-    private readonly record struct GrantTarget(MountGrantTargetType Type, long Id);
+    private readonly record struct OverwriteTarget(MountOverwriteTargetType Type, long Id);
 }
 
 internal sealed class MountNameValidator : AbstractValidator<string>

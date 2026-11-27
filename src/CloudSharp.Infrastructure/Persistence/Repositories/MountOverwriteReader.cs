@@ -9,12 +9,12 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Repositories;
 
-internal sealed class MountGrantReader(AppDbContext dbContext, ITokenHasher tokenHasher) : IMountGrantReader
+internal sealed class MountOverwriteReader(AppDbContext dbContext, ITokenHasher tokenHasher) : IMountOverwriteReader
 {
-    public Task<Result<MountGrantPage>> ReadAsync(
+    public Task<Result<MountOverwritePage>> ReadAsync(
         long spaceId,
         long mountId,
-        MountGrantTargetType targetType,
+        MountOverwriteTargetType targetType,
         string? cursor,
         int limit,
         CancellationToken cancellationToken = default)
@@ -23,7 +23,7 @@ internal sealed class MountGrantReader(AppDbContext dbContext, ITokenHasher toke
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
         if (!Enum.IsDefined(targetType))
         {
-            return Task.FromResult(Result.Fail<MountGrantPage>(MountError.TargetTypeInvalid()));
+            return Task.FromResult(Result.Fail<MountOverwritePage>(MountError.TargetTypeInvalid()));
         }
 
         var scope = FormattableString.Invariant($"grants:{spaceId}:{mountId}:{targetType}");
@@ -32,7 +32,7 @@ internal sealed class MountGrantReader(AppDbContext dbContext, ITokenHasher toke
         {
             if (!MountReadCursor.TryRead(tokenHasher, scope, cursor, out var parsed) || parsed.CreatedAtTicks is not null)
             {
-                return Task.FromResult(Result.Fail<MountGrantPage>(MountReadCursor.Invalid()));
+                return Task.FromResult(Result.Fail<MountOverwritePage>(MountReadCursor.Invalid()));
             }
 
             position = parsed;
@@ -41,16 +41,16 @@ internal sealed class MountGrantReader(AppDbContext dbContext, ITokenHasher toke
         return dbContext.ExecuteReadAsync(
             async (context, ct) =>
             {
-                var grants = targetType == MountGrantTargetType.Role
+                var grants = targetType == MountOverwriteTargetType.Role
                     ? from grant in context.MountRoleGrants.AsNoTracking()
                       join role in context.SpaceRoles.AsNoTracking() on grant.RoleId equals role.Id
                       where grant.MountId == mountId && grant.SpaceId == spaceId && role.SpaceId == spaceId
-                      select new { PublicId = role.PublicId, TargetId = role.Id, grant.PermissionMask }
+                      select new { PublicId = role.PublicId, TargetId = role.Id, grant.AllowMask, grant.DenyMask }
                     : from grant in context.MountUserGrants.AsNoTracking()
                       join user in context.Users.AsNoTracking() on grant.UserId equals user.Id
                       join mount in context.Mounts.AsNoTracking() on grant.MountId equals mount.Id
                       where mount.Id == mountId && mount.SpaceId == spaceId
-                      select new { PublicId = user.PublicId, TargetId = user.Id, grant.PermissionMask };
+                      select new { PublicId = user.PublicId, TargetId = user.Id, grant.AllowMask, grant.DenyMask };
 
                 if (position is { PublicId: var publicId })
                 {
@@ -58,13 +58,17 @@ internal sealed class MountGrantReader(AppDbContext dbContext, ITokenHasher toke
                 }
 
                 var rows = await grants.OrderBy(grant => grant.PublicId).Take(checked(limit + 1)).ToArrayAsync(ct);
-                var items = rows.Take(limit).Select(row => new MountGrantSnapshot(
-                    MountAccessGrant.Reconstitute(targetType, row.TargetId, MountPermissionMask.Decode(row.PermissionMask)),
+                var items = rows.Take(limit).Select(row => new MountOverwriteSnapshot(
+                    MountPermissionOverwrite.Reconstitute(
+                        targetType,
+                        row.TargetId,
+                        MountOverwriteMask.Decode(row.AllowMask),
+                        MountOverwriteMask.Decode(row.DenyMask)),
                     row.PublicId)).ToArray();
                 var next = rows.Length > limit
                     ? MountReadCursor.Issue(tokenHasher, scope, items[^1].TargetPublicId)
                     : null;
-                return new MountGrantPage(items, next);
+                return new MountOverwritePage(items, next);
             },
             cancellationToken);
     }

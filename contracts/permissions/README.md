@@ -47,6 +47,8 @@ Space 권한 매트릭스와 endpoint별 인가 계약. Session 사용자 정책
 | `MEMBERS_MANAGE` | `MembersManage` | 멤버 역할 변경·정지·복구·제거 |
 | `UPLOADS_MANAGE` | `UploadsManage` | 같은 Space의 타인 Upload 조회/취소 |
 | `OPERATIONS_MANAGE` | `OperationsManage` | 같은 Space의 타인 사용자 비동기 작업 조회/취소 |
+| `MOUNT_MANAGE` | `MountManage` | Mount 개설, Mount의 설정 변경·보관·재활성화와 권한 덮어쓰기 관리 |
+| `MOUNT_VIEW` | `MountView` | Mount 보기와 그 안의 활동. 최종 값이 없으면 해당 Mount의 다른 권한도 무효 |
 
 `UPLOADS_MANAGE`, `OPERATIONS_MANAGE`는 별개 권한이다. 기본 ADMIN과 OWNER가 보유하고 MEMBER·VIEWER에는 기본 부여하지 않는다. `FILES_WRITE`로 대체하거나 자동 포함시키지 않는다. Upload 생성이나 비동기 작업 생성 권한도 부여하지 않는다. 내부 WorkerJob·DLQ 운영 권한은 `OPERATIONS_MANAGE`의 범위가 아니다.
 
@@ -97,6 +99,25 @@ Permission enum과 안정된 code 매핑, Session 인가 계약·Core 정책·In
 하위 Membership·Role·Invite의 Space 불일치나 미존재는 관리 Permission이 충분해도 404다. OWNER는 Membership으로 저장하지 않으므로 멤버 관리 API로 변경·정지·제거할 수 없다. 본인 탈퇴는 동일 Space의 본인 LEFT 기록을 확인한 반복 요청도 멱등 성공하며, Membership 관계 자체가 없으면 404다. 이 제한된 반복 탈퇴 경로는 다른 Space API의 기본 접근 자격을 부여하지 않는다.
 
 초대 공개 조회는 비로그인도 유효 capability로 접근한다. 초대 수락은 USER와 유효 capability를 요구하며 기존 Membership이나 Space Permission은 요구하지 않는다. 신규 가입·수락은 ACTIVE Space에서만 허용한다.
+
+## Mount 권한
+
+Mount 권한은 Discord 채널 권한처럼 Space 권한을 덮어쓴다. Space Role의 Mount 범위 권한(`MOUNT_VIEW`, `MOUNT_MANAGE`, `FILES_READ`, `FILES_DOWNLOAD`, `FILES_WRITE`)이 기본값이고, 각 Mount의 Role·사용자 덮어쓰기가 그 Mount 안에서만 허용·거부한다. 별도의 Mount 전용 권한 코드는 없다.
+
+- `PRIVATE`은 기본 `MOUNT_VIEW`를 거부한다. Role 덮어쓰기는 거부 후 허용, 사용자 덮어쓰기는 그 뒤에 거부 후 허용으로 적용한다. Space 소유자와 활성 `ADMIN`은 덮어쓰기를 우회한다.
+- 최종 `MOUNT_VIEW`가 없으면 그 Mount의 권한은 모두 무효이며 목록에서 제외되고 단건 요청은 `404 RESOURCE_NOT_FOUND`다. `FILES_READ`가 없으면 `FILES_DOWNLOAD`·`FILES_WRITE`도 무효다. `ARCHIVED` Space에서는 `MOUNT_MANAGE`·`FILES_WRITE`를 제거한다.
+- Mount 경로는 endpoint에 `MountAuthorizationFilter`로 요구 권한·허용 Space 상태·허용 Mount 상태를 선언한다. Mount 개설은 Space filter로 Space의 `MOUNT_MANAGE`를 요구한다. 덮어쓰기 변경은 `MOUNT_MANAGE`와 함께 바뀌는 권한을 요청자가 가져야 한다.
+
+| Method / Path | Mount 유효 권한 | 허용 Space 상태 | 권한 거부 |
+|---|---|---|---|
+| GET `S/mounts` | Space 접근 자격, 항목별 `MOUNT_VIEW` | ACTIVE, ARCHIVED | 목록 필터링 |
+| POST `S/mounts` | Space의 `MOUNT_MANAGE` | ACTIVE | 관리 403 |
+| GET `M` | `MOUNT_VIEW` | ACTIVE, ARCHIVED | 리소스 404 |
+| PATCH `M`, POST `M/archive`, POST `M/reactivate` | `MOUNT_MANAGE` | ACTIVE | 관리 403 |
+| GET `M/permissions`, GET `M/permissions/preview` | `MOUNT_MANAGE` | ACTIVE, ARCHIVED | 관리 403 |
+| PUT `M/permissions/roles/{rolePublicId}`, PUT `M/permissions/users/{userPublicId}` | `MOUNT_MANAGE`, 바뀌는 권한 보유 | ACTIVE | 관리 403 |
+
+`M = S/mounts/{mountPublicId}`. `MOUNT_VIEW`가 없으면 위 표의 권한 거부 방식과 관계없이 404다. [Space와 Mount 권한](../../docs/security/permissions.md) · [Mount 유즈케이스](../../docs/use-cases/mount-use-cases.md)
 
 ## 콘텐츠·전송 endpoint
 

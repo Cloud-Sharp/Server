@@ -25,6 +25,8 @@ Space Membership aggregate. See .llm/domains/space-membership.md
 | `MembersManage` | `MEMBERS_MANAGE` |
 | `UploadsManage` | `UPLOADS_MANAGE` |
 | `OperationsManage` | `OPERATIONS_MANAGE` |
+| `MountManage` | `MOUNT_MANAGE` |
+| `MountView` | `MOUNT_VIEW` |
 
 - `SpaceUpdate`는 Space 정보 수정 권한이며 quota 변경, Space 삭제, 소유권 이전은 포함하지 않는다.
 - `UploadsManage`는 같은 Space의 타인 업로드 조회·취소, `OperationsManage`는 같은 Space의 타인 사용자 비동기 작업 조회·취소 권한이다. 서로 독립적이며 `FilesWrite`를 포함하거나 대체하지 않는다. 내부 WorkerJob·DLQ 운영에는 적용하지 않는다.

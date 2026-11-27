@@ -3,10 +3,8 @@ using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Common.Time;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
-using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
 using FluentResults;
@@ -16,7 +14,7 @@ namespace CloudSharp.Core.UseCases.Mounts.Creations;
 public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResultDto>
 {
     private ISpaceAuthorizationReader AuthorizationReader { get; } = null!;
-    private IMountCreationGrantTargetReader GrantTargetReader { get; } = null!;
+    private IMountCreationGrantTargetReader TargetReader { get; } = null!;
     private IMountCreationWriter Writer { get; } = null!;
     private IUnitOfWork UnitOfWork { get; } = null!;
     private ITransactionExecutor TransactionExecutor { get; } = null!;
@@ -26,14 +24,14 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
 
     public CreateMountUseCase(
         ISpaceAuthorizationReader authorizationReader,
-        IMountCreationGrantTargetReader grantTargetReader,
+        IMountCreationGrantTargetReader targetReader,
         IMountCreationWriter writer,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
         IClock clock)
     {
         AuthorizationReader = authorizationReader;
-        GrantTargetReader = grantTargetReader;
+        TargetReader = targetReader;
         Writer = writer;
         UnitOfWork = unitOfWork;
         TransactionExecutor = transactionExecutor;
@@ -52,7 +50,7 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
             return validation.ToFailureResult<MountResultDto>();
         }
 
-        if (AuthorizationReader is null || GrantTargetReader is null || Writer is null
+        if (AuthorizationReader is null || TargetReader is null || Writer is null
             || UnitOfWork is null || TransactionExecutor is null || Clock is null)
         {
             return Result.Fail<MountResultDto>(CommonError.DependencyUnavailable());
@@ -67,45 +65,28 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
         CreateMountCommand command,
         CancellationToken cancellationToken)
     {
-        var snapshotResult = await AuthorizationReader.ReadAsync(
-            command.SpacePublicId,
-            command.Actor.UserId,
-            cancellationToken);
+        var snapshotResult = await MountWorkflowReads.ReadActiveSpaceAsync(
+            AuthorizationReader, command.Space, cancellationToken);
         if (snapshotResult.IsFailed)
         {
             return Result.Fail<MountResultDto>(snapshotResult.Errors);
         }
 
-        var authorization = SessionSpaceAuthorizationPolicy.Evaluate(
-            new SpaceAuthorizationQuery(
-                command.Actor,
-                command.SpacePublicId,
-                Array.Empty<SpacePermission>(),
-                new[] { SpaceStatus.Active },
-                allowSystemAdminBypass: false),
-            snapshotResult.Value);
-        if (authorization.IsFailed)
+        var snapshot = snapshotResult.Value;
+        var space = snapshot.Space;
+        var overwritesResult = await ResolveInitialOverwritesAsync(command, space, cancellationToken);
+        if (overwritesResult.IsFailed)
         {
-            return Result.Fail<MountResultDto>(authorization.Errors);
+            return Result.Fail<MountResultDto>(overwritesResult.Errors);
         }
 
-        var snapshot = snapshotResult.Value!;
-        var space = snapshot.Space;
-        var actorRoleIds = GetCurrentRoleIds(snapshot, command.Actor.UserId);
-        var isManager = space.OwnerUserId == command.Actor.UserId
-            || snapshot.Roles.Any(role => actorRoleIds.Contains(role.Id)
-                && role.SpaceId == space.Id
-                && role.DeletedAt is null
-                && role.SystemKey == SpaceRoleSystemKey.Admin);
-        if (!isManager)
+        var actorPermissions = command.Space.EffectivePermissions
+            .Where(MountScopedPermissions.Contains)
+            .ToHashSet();
+        if (!overwritesResult.Value.All(overwrite =>
+                MountPermissionPolicy.CanChangeOverwrite(actorPermissions, null, overwrite)))
         {
             return Result.Fail<MountResultDto>(SpaceAuthorizationError.PermissionDenied());
-        }
-
-        var grantsResult = await ResolveInitialGrantsAsync(command, space, cancellationToken);
-        if (grantsResult.IsFailed)
-        {
-            return Result.Fail<MountResultDto>(grantsResult.Errors);
         }
 
         var creation = Mount.Create(
@@ -113,7 +94,7 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
             command.Name,
             command.Visibility,
             Clock.UtcNow,
-            grantsResult.Value);
+            overwritesResult.Value);
         if (creation.IsFailed)
         {
             return Result.Fail<MountResultDto>(creation.Errors);
@@ -132,123 +113,61 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
             return Result.Fail<MountResultDto>(save.Errors);
         }
 
-        var permissions = new HashSet<MountPermission>
-        {
-            MountPermission.FilesRead,
-            MountPermission.FilesDownload,
-        };
-        foreach (var grant in mount.Grants.Where(grant =>
-                     (grant.TargetType == MountGrantTargetType.Role && actorRoleIds.Contains(grant.TargetId))
-                     || (grant.TargetType == MountGrantTargetType.User && grant.TargetId == command.Actor.UserId)))
-        {
-            permissions.UnionWith(grant.Permissions);
-        }
-
-        var dto = new MountDto(
-            space.PublicId,
-            mount.PublicId,
-            mount.Name,
-            mount.Visibility,
-            mount.Status,
-            new MountAccessDto(permissions, CanManage: true),
-            mount.CreatedAt,
-            mount.UpdatedAt,
-            mount.ArchivedAt);
-        return Result.Ok(new MountResultDto(dto, mount.Version));
+        var access = MountPermissionPolicy.Evaluate(snapshot, command.Space.UserId, mount).Permissions;
+        return Result.Ok(new MountResultDto(MountDtoMapper.ToDto(space, mount, access), mount.Version));
     }
 
-    private async Task<Result<IReadOnlyList<MountAccessGrant>>> ResolveInitialGrantsAsync(
+    private async Task<Result<IReadOnlyList<MountPermissionOverwrite>>> ResolveInitialOverwritesAsync(
         CreateMountCommand command,
         Space space,
         CancellationToken cancellationToken)
     {
-        IReadOnlyList<InitialMountRoleGrant> roleRequests =
-            command.RoleGrants ?? Array.Empty<InitialMountRoleGrant>();
-        IReadOnlyList<InitialMountUserGrant> userRequests =
-            command.UserGrants ?? Array.Empty<InitialMountUserGrant>();
-        var grants = new List<MountAccessGrant>(roleRequests.Count + userRequests.Count);
+        IReadOnlyList<InitialMountRoleOverwrite> roleRequests =
+            command.RoleOverwrites ?? Array.Empty<InitialMountRoleOverwrite>();
+        IReadOnlyList<InitialMountUserOverwrite> userRequests =
+            command.UserOverwrites ?? Array.Empty<InitialMountUserOverwrite>();
+        var overwrites = new List<MountPermissionOverwrite>(roleRequests.Count + userRequests.Count);
         if (roleRequests.Count == 0 && userRequests.Count == 0)
         {
-            return Result.Ok<IReadOnlyList<MountAccessGrant>>(grants);
+            return Result.Ok<IReadOnlyList<MountPermissionOverwrite>>(overwrites);
         }
 
-        var targetsResult = await GrantTargetReader.ReadAsync(
+        var targetsResult = await TargetReader.ReadAsync(
             space.Id,
             roleRequests.Select(request => request.RolePublicId).ToArray(),
             userRequests.Select(request => request.UserPublicId).ToArray(),
             cancellationToken);
         if (targetsResult.IsFailed)
         {
-            return Result.Fail<IReadOnlyList<MountAccessGrant>>(targetsResult.Errors);
+            return Result.Fail<IReadOnlyList<MountPermissionOverwrite>>(targetsResult.Errors);
         }
 
-        var targets = targetsResult.Value;
-        foreach (var request in roleRequests)
+        var requests = roleRequests
+            .Select(request => (MountOverwriteTargetType.Role, request.RolePublicId, request.Allow, request.Deny))
+            .Concat(userRequests.Select(request =>
+                (MountOverwriteTargetType.User, request.UserPublicId, request.Allow, request.Deny)));
+        foreach (var (targetType, targetPublicId, allow, deny) in requests)
         {
-            if (!targets.Roles.TryGetValue(request.RolePublicId, out var role) || role.SpaceId != space.Id)
+            var targetId = MountOverwriteMutationWorkflow.ResolveTargetId(
+                space,
+                targetsResult.Value,
+                targetType,
+                targetPublicId,
+                isRemoval: false);
+            if (targetId.IsFailed)
             {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(CommonError.ResourceNotFound());
+                return Result.Fail<IReadOnlyList<MountPermissionOverwrite>>(targetId.Errors);
             }
 
-            if (role.DeletedAt is not null)
+            var overwrite = MountPermissionOverwrite.Create(targetType, targetId.Value, allow, deny);
+            if (overwrite.IsFailed)
             {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(CommonError.RequestConflict());
+                return Result.Fail<IReadOnlyList<MountPermissionOverwrite>>(overwrite.Errors);
             }
 
-            var grant = MountAccessGrant.Create(MountGrantTargetType.Role, role.Id, request.Permissions);
-            if (grant.IsFailed)
-            {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(grant.Errors);
-            }
-
-            grants.Add(grant.Value);
+            overwrites.Add(overwrite.Value);
         }
 
-        foreach (var request in userRequests)
-        {
-            if (!targets.Users.TryGetValue(request.UserPublicId, out var target))
-            {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(CommonError.ResourceNotFound());
-            }
-
-            var user = target.User;
-            var isOwner = user.Id == space.OwnerUserId;
-            var membership = target.Membership;
-            var hasMatchingMembership = membership is not null
-                && membership.SpaceId == space.Id
-                && membership.UserId == user.Id;
-            if (!isOwner && !hasMatchingMembership)
-            {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(CommonError.ResourceNotFound());
-            }
-
-            if (user.Status != UserStatus.Active
-                || (!isOwner && (membership!.Id <= 0 || membership.Status != SpaceMembershipStatus.Active)))
-            {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(CommonError.RequestConflict());
-            }
-
-            var grant = MountAccessGrant.Create(MountGrantTargetType.User, user.Id, request.Permissions);
-            if (grant.IsFailed)
-            {
-                return Result.Fail<IReadOnlyList<MountAccessGrant>>(grant.Errors);
-            }
-
-            grants.Add(grant.Value);
-        }
-
-        return Result.Ok<IReadOnlyList<MountAccessGrant>>(grants);
-    }
-
-    private static HashSet<long> GetCurrentRoleIds(SpaceAuthorizationSnapshot snapshot, long userId)
-    {
-        var membership = snapshot.Membership;
-        if (membership is null || membership.Id <= 0 || membership.SpaceId != snapshot.Space.Id
-            || membership.UserId != userId || membership.Status != SpaceMembershipStatus.Active)
-        {
-            return new HashSet<long>();
-        }
-
-        return membership.RoleAssignments.Select(assignment => assignment.RoleId).ToHashSet();
+        return Result.Ok<IReadOnlyList<MountPermissionOverwrite>>(overwrites);
     }
 }

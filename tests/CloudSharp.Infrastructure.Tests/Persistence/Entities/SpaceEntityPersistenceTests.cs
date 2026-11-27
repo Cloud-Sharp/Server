@@ -100,13 +100,14 @@ public sealed class SpaceEntityPersistenceTests
             Assert.That(savedRole.Id, Is.GreaterThan(0).And.EqualTo(role.Id));
             Assert.That(savedRole.SystemKey, Is.EqualTo(SpaceRoleSystemKey.Viewer));
             Assert.That(systemKey, Is.EqualTo("VIEWER"));
-            Assert.That(storedMask, Is.EqualTo(21L));
+            Assert.That(storedMask, Is.EqualTo(16405L));
             Assert.That(savedRole.PermissionMask, Is.EqualTo(storedMask));
             Assert.That(savedRole.ToDomain().StoredPermissions, Is.EquivalentTo(new[]
             {
                 SpacePermission.SpaceView,
                 SpacePermission.FilesRead,
                 SpacePermission.FilesDownload,
+                SpacePermission.MountView,
             }));
             Assert.That(savedMembership.Id, Is.GreaterThan(0).And.EqualTo(membership.Id));
             Assert.That(membershipRole.RoleId, Is.EqualTo(existingRole.Id));
@@ -117,7 +118,7 @@ public sealed class SpaceEntityPersistenceTests
     }
 
     [TestCase(-1L)]
-    [TestCase(8192L)]
+    [TestCase(32768L)]
     public async Task SaveChangesAsync_ShouldRejectInvalidRolePermissionMask(long mask)
     {
         await using var scope = services!.CreateAsyncScope();

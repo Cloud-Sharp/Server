@@ -2,43 +2,55 @@ using CloudSharp.Core.Domain.Mounts;
 
 namespace CloudSharp.Infrastructure.Persistence.Entities;
 
-/// <summary>Persistence row for an explicit grant to a Role in the Mount's Space.</summary>
+/// <summary>Persistence row for a Mount permission overwrite for a Role in the Mount's Space.</summary>
 public sealed class MountRoleGrantEntity
 {
     public long MountId { get; set; }
     public long SpaceId { get; set; }
     public long RoleId { get; set; }
-    public long PermissionMask { get; set; }
+    public long AllowMask { get; set; }
+    public long DenyMask { get; set; }
     public MountEntity Mount { get; set; } = null!;
 
-    public MountAccessGrant ToDomain() =>
-        MountAccessGrant.Reconstitute(MountGrantTargetType.Role, RoleId, MountPermissionMask.Decode(PermissionMask));
+    public MountPermissionOverwrite ToDomain() =>
+        MountPermissionOverwrite.Reconstitute(
+            MountOverwriteTargetType.Role,
+            RoleId,
+            MountOverwriteMask.Decode(AllowMask),
+            MountOverwriteMask.Decode(DenyMask));
 
-    public static MountRoleGrantEntity FromDomain(MountEntity mount, MountAccessGrant grant)
+    public static MountRoleGrantEntity FromDomain(MountEntity mount, MountPermissionOverwrite overwrite)
     {
         ArgumentNullException.ThrowIfNull(mount);
-        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(overwrite);
 
         var entity = new MountRoleGrantEntity
         {
             MountId = mount.Id,
             SpaceId = mount.SpaceId,
-            RoleId = grant.TargetId,
+            RoleId = overwrite.TargetId,
             Mount = mount,
         };
-        entity.UpdateFrom(grant);
+        entity.UpdateFrom(overwrite);
         return entity;
     }
 
-    public void UpdateFrom(MountAccessGrant grant)
+    public void UpdateFrom(MountPermissionOverwrite overwrite)
     {
-        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(overwrite);
 
-        if (grant.TargetType != MountGrantTargetType.Role || grant.TargetId != RoleId)
+        if (overwrite.TargetType != MountOverwriteTargetType.Role || overwrite.TargetId != RoleId)
         {
-            throw new ArgumentException("The grant must target this row's Role.", nameof(grant));
+            throw new ArgumentException("The overwrite must target this row's Role.", nameof(overwrite));
         }
 
-        PermissionMask = MountPermissionMask.Encode(grant.Permissions);
+        if (overwrite.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A stored Mount overwrite must allow or deny at least one permission.", nameof(overwrite));
+        }
+
+        AllowMask = MountOverwriteMask.Encode(overwrite.Allow);
+        DenyMask = MountOverwriteMask.Encode(overwrite.Deny);
     }
 }

@@ -1,7 +1,6 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
@@ -46,51 +45,25 @@ public sealed class PreviewMountPermissionsUseCase : IUseCase<PreviewMountPermis
             return Result.Fail<MountPermissionPreviewPageDto>(CommonError.DependencyUnavailable());
         }
 
-        var snapshotResult = await AuthorizationReader.ReadAsync(
-            query.SpacePublicId,
-            query.Actor.UserId,
-            cancellationToken);
+        var context = query.Mount;
+        var snapshotResult = await MountWorkflowReads.ReadSpaceAsync(
+            AuthorizationReader, context.Space, cancellationToken);
         if (snapshotResult.IsFailed)
         {
             return Result.Fail<MountPermissionPreviewPageDto>(snapshotResult.Errors);
         }
 
-        var authorization = SessionSpaceAuthorizationPolicy.Evaluate(
-            new SpaceAuthorizationQuery(
-                query.Actor,
-                query.SpacePublicId,
-                Array.Empty<SpacePermission>(),
-                new[] { SpaceStatus.Active, SpaceStatus.Archived },
-                allowSystemAdminBypass: false),
-            snapshotResult.Value);
-        if (authorization.IsFailed)
-        {
-            return Result.Fail<MountPermissionPreviewPageDto>(authorization.Errors);
-        }
-
-        var authorizationSnapshot = snapshotResult.Value!;
-        var space = authorizationSnapshot.Space;
-        var mountResult = await MountReader.ReadAsync(space.Id, query.MountPublicId, cancellationToken);
+        var space = snapshotResult.Value.Space;
+        var mountResult = await MountReader.ReadAsync(space.Id, context.MountPublicId, cancellationToken);
         if (mountResult.IsFailed)
         {
             return Result.Fail<MountPermissionPreviewPageDto>(mountResult.Errors);
         }
 
         var mount = mountResult.Value;
-        if (mount is null || mount.SpaceId != space.Id)
+        if (mount is null || mount.Id != context.MountId || mount.SpaceId != space.Id)
         {
             return Result.Fail<MountPermissionPreviewPageDto>(CommonError.ResourceNotFound());
-        }
-
-        var access = MountAccessEvaluator.Evaluate(authorizationSnapshot, query.Actor.UserId, mount);
-        if (!access.Permissions.Contains(MountPermission.FilesRead))
-        {
-            return Result.Fail<MountPermissionPreviewPageDto>(CommonError.ResourceNotFound());
-        }
-
-        if (!access.IsManager)
-        {
-            return Result.Fail<MountPermissionPreviewPageDto>(SpaceAuthorizationError.PermissionDenied());
         }
 
         return query.UserPublicId is { } userPublicId
@@ -114,7 +87,7 @@ public sealed class PreviewMountPermissionsUseCase : IUseCase<PreviewMountPermis
         var subject = subjectResult.Value;
         if (subject is null
             || subject.User.Status != UserStatus.Active
-            || !MountAccessEvaluator.HasSpaceAccess(space, subject.User.Id, subject.Membership))
+            || !MountPermissionPolicy.HasSpaceAccess(space, subject.User.Id, subject.Membership))
         {
             return Result.Fail<MountPermissionPreviewPageDto>(CommonError.ResourceNotFound());
         }
@@ -180,7 +153,7 @@ public sealed class PreviewMountPermissionsUseCase : IUseCase<PreviewMountPermis
             {
                 var subject = candidate.Subject;
                 if (subject.User.Status != UserStatus.Active
-                    || !MountAccessEvaluator.HasSpaceAccess(space, subject.User.Id, subject.Membership))
+                    || !MountPermissionPolicy.HasSpaceAccess(space, subject.User.Id, subject.Membership))
                 {
                     continue;
                 }
@@ -214,12 +187,12 @@ public sealed class PreviewMountPermissionsUseCase : IUseCase<PreviewMountPermis
         return Result.Ok(new MountPermissionPreviewPageDto(items, nextCursor));
     }
 
-    private static MountAccessEvaluation EvaluateSubject(
+    private static MountPermissionEvaluation EvaluateSubject(
         Space space,
         Mount mount,
         MountPreviewUserSnapshot subject,
         MountVisibility? visibility = null) =>
-        MountAccessEvaluator.Evaluate(
+        MountPermissionPolicy.Evaluate(
             space,
             subject.User.Id,
             subject.Membership,
@@ -229,12 +202,12 @@ public sealed class PreviewMountPermissionsUseCase : IUseCase<PreviewMountPermis
 
     private static MountPermissionPreviewDto ToPreviewDto(
         Guid userPublicId,
-        MountAccessEvaluation current,
-        MountAccessEvaluation preview) =>
+        MountPermissionEvaluation current,
+        MountPermissionEvaluation preview) =>
         new(
             userPublicId,
             current.Permissions,
             preview.Permissions,
-            current.Sources,
-            preview.Sources);
+            current.Sources.Select(MountPermissionSourceDto.From).ToArray(),
+            preview.Sources.Select(MountPermissionSourceDto.From).ToArray());
 }

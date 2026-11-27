@@ -1,5 +1,5 @@
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Policies.Authorization;
 using FluentValidation;
@@ -8,34 +8,6 @@ namespace CloudSharp.Core.UseCases.Mounts;
 
 internal static class MountInputValidationRules
 {
-    public static IRuleBuilderOptions<TInput, CurrentActor> RequireSessionActor<TInput>(
-        this IRuleBuilderInitial<TInput, CurrentActor> ruleBuilder) =>
-        ruleBuilder
-            .Cascade(CascadeMode.Stop)
-            .NotNull()
-            .WithErrorCode(ErrorCodes.Auth.TokenRequired)
-            .WithMessage("A Session actor is required.")
-            .Must(actor => actor.ActorType == ActorType.Session)
-            .WithErrorCode(ErrorCodes.Auth.TokenTypeNotAllowed)
-            .WithMessage("Only Session actors can access mounts.")
-            .Must(actor => SessionSpaceAuthorizationPolicy.ValidateActor(actor).IsSuccess)
-            .WithErrorCode(ErrorCodes.Auth.TokenInvalid)
-            .WithMessage("The Session actor is invalid.");
-
-    public static IRuleBuilderOptions<TInput, Guid> RequireSpacePublicId<TInput>(
-        this IRuleBuilder<TInput, Guid> ruleBuilder) =>
-        ruleBuilder
-            .Must(IsPublicId)
-            .WithErrorCode(ErrorCodes.Space.PublicIdInvalid)
-            .WithMessage("Space public ID must be an RFC-variant UUIDv7.");
-
-    public static IRuleBuilderOptions<TInput, Guid> RequireMountPublicId<TInput>(
-        this IRuleBuilder<TInput, Guid> ruleBuilder) =>
-        ruleBuilder
-            .Must(IsPublicId)
-            .WithErrorCode(ErrorCodes.Mount.PublicIdInvalid)
-            .WithMessage("Mount public ID must be an RFC-variant UUIDv7.");
-
     public static IRuleBuilderOptions<TInput, Guid> RequireTargetPublicId<TInput>(
         this IRuleBuilder<TInput, Guid> ruleBuilder) =>
         ruleBuilder
@@ -64,17 +36,20 @@ internal static class MountInputValidationRules
             .WithErrorCode(ErrorCodes.Common.CursorInvalid)
             .WithMessage("Cursor must not be empty or whitespace.");
 
-    public static IRuleBuilderOptions<TInput, IReadOnlyList<MountPermission>> RequirePermissions<TInput>(
-        this IRuleBuilder<TInput, IReadOnlyList<MountPermission>> ruleBuilder,
-        bool allowEmpty) =>
+    public static IRuleBuilderOptions<TInput, AuthorizedMountContext> RequireAuthorizedMountContext<TInput>(
+        this IRuleBuilder<TInput, AuthorizedMountContext> ruleBuilder) =>
         ruleBuilder
-            .Must(permissions => permissions is not null
-                && (allowEmpty || permissions.Count > 0)
-                && permissions.All(Enum.IsDefined))
+            .NotNull()
+            .WithErrorCode(ErrorCodes.Mount.AuthorizationContextRequired)
+            .WithMessage("Authorized mount context is required.");
+
+    /// <summary>덮어쓰기 입력의 허용·거부 목록은 Mount 범위 권한만 담아야 한다. 겹침과 빈 덮어쓰기는 도메인이 검사한다.</summary>
+    public static IRuleBuilderOptions<TInput, IReadOnlyList<SpacePermission>> RequireMountScopedPermissions<TInput>(
+        this IRuleBuilder<TInput, IReadOnlyList<SpacePermission>> ruleBuilder) =>
+        ruleBuilder
+            .Must(permissions => permissions is not null && permissions.All(MountScopedPermissions.Contains))
             .WithErrorCode(ErrorCodes.Mount.PermissionsInvalid)
-            .WithMessage(allowEmpty
-                ? "Permissions are required and must contain only defined Mount permission values."
-                : "Initial mount grants require at least one defined permission.");
+            .WithMessage("Overwrite permissions are required and must contain only mount-scoped permissions.");
 
     public static bool IsPublicId(Guid id) => id.Version == 7 && id.Variant is >= 8 and <= 11;
 }

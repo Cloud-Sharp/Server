@@ -2,7 +2,6 @@ using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
 using CloudSharp.Core.Domain.Memberships;
-using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
@@ -42,32 +41,17 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
             return Result.Fail<MountPageDto>(CommonError.DependencyUnavailable());
         }
 
-        var snapshotResult = await AuthorizationReader.ReadAsync(
-            query.SpacePublicId,
-            query.Actor.UserId,
-            cancellationToken);
+        var context = query.Space;
+        var snapshotResult = await MountWorkflowReads.ReadSpaceAsync(AuthorizationReader, context, cancellationToken);
         if (snapshotResult.IsFailed)
         {
             return Result.Fail<MountPageDto>(snapshotResult.Errors);
         }
 
-        var authorization = SessionSpaceAuthorizationPolicy.Evaluate(
-            new SpaceAuthorizationQuery(
-                query.Actor,
-                query.SpacePublicId,
-                Array.Empty<SpacePermission>(),
-                new[] { SpaceStatus.Active, SpaceStatus.Archived },
-                allowSystemAdminBypass: false),
-            snapshotResult.Value);
-        if (authorization.IsFailed)
-        {
-            return Result.Fail<MountPageDto>(authorization.Errors);
-        }
-
-        var snapshot = snapshotResult.Value!;
+        var snapshot = snapshotResult.Value;
         var space = snapshot.Space;
         var canCreateMount = space.Status == SpaceStatus.Active
-            && MountAccessEvaluator.IsManager(space, query.Actor.UserId, snapshot.Membership, snapshot.Roles);
+            && context.EffectivePermissions.Contains(SpacePermission.MountManage);
         var accessible = new List<(MountSummaryDto Item, string Cursor)>();
         var traversalCursor = query.Cursor;
         var traversedCursors = new HashSet<string>(StringComparer.Ordinal);
@@ -80,7 +64,7 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
         {
             var readResult = await CandidateReader.ReadAsync(
                 space.Id,
-                query.Actor,
+                context.UserId,
                 traversalCursor,
                 query.Limit + 1,
                 query.Sort,
@@ -122,8 +106,8 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
                     continue;
                 }
 
-                var access = MountAccessEvaluator.Evaluate(snapshot, query.Actor.UserId, mount);
-                if (!access.Permissions.Contains(MountPermission.FilesRead))
+                var access = MountPermissionPolicy.Evaluate(snapshot, context.UserId, mount).Permissions;
+                if (!access.Contains(SpacePermission.MountView))
                 {
                     continue;
                 }
@@ -135,9 +119,7 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
                     mount.Status,
                     mount.CreatedAt,
                     mount.UpdatedAt,
-                    new MountAccessDto(
-                        access.Permissions,
-                        access.IsManager && space.Status == SpaceStatus.Active));
+                    MountAccessDto.From(access));
                 accessible.Add((item, candidate.CursorAfter));
                 if (accessible.Count > query.Limit)
                 {

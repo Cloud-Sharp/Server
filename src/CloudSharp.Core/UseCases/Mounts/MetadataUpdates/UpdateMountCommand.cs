@@ -1,15 +1,13 @@
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Policies.Authorization;
 using FluentValidation;
 
 namespace CloudSharp.Core.UseCases.Mounts.MetadataUpdates;
 
-/// <summary>변경 값 객체를 생략하면 해당 설정을 유지한다.</summary>
+/// <summary>MOUNT_MANAGE 인가를 받은 Mount의 설정을 바꾼다. 변경 값 객체를 생략하면 해당 설정을 유지한다.</summary>
 public sealed record UpdateMountCommand(
-    CurrentActor Actor,
-    Guid SpacePublicId,
-    Guid MountPublicId,
+    AuthorizedMountContext Mount,
     long ExpectedVersion,
     MountNameChange? Name = null,
     MountVisibilityChange? Visibility = null);
@@ -24,9 +22,7 @@ internal sealed class UpdateMountCommandValidator : AbstractValidator<UpdateMoun
 {
     public UpdateMountCommandValidator()
     {
-        RuleFor(command => command.Actor).RequireSessionActor();
-        RuleFor(command => command.SpacePublicId).RequireSpacePublicId();
-        RuleFor(command => command.MountPublicId).RequireMountPublicId();
+        RuleFor(command => command.Mount).RequireAuthorizedMountContext();
         RuleFor(command => command.ExpectedVersion).RequireExpectedVersion();
 
         RuleFor(command => command)

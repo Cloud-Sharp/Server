@@ -60,6 +60,7 @@ public sealed class SpaceRole
             SpacePermission.SpaceView,
             SpacePermission.FilesRead,
             SpacePermission.FilesDownload,
+            SpacePermission.MountView,
         }.ToFrozenSet();
 
     private static readonly FrozenSet<SpacePermission> MemberPermissions =
@@ -73,6 +74,7 @@ public sealed class SpaceRole
             SpacePermission.SharesManage,
             SpacePermission.TagsManage,
             SpacePermission.MembersView,
+            SpacePermission.MountView,
         }.ToFrozenSet();
 
     /// <summary>

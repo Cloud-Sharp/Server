@@ -293,7 +293,7 @@ public sealed class SpaceReadEndpointTests : SpaceIntegrationTestBase
             Assert.That(detail.MyAccess.Source, Is.EqualTo("MEMBERSHIP"));
             Assert.That(
                 detail.MyAccess.Permissions,
-                Is.EquivalentTo(new[] { "SPACE_VIEW", "FILES_READ", "FILES_DOWNLOAD" }));
+                Is.EquivalentTo(new[] { "SPACE_VIEW", "FILES_READ", "FILES_DOWNLOAD", "MOUNT_VIEW" }));
         });
     }
 

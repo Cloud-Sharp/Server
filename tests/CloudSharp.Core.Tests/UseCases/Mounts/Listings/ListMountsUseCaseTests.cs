@@ -1,8 +1,11 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Policies.Authorization;
+using CloudSharp.Core.Tests.TestSupport.Builders;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
 using CloudSharp.Core.UseCases.Mounts.Listings;
 using CloudSharp.TestSupport.Fakes;
@@ -31,7 +34,7 @@ public sealed class ListMountsUseCaseTests
         var harness = new Harness(actor, [Member(actor)], candidates, maxBatchSize: 2);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, limit: 2));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, Member(actor), limit: 2));
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
@@ -44,7 +47,7 @@ public sealed class ListMountsUseCaseTests
             Assert.That(result.Value.CanCreateMount, Is.False);
             Assert.That(harness.CandidateReader.Reads.Count, Is.GreaterThan(1));
             Assert.That(harness.CandidateReader.Reads.All(read => read.SpaceId == SpaceId), Is.True);
-            Assert.That(harness.CandidateReader.Reads.All(read => read.Actor == actor), Is.True);
+            Assert.That(harness.CandidateReader.Reads.All(read => read.UserId == actor.UserId), Is.True);
             Assert.That(harness.CandidateReader.Reads.All(read => read.BatchSize == 3), Is.True);
             Assert.That(harness.CandidateReader.Reads.All(read => read.Descending), Is.True);
         });
@@ -66,7 +69,7 @@ public sealed class ListMountsUseCaseTests
         var harness = new Harness(actor, [Member(actor)], candidates, maxBatchSize: 1);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, limit: 1));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, Member(actor), limit: 1));
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
@@ -98,7 +101,7 @@ public sealed class ListMountsUseCaseTests
         var privateMount = Mount(
             21,
             visibility: MountVisibility.Private,
-            grants: [Grant(MountGrantTargetType.Role, assignedRole.Id, MountPermission.FilesRead)]);
+            overwrites: [Overwrite(MountOverwriteTargetType.Role, assignedRole.Id, allow: [SpacePermission.MountView])]);
         var candidates = new[]
         {
             Candidate(20),
@@ -108,8 +111,9 @@ public sealed class ListMountsUseCaseTests
         var harness = new Harness(actor, [firstSnapshot, secondSnapshot], candidates, maxBatchSize: 2);
 
         // Act
-        var firstPage = await harness.UseCase.ExecuteAsync(Query(actor, limit: 1));
-        var secondPage = await harness.UseCase.ExecuteAsync(Query(actor, limit: 1, cursor: firstPage.Value.NextCursor));
+        var firstPage = await harness.UseCase.ExecuteAsync(Query(actor, firstSnapshot, limit: 1));
+        var secondPage = await harness.UseCase.ExecuteAsync(
+            Query(actor, secondSnapshot, limit: 1, cursor: firstPage.Value.NextCursor));
 
         // Assert
         Assert.That(firstPage.IsSuccess, Is.True);
@@ -137,7 +141,7 @@ public sealed class ListMountsUseCaseTests
         var harness = new Harness(actor, [Owner(actor)], []);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, Owner(actor)));
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
@@ -146,6 +150,54 @@ public sealed class ListMountsUseCaseTests
             Assert.That(result.Value.Items, Is.Empty);
             Assert.That(result.Value.NextCursor, Is.Null);
             Assert.That(result.Value.CanCreateMount, Is.True);
+        });
+    }
+
+    [TestCase(SpaceStatus.Active, true)]
+    [TestCase(SpaceStatus.Archived, false)]
+    public async Task ExecuteAsync_ShouldApplySpaceManagementPermissionToAccessibleMounts(
+        SpaceStatus spaceStatus,
+        bool canManage)
+    {
+        // Arrange
+        var actor = Actor();
+        var role = Role(105, permissions: [SpacePermission.MountView, SpacePermission.MountManage]);
+        var visible = Candidate(31);
+        var hidden = Candidate(32, MountVisibility.Private);
+        var snapshot = Member(actor, [role], spaceStatus: spaceStatus);
+        var harness = new Harness(actor, [snapshot], [visible, hidden]);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, snapshot));
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        var item = result.Value.Items.Single();
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.CanCreateMount, Is.EqualTo(canManage));
+            Assert.That(item.MountPublicId, Is.EqualTo(visible.Mount.PublicId));
+            Assert.That(item.MyAccess.CanManage, Is.EqualTo(canManage));
+        });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldLimitDirectMountManagementToItsResource()
+    {
+        // Arrange
+        var actor = Actor();
+        var mount = Mount(33, overwrites: [Overwrite(MountOverwriteTargetType.User, actor.UserId, allow: [SpacePermission.MountManage])]);
+        var harness = new Harness(actor, [Member(actor)], [new MountListCandidate(mount, "cursor-33")]);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, Member(actor)));
+
+        // Assert
+        Assert.That(result.IsSuccess, Is.True);
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.Value.Items.Single().MyAccess.CanManage, Is.True);
+            Assert.That(result.Value.CanCreateMount, Is.False);
         });
     }
 
@@ -158,7 +210,7 @@ public sealed class ListMountsUseCaseTests
         var harness = new Harness(actor, [Member(actor)], []);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, limit: limit));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, Member(actor), limit: limit));
 
         // Assert
         AssertValidationError(result, ErrorCodes.Mount.ListLimitInvalid, nameof(ListMountsQuery.Limit));
@@ -167,6 +219,21 @@ public sealed class ListMountsUseCaseTests
             Assert.That(harness.AuthorizationReader.Reads, Is.Empty);
             Assert.That(harness.CandidateReader.Reads, Is.Empty);
         });
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldReturnContextValidationErrorWithoutDependencyCalls()
+    {
+        // Arrange
+        var actor = Actor();
+        var harness = new Harness(actor, [Member(actor)], []);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(new ListMountsQuery(null!));
+
+        // Assert
+        AssertValidationError(result, ErrorCodes.Space.AuthorizationContextRequired, nameof(ListMountsQuery.Space));
+        Assert.That(harness.AuthorizationReader.Reads, Is.Empty);
     }
 
     [TestCase(ErrorCodes.Common.CursorInvalid)]
@@ -180,14 +247,28 @@ public sealed class ListMountsUseCaseTests
         harness.CandidateReader.Failure = failure;
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(actor, cursor: "opaque-cursor"));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, Member(actor), cursor: "opaque-cursor"));
 
         // Assert
         AssertReadFailure(result, failure, errorCode);
     }
 
-    private static ListMountsQuery Query(CurrentActor actor, int limit = 50, string? cursor = null) =>
-        new(actor, SpacePublicId, cursor, limit, "CREATED_AT", Descending: true);
+    private static ListMountsQuery Query(
+        CurrentActor actor,
+        SpaceAuthorizationSnapshot snapshot,
+        int limit = 50,
+        string? cursor = null) =>
+        new(
+            SpaceContext(
+                actor,
+                SpacePermissionPolicy.Evaluate(snapshot.Space, actor.UserId, snapshot.Membership, snapshot.Roles),
+                source: snapshot.Space.OwnerUserId == actor.UserId
+                    ? SpaceAuthorizationSource.Owner
+                    : SpaceAuthorizationSource.Membership),
+            cursor,
+            limit,
+            "CREATED_AT",
+            Descending: true);
 
     private static MountListCandidate Candidate(long id, MountVisibility visibility = MountVisibility.Public) =>
         new(Mount(id, visibility: visibility), $"cursor-{id}");
@@ -204,7 +285,7 @@ public sealed class ListMountsUseCaseTests
             Assert.That(item.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
             Assert.That(
                 item.MyAccess.Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
+                Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.FilesRead }));
             Assert.That(item.MyAccess.CanManage, Is.False);
         });
     }
@@ -269,7 +350,7 @@ public sealed class ListMountsUseCaseTests
 
         public Task<Result<MountListCandidatePage>> ReadAsync(
             long spaceId,
-            CurrentActor actor,
+            long userId,
             string? cursor,
             int batchSize,
             string? sort,
@@ -277,7 +358,7 @@ public sealed class ListMountsUseCaseTests
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
-            reads.Add(new MountListRead(spaceId, actor, cursor, batchSize, sort, descending));
+            reads.Add(new MountListRead(spaceId, userId, cursor, batchSize, sort, descending));
             if (Failure is { } failure)
             {
                 return Task.FromResult(Result.Fail<MountListCandidatePage>(failure));
@@ -304,7 +385,7 @@ public sealed class ListMountsUseCaseTests
 
     private sealed record MountListRead(
         long SpaceId,
-        CurrentActor Actor,
+        long UserId,
         string? Cursor,
         int BatchSize,
         string? Sort,

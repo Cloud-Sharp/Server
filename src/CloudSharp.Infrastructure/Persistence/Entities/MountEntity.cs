@@ -2,7 +2,7 @@ using CloudSharp.Core.Domain.Mounts;
 
 namespace CloudSharp.Infrastructure.Persistence.Entities;
 
-/// <summary>Persistence row for a Mount. Its grants are stored separately.</summary>
+/// <summary>Persistence row for a Mount. Its permission overwrites are stored separately.</summary>
 public sealed class MountEntity
 {
     public long Id { get; set; }
@@ -16,7 +16,7 @@ public sealed class MountEntity
     public DateTimeOffset UpdatedAt { get; set; }
     public DateTimeOffset? ArchivedAt { get; set; }
 
-    /// <summary>Restores the Mount and its materialized grant rows.</summary>
+    /// <summary>Restores the Mount and its materialized overwrite rows.</summary>
     public Mount ToDomain(
         IEnumerable<MountRoleGrantEntity> roleGrants,
         IEnumerable<MountUserGrantEntity> userGrants)
@@ -35,7 +35,7 @@ public sealed class MountEntity
             createdAt: CreatedAt,
             updatedAt: UpdatedAt,
             archivedAt: ArchivedAt,
-            grants: roleGrants.Select(grant => grant.ToDomain())
+            overwrites: roleGrants.Select(grant => grant.ToDomain())
                 .Concat(userGrants.Select(grant => grant.ToDomain())));
     }
 

@@ -1,21 +1,18 @@
-using CloudSharp.Core.Common.Actors;
+using CloudSharp.Core.Policies.Authorization;
 using FluentValidation;
 
 namespace CloudSharp.Core.UseCases.Mounts.Archives;
 
+/// <summary>MOUNT_MANAGE 인가를 받은 ACTIVE Space에서 ACTIVE Mount를 보관한다.</summary>
 public sealed record ArchiveMountCommand(
-    CurrentActor Actor,
-    Guid SpacePublicId,
-    Guid MountPublicId,
+    AuthorizedMountContext Mount,
     long ExpectedVersion);
 
 internal sealed class ArchiveMountCommandValidator : AbstractValidator<ArchiveMountCommand>
 {
     public ArchiveMountCommandValidator()
     {
-        RuleFor(command => command.Actor).RequireSessionActor();
-        RuleFor(command => command.SpacePublicId).RequireSpacePublicId();
-        RuleFor(command => command.MountPublicId).RequireMountPublicId();
+        RuleFor(command => command.Mount).RequireAuthorizedMountContext();
         RuleFor(command => command.ExpectedVersion).RequireExpectedVersion();
     }
 }

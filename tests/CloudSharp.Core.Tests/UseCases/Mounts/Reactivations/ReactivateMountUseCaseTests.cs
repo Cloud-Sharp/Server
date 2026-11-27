@@ -1,4 +1,5 @@
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Tests.TestSupport.Builders;
@@ -14,17 +15,14 @@ public sealed class ReactivateMountUseCaseTests
     private static readonly DateTimeOffset Now = TestMountReadSnapshots.Now;
 
     [Test]
-    public async Task ExecuteAsync_ShouldReactivateMountAndRecomputeCurrentGrantAccess()
+    public async Task ExecuteAsync_ShouldReactivateMountWithDelegatedManagement()
     {
         // Arrange
-        var mount = StoredMount(grants:
+        var mount = StoredMount(overwrites:
         [
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                TestMountReadSnapshots.ActorUserId,
-                MountPermission.FilesWrite),
+            TestMountReadSnapshots.Overwrite(MountOverwriteTargetType.User, TestMountReadSnapshots.ActorUserId, allow: [SpacePermission.MountView, SpacePermission.MountManage]),
         ]);
-        var harness = Administrator(mount);
+        var harness = OrdinaryMember(mount);
         var command = Command(harness, mount);
 
         // Act
@@ -40,12 +38,12 @@ public sealed class ReactivateMountUseCaseTests
             Assert.That(update.Status, Is.EqualTo(MountStatus.Active));
             Assert.That(update.ArchivedAt, Is.Null);
             Assert.That(update.Version, Is.EqualTo(mount.Version + 1));
-            Assert.That(update.Grants, Is.EquivalentTo(mount.Grants));
+            Assert.That(update.Overwrites, Is.EquivalentTo(mount.Overwrites));
             Assert.That(dto.Status, Is.EqualTo(MountStatus.Active));
             Assert.That(dto.ArchivedAt, Is.Null);
             Assert.That(dto.UpdatedAt, Is.EqualTo(Now));
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(
-                new[] { MountPermission.FilesRead, MountPermission.FilesDownload, MountPermission.FilesWrite }));
+                new[] { SpacePermission.MountView, SpacePermission.MountManage, SpacePermission.FilesRead }));
             Assert.That(dto.MyAccess.CanManage, Is.True);
             Assert.That(result.Value.Version, Is.EqualTo(mount.Version + 1));
             Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount", "stage", "save" }));
@@ -104,26 +102,6 @@ public sealed class ReactivateMountUseCaseTests
 
         // Assert
         AssertError(result, ErrorCodes.Common.ResourceNotFound);
-        AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
-    }
-
-    [TestCase(MountVisibility.Public, ErrorCodes.Auth.SpacePermissionDenied)]
-    [TestCase(MountVisibility.Private, ErrorCodes.Common.ResourceNotFound)]
-    public async Task ExecuteAsync_ShouldCheckReadabilityAndManagerEligibilityBeforeVersion(
-        MountVisibility visibility,
-        string expectedError)
-    {
-        // Arrange
-        var mount = StoredMount(visibility: visibility);
-        var harness = OrdinaryMember(mount);
-
-        // Act
-        var result = await harness.ReactivateUseCase.ExecuteAsync(
-            Command(harness, mount, mount.Version - 1));
-
-        // Assert
-        AssertError(result, expectedError);
         AssertRejectedWithoutWrites(harness);
         Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
@@ -203,22 +181,20 @@ public sealed class ReactivateMountUseCaseTests
         MountStatus status = MountStatus.Archived,
         MountVisibility visibility = MountVisibility.Private,
         long spaceId = TestMountReadSnapshots.SpaceId,
-        IEnumerable<MountAccessGrant>? grants = null) =>
+        IEnumerable<MountPermissionOverwrite>? overwrites = null) =>
         TestMountReadSnapshots.Mount(
             MountId,
             spaceId,
             visibility,
             status,
             updatedAt: Now.AddHours(-1),
-            grants: grants);
+            overwrites: overwrites);
 
     private static ReactivateMountCommand Command(
         MountMutationTestHarness harness,
         Mount mount,
         long? expectedVersion = null) =>
         new(
-            harness.Actor,
-            TestMountReadSnapshots.SpacePublicId,
-            mount.PublicId,
+            harness.MountContext(mount),
             expectedVersion ?? mount.Version);
 }

@@ -1,6 +1,6 @@
 namespace CloudSharp.Core.Domain.Mounts;
 
-public enum MountGrantTargetType
+public enum MountOverwriteTargetType
 {
     Role = 0,
     User = 1,

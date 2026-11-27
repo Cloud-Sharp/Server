@@ -162,7 +162,7 @@ public sealed class MountReaderIntegrationTests
     }
 
     [Test]
-    public async Task ListReadAsync_ShouldPaginateBothDirectionsWithPublicIdTieBreakersAndGrants()
+    public async Task ListReadAsync_ShouldPaginateBothDirectionsWithPublicIdTieBreakersAndOverwrites()
     {
         await using var scope = CreateScope();
         var actor = CreateActor();
@@ -192,16 +192,18 @@ public sealed class MountReaderIntegrationTests
         {
             Assert.That(privateMount.Visibility, Is.EqualTo(MountVisibility.Private));
             Assert.That(privateMount.Status, Is.EqualTo(MountStatus.Active));
-            Assert.That(RequireGrant(privateMount, MountGrantTargetType.Role, WriterRoleId).Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesWrite }));
-            Assert.That(RequireGrant(privateMount, MountGrantTargetType.User, MemberId).Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesDownload }));
+            Assert.That(RequireOverwrite(privateMount, MountOverwriteTargetType.Role, WriterRoleId).Allow,
+                Is.EquivalentTo(new[] { SpacePermission.MountManage }));
+            Assert.That(RequireOverwrite(privateMount, MountOverwriteTargetType.User, MemberId).Allow,
+                Is.EquivalentTo(new[] { SpacePermission.MountView }));
+            Assert.That(RequireOverwrite(privateMount, MountOverwriteTargetType.User, MemberId).Deny,
+                Is.EquivalentTo(new[] { SpacePermission.FilesDownload }));
             Assert.That(archivedMount.Status, Is.EqualTo(MountStatus.Archived));
             Assert.That(archivedMount.Version, Is.EqualTo(7));
-            Assert.That(RequireGrant(archivedMount, MountGrantTargetType.Role, DeletedRoleId).Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
-            Assert.That(RequireGrant(archivedMount, MountGrantTargetType.User, SuspendedId).Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesWrite, MountPermission.FilesDownload }));
+            Assert.That(RequireOverwrite(archivedMount, MountOverwriteTargetType.Role, DeletedRoleId).Allow,
+                Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.MountManage }));
+            Assert.That(RequireOverwrite(archivedMount, MountOverwriteTargetType.User, SuspendedId).Allow,
+                Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.MountManage }));
         });
     }
 
@@ -211,7 +213,7 @@ public sealed class MountReaderIntegrationTests
         await using var scope = CreateScope();
         var actor = CreateActor();
         var first = RequireSuccess(await scope.ListCandidates.ReadAsync(
-            SpaceId, actor, null, 3, "CREATED_AT", descending: false));
+            SpaceId, actor.UserId, null, 3, "CREATED_AT", descending: false));
         Assert.Multiple(() =>
         {
             Assert.That(first.Candidates, Has.Count.EqualTo(3));
@@ -219,7 +221,7 @@ public sealed class MountReaderIntegrationTests
         });
 
         var resumed = RequireSuccess(await scope.ListCandidates.ReadAsync(
-            SpaceId, actor, first.Candidates[1].CursorAfter, 3, "CREATED_AT", descending: false));
+            SpaceId, actor.UserId, first.Candidates[1].CursorAfter, 3, "CREATED_AT", descending: false));
 
         Assert.Multiple(() =>
         {
@@ -235,7 +237,7 @@ public sealed class MountReaderIntegrationTests
         await using var scope = CreateScope();
         var actor = CreateActor();
         var page = RequireSuccess(await scope.ListCandidates.ReadAsync(
-            SpaceId, actor, null, 1, null, descending: true));
+            SpaceId, actor.UserId, null, 1, null, descending: true));
         var cursor = page.Candidates.Single().CursorAfter;
         var tampered = cursor[..^1] + (cursor[^1] == 'A' ? 'B' : 'A');
         var otherActor = CurrentActor.ForSession(
@@ -243,10 +245,10 @@ public sealed class MountReaderIntegrationTests
 
         var invalid = new[]
         {
-            await scope.ListCandidates.ReadAsync(SpaceId, actor, tampered, 1, null, true),
-            await scope.ListCandidates.ReadAsync(OtherSpaceId, actor, cursor, 1, null, true),
-            await scope.ListCandidates.ReadAsync(SpaceId, otherActor, cursor, 1, null, true),
-            await scope.ListCandidates.ReadAsync(SpaceId, actor, cursor, 1, null, false),
+            await scope.ListCandidates.ReadAsync(SpaceId, actor.UserId, tampered, 1, null, true),
+            await scope.ListCandidates.ReadAsync(OtherSpaceId, actor.UserId, cursor, 1, null, true),
+            await scope.ListCandidates.ReadAsync(SpaceId, otherActor.UserId, cursor, 1, null, true),
+            await scope.ListCandidates.ReadAsync(SpaceId, actor.UserId, cursor, 1, null, false),
         };
 
         foreach (var result in invalid)
@@ -430,10 +432,10 @@ public sealed class MountReaderIntegrationTests
                 SET version = 2, updated_at = @UpdatedAt
                 WHERE id = @MountId;
                 UPDATE mount_role_grants
-                SET permission_mask = 5
+                SET allow_mask = 16384, deny_mask = 0
                 WHERE mount_id = @MountId AND role_id = @TargetId;
                 UPDATE mount_user_grants
-                SET permission_mask = 7
+                SET allow_mask = 24576, deny_mask = 8
                 WHERE mount_id = @MountId AND user_id = @TargetId;
                 """, new { MountId = FilelessMountId, TargetId = MemberId, UpdatedAt = Later.AddHours(3) }, transaction);
             await transaction.CommitAsync();
@@ -441,23 +443,24 @@ public sealed class MountReaderIntegrationTests
 
         var second = RequireSuccess(await scope.Mounts.ReadAsync(SpaceId, FilelessMountPublicId));
         Assert.That(second, Is.Not.Null);
-        var firstRole = RequireGrant(first!, MountGrantTargetType.Role, WriterRoleId);
-        var firstUser = RequireGrant(first, MountGrantTargetType.User, MemberId);
-        var secondRole = RequireGrant(second!, MountGrantTargetType.Role, WriterRoleId);
-        var secondUser = RequireGrant(second, MountGrantTargetType.User, MemberId);
+        var firstRole = RequireOverwrite(first!, MountOverwriteTargetType.Role, WriterRoleId);
+        var firstUser = RequireOverwrite(first, MountOverwriteTargetType.User, MemberId);
+        var secondRole = RequireOverwrite(second!, MountOverwriteTargetType.Role, WriterRoleId);
+        var secondUser = RequireOverwrite(second, MountOverwriteTargetType.User, MemberId);
 
         Assert.Multiple(() =>
         {
             Assert.That(first, Is.Not.SameAs(second));
             Assert.That(first.Version, Is.EqualTo(1));
             Assert.That(first.UpdatedAt, Is.EqualTo(Later));
-            Assert.That(firstRole.Permissions, Is.EquivalentTo(new[] { MountPermission.FilesWrite }));
-            Assert.That(firstUser.Permissions, Is.EquivalentTo(new[] { MountPermission.FilesDownload }));
+            Assert.That(firstRole.Allow, Is.EquivalentTo(new[] { SpacePermission.MountManage }));
+            Assert.That(firstUser.Allow, Is.EquivalentTo(new[] { SpacePermission.MountView }));
             Assert.That(second.Version, Is.EqualTo(2));
             Assert.That(second.UpdatedAt, Is.EqualTo(Later.AddHours(3)));
-            Assert.That(secondRole.Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
-            Assert.That(secondUser.Permissions, Is.EquivalentTo(Enum.GetValues<MountPermission>()));
+            Assert.That(secondRole.Allow, Is.EquivalentTo(new[] { SpacePermission.MountView }));
+            Assert.That(secondRole.Deny, Is.Empty);
+            Assert.That(secondUser.Allow, Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.MountManage }));
+            Assert.That(secondUser.Deny, Is.EquivalentTo(new[] { SpacePermission.FilesWrite }));
             Assert.That(scope.Context.ChangeTracker.Entries(), Is.Empty);
         });
     }
@@ -478,50 +481,50 @@ public sealed class MountReaderIntegrationTests
         });
     }
 
-    [TestCase(MountGrantTargetType.Role)]
-    [TestCase(MountGrantTargetType.User)]
-    public async Task GrantReadAsync_ShouldPageByTargetPublicIdAndDecodeStoredPermissions(
-        MountGrantTargetType targetType)
+    [TestCase(MountOverwriteTargetType.Role)]
+    [TestCase(MountOverwriteTargetType.User)]
+    public async Task OverwriteReadAsync_ShouldPageByTargetPublicIdAndDecodeStoredMasks(
+        MountOverwriteTargetType targetType)
     {
         await using var scope = CreateScope();
-        var expected = ExpectedGrants(targetType);
+        var expected = ExpectedOverwrites(targetType);
 
-        var first = RequireSuccess(await scope.Grants.ReadAsync(
+        var first = RequireSuccess(await scope.Overwrites.ReadAsync(
             SpaceId, FirstMountId, targetType, null, 2));
         Assert.Multiple(() =>
         {
-            Assert.That(first.Grants, Has.Count.EqualTo(2));
+            Assert.That(first.Overwrites, Has.Count.EqualTo(2));
             Assert.That(first.NextCursor, Is.Not.Null.And.Not.Empty);
         });
-        AssertGrant(first.Grants[0], targetType, expected[0]);
-        AssertGrant(first.Grants[1], targetType, expected[1]);
+        AssertOverwrite(first.Overwrites[0], targetType, expected[0]);
+        AssertOverwrite(first.Overwrites[1], targetType, expected[1]);
 
-        var second = RequireSuccess(await scope.Grants.ReadAsync(
+        var second = RequireSuccess(await scope.Overwrites.ReadAsync(
             SpaceId, FirstMountId, targetType, first.NextCursor, 2));
 
         Assert.Multiple(() =>
         {
-            Assert.That(second.Grants, Has.Count.EqualTo(1));
+            Assert.That(second.Overwrites, Has.Count.EqualTo(1));
             Assert.That(second.NextCursor, Is.Null);
         });
-        AssertGrant(second.Grants[0], targetType, expected[2]);
+        AssertOverwrite(second.Overwrites[0], targetType, expected[2]);
     }
 
     [Test]
-    public async Task GrantReadAsync_ShouldRejectMalformedOrReboundCursor()
+    public async Task OverwriteReadAsync_ShouldRejectMalformedOrReboundCursor()
     {
         await using var scope = CreateScope();
-        var page = RequireSuccess(await scope.Grants.ReadAsync(
-            SpaceId, FirstMountId, MountGrantTargetType.Role, null, 1));
+        var page = RequireSuccess(await scope.Overwrites.ReadAsync(
+            SpaceId, FirstMountId, MountOverwriteTargetType.Role, null, 1));
         var cursor = page.NextCursor;
         Assert.That(cursor, Is.Not.Null);
 
         var invalid = new[]
         {
-            await scope.Grants.ReadAsync(SpaceId, FirstMountId, MountGrantTargetType.Role, "not-a-cursor", 1),
-            await scope.Grants.ReadAsync(OtherSpaceId, FirstMountId, MountGrantTargetType.Role, cursor, 1),
-            await scope.Grants.ReadAsync(SpaceId, ArchivedMountId, MountGrantTargetType.Role, cursor, 1),
-            await scope.Grants.ReadAsync(SpaceId, FirstMountId, MountGrantTargetType.User, cursor, 1),
+            await scope.Overwrites.ReadAsync(SpaceId, FirstMountId, MountOverwriteTargetType.Role, "not-a-cursor", 1),
+            await scope.Overwrites.ReadAsync(OtherSpaceId, FirstMountId, MountOverwriteTargetType.Role, cursor, 1),
+            await scope.Overwrites.ReadAsync(SpaceId, ArchivedMountId, MountOverwriteTargetType.Role, cursor, 1),
+            await scope.Overwrites.ReadAsync(SpaceId, FirstMountId, MountOverwriteTargetType.User, cursor, 1),
         };
 
         foreach (var result in invalid)
@@ -610,7 +613,7 @@ public sealed class MountReaderIntegrationTests
         while (true)
         {
             var page = RequireSuccess(await scope.ListCandidates.ReadAsync(
-                SpaceId, actor, cursor, batchSize, sort, descending));
+                SpaceId, actor.UserId, cursor, batchSize, sort, descending));
             Assert.That(page.Candidates.Count, Is.LessThanOrEqualTo(batchSize));
             Assert.That(page.Candidates.Select(candidate => candidate.CursorAfter), Is.All.Not.Null.And.Not.Empty);
             candidates.AddRange(page.Candidates);
@@ -649,42 +652,44 @@ public sealed class MountReaderIntegrationTests
         }
     }
 
-    private static GrantExpectation[] ExpectedGrants(MountGrantTargetType targetType) => targetType switch
+    private static OverwriteExpectation[] ExpectedOverwrites(MountOverwriteTargetType targetType) => targetType switch
     {
-        MountGrantTargetType.Role =>
+        MountOverwriteTargetType.Role =>
         [
-            new(DeletedRolePublicId, DeletedRoleId, [MountPermission.FilesRead, MountPermission.FilesDownload]),
-            new(AdminRolePublicId, AdminRoleId, Enum.GetValues<MountPermission>()),
-            new(WriterRolePublicId, WriterRoleId, [MountPermission.FilesWrite]),
+            new(DeletedRolePublicId, DeletedRoleId, [SpacePermission.MountView, SpacePermission.MountManage], [SpacePermission.FilesWrite]),
+            new(AdminRolePublicId, AdminRoleId, [.. MountScopedPermissions.All], []),
+            new(WriterRolePublicId, WriterRoleId, [SpacePermission.MountManage], []),
         ],
-        MountGrantTargetType.User =>
+        MountOverwriteTargetType.User =>
         [
-            new(MemberPublicId, MemberId, [MountPermission.FilesDownload]),
-            new(SuspendedPublicId, SuspendedId, [MountPermission.FilesWrite, MountPermission.FilesDownload]),
-            new(OwnerPublicId, OwnerId, [MountPermission.FilesRead]),
+            new(MemberPublicId, MemberId, [SpacePermission.MountView], [SpacePermission.FilesDownload]),
+            new(SuspendedPublicId, SuspendedId, [SpacePermission.MountView, SpacePermission.MountManage], []),
+            new(OwnerPublicId, OwnerId, [SpacePermission.MountView], []),
         ],
         _ => throw new ArgumentOutOfRangeException(nameof(targetType), targetType, null),
     };
 
-    private static void AssertGrant(
-        MountGrantSnapshot snapshot,
-        MountGrantTargetType targetType,
-        GrantExpectation expected)
+    private static void AssertOverwrite(
+        MountOverwriteSnapshot snapshot,
+        MountOverwriteTargetType targetType,
+        OverwriteExpectation expected)
     {
         Assert.Multiple(() =>
         {
             Assert.That(snapshot.TargetPublicId, Is.EqualTo(expected.PublicId));
-            Assert.That(snapshot.Grant.TargetType, Is.EqualTo(targetType));
-            Assert.That(snapshot.Grant.TargetId, Is.EqualTo(expected.TargetId));
-            Assert.That(snapshot.Grant.Permissions, Is.EquivalentTo(expected.Permissions));
+            Assert.That(snapshot.Overwrite.TargetType, Is.EqualTo(targetType));
+            Assert.That(snapshot.Overwrite.TargetId, Is.EqualTo(expected.TargetId));
+            Assert.That(snapshot.Overwrite.Allow, Is.EquivalentTo(expected.Allow));
+            Assert.That(snapshot.Overwrite.Deny, Is.EquivalentTo(expected.Deny));
         });
     }
 
-    private static MountAccessGrant RequireGrant(
+    private static MountPermissionOverwrite RequireOverwrite(
         Mount mount,
-        MountGrantTargetType targetType,
+        MountOverwriteTargetType targetType,
         long targetId) =>
-        mount.Grants.Single(grant => grant.TargetType == targetType && grant.TargetId == targetId);
+        mount.FindOverwrite(targetType, targetId)
+        ?? throw new AssertionException($"Missing {targetType} overwrite {targetId}.");
 
     private static CurrentActor CreateActor() => CurrentActor.ForSession(
         OwnerId,
@@ -718,7 +723,11 @@ public sealed class MountReaderIntegrationTests
 
     private ReaderScope CreateScope() => new(services!.CreateAsyncScope());
 
-    private sealed record GrantExpectation(Guid PublicId, long TargetId, MountPermission[] Permissions);
+    private sealed record OverwriteExpectation(
+        Guid PublicId,
+        long TargetId,
+        SpacePermission[] Allow,
+        SpacePermission[] Deny);
 
     private sealed class ReaderScope(AsyncServiceScope scope) : IAsyncDisposable
     {
@@ -726,7 +735,7 @@ public sealed class MountReaderIntegrationTests
         public IMountListCandidateReader ListCandidates => scope.ServiceProvider.GetRequiredService<IMountListCandidateReader>();
         public IMountCreationGrantTargetReader CreationTargets => scope.ServiceProvider.GetRequiredService<IMountCreationGrantTargetReader>();
         public IMountReader Mounts => scope.ServiceProvider.GetRequiredService<IMountReader>();
-        public IMountGrantReader Grants => scope.ServiceProvider.GetRequiredService<IMountGrantReader>();
+        public IMountOverwriteReader Overwrites => scope.ServiceProvider.GetRequiredService<IMountOverwriteReader>();
         public IMountPreviewUserReader PreviewUsers => scope.ServiceProvider.GetRequiredService<IMountPreviewUserReader>();
         public ISpaceMembershipRepository Memberships => scope.ServiceProvider.GetRequiredService<ISpaceMembershipRepository>();
         public IUnitOfWork UnitOfWork => scope.ServiceProvider.GetRequiredService<IUnitOfWork>();
@@ -814,25 +823,27 @@ public sealed class MountReaderIntegrationTests
             (201, @OtherMountPublicId, 200, 'Other space', 'PUBLIC', 'ACTIVE', 1,
                 @Later, @Later, NULL);
 
-        INSERT INTO mount_role_grants (mount_id, space_id, role_id, permission_mask)
+        -- allow_mask/deny_mask use Space permission bits:
+        -- FILES_READ 4, FILES_WRITE 8, FILES_DOWNLOAD 16, MOUNT_MANAGE 8192, MOUNT_VIEW 16384.
+        INSERT INTO mount_role_grants (mount_id, space_id, role_id, allow_mask, deny_mask)
         VALUES
-            (101, 100, 2, 2),
-            (101, 100, 3, 5),
-            (101, 100, 4, 7),
-            (102, 100, 3, 5),
-            (103, 100, 2, 2),
-            (104, 100, 4, 6),
-            (201, 200, 5, 1);
+            (101, 100, 2, 8192, 0),
+            (101, 100, 3, 24576, 8),
+            (101, 100, 4, 24604, 0),
+            (102, 100, 3, 24576, 0),
+            (103, 100, 2, 8192, 0),
+            (104, 100, 4, 24576, 0),
+            (201, 200, 5, 16384, 0);
 
-        INSERT INTO mount_user_grants (mount_id, user_id, permission_mask)
+        INSERT INTO mount_user_grants (mount_id, user_id, allow_mask, deny_mask)
         VALUES
-            (101, 1, 1),
-            (101, 2, 4),
-            (101, 3, 6),
-            (102, 3, 6),
-            (103, 2, 4),
-            (104, 2, 2),
-            (201, 6, 1);
+            (101, 1, 16384, 0),
+            (101, 2, 16384, 16),
+            (101, 3, 24576, 0),
+            (102, 3, 24576, 0),
+            (103, 2, 16384, 0),
+            (104, 2, 8192, 0),
+            (201, 6, 16384, 0);
 
         """;
 }

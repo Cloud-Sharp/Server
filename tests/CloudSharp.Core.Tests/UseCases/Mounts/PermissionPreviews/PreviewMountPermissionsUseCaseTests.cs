@@ -3,6 +3,7 @@ using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Mounts.Dtos;
@@ -27,17 +28,17 @@ public sealed class PreviewMountPermissionsUseCaseTests
         var mount = Mount(
             300,
             version: 7,
-            grants:
+            overwrites:
             [
-                Grant(MountGrantTargetType.Role, role.Id, MountPermission.FilesWrite),
-                Grant(MountGrantTargetType.User, subject.User.Id, MountPermission.FilesDownload),
+                Overwrite(MountOverwriteTargetType.Role, role.Id, allow: [SpacePermission.MountManage]),
+                Overwrite(MountOverwriteTargetType.User, subject.User.Id, deny: [SpacePermission.FilesRead]),
             ]);
         var harness = new Harness(Owner(actor), mount, subject);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(
             actor,
-            mount.PublicId,
+            mount,
             userPublicId: subject.User.PublicId,
             visibility: MountVisibility.Private));
 
@@ -48,41 +49,29 @@ public sealed class PreviewMountPermissionsUseCaseTests
         {
             Assert.That(result.Value.NextCursor, Is.Null);
             Assert.That(item.UserPublicId, Is.EqualTo(subject.User.PublicId));
-            Assert.That(
-                item.CurrentPermissions,
-                Is.EquivalentTo(new[]
-                {
-                    MountPermission.FilesRead,
-                    MountPermission.FilesDownload,
-                    MountPermission.FilesWrite,
-                }));
+            Assert.That(item.CurrentPermissions,
+                Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.MountManage }));
             Assert.That(item.PreviewPermissions, Is.Empty);
             Assert.That(harness.UserReader.CandidateReads, Is.Empty);
             Assert.That(harness.UserReader.UserReads.Single(), Is.EqualTo((SpaceId, subject.User.PublicId)));
             Assert.That(mount.Visibility, Is.EqualTo(MountVisibility.Public));
-            Assert.That(mount.Status, Is.EqualTo(MountStatus.Active));
             Assert.That(mount.Version, Is.EqualTo(7));
         });
-        AssertSource(
-            item.CurrentSources,
-            MountPermissionSourceType.Default,
-            [MountPermission.FilesRead, MountPermission.FilesDownload],
-            null);
-        AssertSource(
-            item.CurrentSources,
+        Assert.That(item.CurrentSources.Select(source => source.SourceType), Is.EqualTo(new[]
+        {
+            MountPermissionSourceType.Base,
             MountPermissionSourceType.Role,
-            [MountPermission.FilesWrite],
-            role.PublicId);
+            MountPermissionSourceType.User,
+        }));
         AssertSource(
             item.CurrentSources,
-            MountPermissionSourceType.User,
-            [MountPermission.FilesDownload],
+            MountPermissionSourceType.Base,
+            [SpacePermission.FilesRead, SpacePermission.MountView],
+            [],
             null);
-        Assert.That(
-            item.CurrentSources.Where(source => source.SourceType != MountPermissionSourceType.Role)
-                .All(source => source.RolePublicId is null),
-            Is.True);
-        Assert.That(item.PreviewSources, Is.Empty);
+        AssertSource(item.CurrentSources, MountPermissionSourceType.Role, [SpacePermission.MountManage], [], role.PublicId);
+        AssertSource(item.CurrentSources, MountPermissionSourceType.User, [], [SpacePermission.FilesRead], null);
+        AssertSource(item.PreviewSources, MountPermissionSourceType.Visibility, [], [SpacePermission.MountView], null);
     }
 
     [Test]
@@ -94,14 +83,11 @@ public sealed class PreviewMountPermissionsUseCaseTests
         var subject = PreviewUser(502, [role]);
         var mount = Mount(
             310,
-            grants: [Grant(MountGrantTargetType.Role, role.Id, MountPermission.FilesWrite)]);
+            overwrites: [Overwrite(MountOverwriteTargetType.Role, role.Id, allow: [SpacePermission.MountManage])]);
         var harness = new Harness(Owner(actor), mount, subject);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(
-            actor,
-            mount.PublicId,
-            userPublicId: subject.User.PublicId));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount, userPublicId: subject.User.PublicId));
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
@@ -124,14 +110,10 @@ public sealed class PreviewMountPermissionsUseCaseTests
         var changedLast = PreviewUser(500);
         var mount = Mount(
             320,
-            grants:
+            overwrites:
             [
-                Grant(
-                    MountGrantTargetType.User,
-                    unchangedExplicit.User.Id,
-                    MountPermission.FilesRead,
-                    MountPermission.FilesDownload),
-                Grant(MountGrantTargetType.Role, explicitRole.Id, MountPermission.FilesRead),
+                Overwrite(MountOverwriteTargetType.User, unchangedExplicit.User.Id, allow: [SpacePermission.MountView]),
+                Overwrite(MountOverwriteTargetType.Role, explicitRole.Id, allow: [SpacePermission.MountManage]),
             ]);
         var candidates = new[]
         {
@@ -146,7 +128,7 @@ public sealed class PreviewMountPermissionsUseCaseTests
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(
             actor,
-            mount.PublicId,
+            mount,
             visibility: MountVisibility.Private,
             limit: 1));
 
@@ -179,17 +161,14 @@ public sealed class PreviewMountPermissionsUseCaseTests
             "DepartedMember" => SpaceMembershipStatus.Left,
             _ => SpaceMembershipStatus.Active,
         };
-        var subject = PreviewUser(
-            600,
-            membershipStatus: membershipStatus,
-            userStatus: userStatus);
+        var subject = PreviewUser(600, membershipStatus: membershipStatus, userStatus: userStatus);
         var mount = Mount(330);
         var harness = new Harness(Owner(actor), mount, subject);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(
             actor,
-            mount.PublicId,
+            mount,
             userPublicId: subject.User.PublicId,
             visibility: MountVisibility.Private));
 
@@ -203,7 +182,7 @@ public sealed class PreviewMountPermissionsUseCaseTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldIntersectSourcesWithEffectivePermissionsAndOmitEmptySources()
+    public async Task ExecuteAsync_ShouldSuppressManagementInArchivedSpace()
     {
         // Arrange
         var actor = Actor();
@@ -211,50 +190,25 @@ public sealed class PreviewMountPermissionsUseCaseTests
         var subject = PreviewUser(700, [role]);
         var mount = Mount(
             340,
-            status: MountStatus.Archived,
-            version: 11,
-            grants:
+            overwrites:
             [
-                Grant(
-                    MountGrantTargetType.Role,
-                    role.Id,
-                    MountPermission.FilesRead,
-                    MountPermission.FilesDownload,
-                    MountPermission.FilesWrite),
-                Grant(MountGrantTargetType.User, subject.User.Id, MountPermission.FilesWrite),
+                Overwrite(MountOverwriteTargetType.Role, role.Id, allow: [SpacePermission.MountManage]),
+                Overwrite(MountOverwriteTargetType.User, subject.User.Id, allow: [SpacePermission.FilesWrite]),
             ]);
-        var harness = new Harness(Owner(actor), mount, subject);
+        var harness = new Harness(Owner(actor, SpaceStatus.Archived), mount, subject);
 
         // Act
-        var result = await harness.UseCase.ExecuteAsync(Query(
-            actor,
-            mount.PublicId,
-            userPublicId: subject.User.PublicId));
+        var result = await harness.UseCase.ExecuteAsync(Query(actor, mount, userPublicId: subject.User.PublicId));
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
         var item = result.Value.Items.Single();
         Assert.Multiple(() =>
         {
-            Assert.That(
-                item.CurrentPermissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
+            Assert.That(item.CurrentPermissions,
+                Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.FilesRead }));
             Assert.That(item.PreviewPermissions, Is.EquivalentTo(item.CurrentPermissions));
-            Assert.That(mount.Status, Is.EqualTo(MountStatus.Archived));
-            Assert.That(mount.Version, Is.EqualTo(11));
         });
-        AssertSource(
-            item.CurrentSources,
-            MountPermissionSourceType.Default,
-            [MountPermission.FilesRead, MountPermission.FilesDownload],
-            null);
-        AssertSource(
-            item.CurrentSources,
-            MountPermissionSourceType.Role,
-            [MountPermission.FilesRead, MountPermission.FilesDownload],
-            role.PublicId);
-        AssertSourceAbsent(item.CurrentSources, MountPermissionSourceType.User);
-        AssertSourcesEquivalent(item.PreviewSources, item.CurrentSources);
     }
 
     [Test]
@@ -269,7 +223,7 @@ public sealed class PreviewMountPermissionsUseCaseTests
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(
             actor,
-            mount.PublicId,
+            mount,
             userPublicId: subject.User.PublicId,
             limit: 0));
 
@@ -287,6 +241,26 @@ public sealed class PreviewMountPermissionsUseCaseTests
         });
     }
 
+    [Test]
+    public async Task ExecuteAsync_ShouldReturnContextValidationErrorWithoutDependencyCalls()
+    {
+        // Arrange
+        var actor = Actor();
+        var mount = Mount(355);
+        var harness = new Harness(Owner(actor), mount);
+
+        // Act
+        var result = await harness.UseCase.ExecuteAsync(
+            new PreviewMountPermissionsQuery(null!, Visibility: MountVisibility.Private));
+
+        // Assert
+        AssertValidationError(
+            result,
+            ErrorCodes.Mount.AuthorizationContextRequired,
+            nameof(PreviewMountPermissionsQuery.Mount));
+        Assert.That(harness.AuthorizationReader.Reads, Is.Empty);
+    }
+
     [TestCase(ErrorCodes.Common.CursorInvalid)]
     [TestCase(ErrorCodes.Common.DependencyUnavailable)]
     public async Task ExecuteAsync_ShouldPropagatePreviewCandidateReaderFailure(string errorCode)
@@ -301,7 +275,7 @@ public sealed class PreviewMountPermissionsUseCaseTests
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(
             actor,
-            mount.PublicId,
+            mount,
             visibility: MountVisibility.Private,
             cursor: "opaque-cursor"));
 
@@ -316,12 +290,12 @@ public sealed class PreviewMountPermissionsUseCaseTests
 
     private static PreviewMountPermissionsQuery Query(
         CurrentActor actor,
-        Guid mountPublicId,
+        Mount mount,
         Guid? userPublicId = null,
         MountVisibility? visibility = null,
         int limit = 50,
         string? cursor = null) =>
-        new(actor, SpacePublicId, mountPublicId, userPublicId, visibility, cursor, limit);
+        new(MountContext(actor, mount), userPublicId, visibility, cursor, limit);
 
     private static MountPreviewCandidate Candidate(MountPreviewUserSnapshot subject) =>
         new(subject, $"preview-cursor-{subject.User.Id}");
@@ -329,21 +303,18 @@ public sealed class PreviewMountPermissionsUseCaseTests
     private static void AssertSource(
         IReadOnlyList<MountPermissionSourceDto> sources,
         MountPermissionSourceType sourceType,
-        MountPermission[] expectedPermissions,
+        SpacePermission[] expectedAllow,
+        SpacePermission[] expectedDeny,
         Guid? expectedRolePublicId)
     {
         var source = sources.Single(candidate => candidate.SourceType == sourceType);
         Assert.Multiple(() =>
         {
-            Assert.That(source.Permissions, Is.EquivalentTo(expectedPermissions));
+            Assert.That(source.Allow, Is.EquivalentTo(expectedAllow));
+            Assert.That(source.Deny, Is.EquivalentTo(expectedDeny));
             Assert.That(source.RolePublicId, Is.EqualTo(expectedRolePublicId));
         });
     }
-
-    private static void AssertSourceAbsent(
-        IReadOnlyList<MountPermissionSourceDto> sources,
-        MountPermissionSourceType sourceType) =>
-        Assert.That(sources.Any(source => source.SourceType == sourceType), Is.False);
 
     private static void AssertSourcesEquivalent(
         IReadOnlyList<MountPermissionSourceDto> actual,
@@ -355,7 +326,8 @@ public sealed class PreviewMountPermissionsUseCaseTests
             var actualSource = actual.Single(source =>
                 source.SourceType == expectedSource.SourceType
                 && source.RolePublicId == expectedSource.RolePublicId);
-            Assert.That(actualSource.Permissions, Is.EquivalentTo(expectedSource.Permissions));
+            Assert.That(actualSource.Allow, Is.EquivalentTo(expectedSource.Allow));
+            Assert.That(actualSource.Deny, Is.EquivalentTo(expectedSource.Deny));
         }
     }
 
