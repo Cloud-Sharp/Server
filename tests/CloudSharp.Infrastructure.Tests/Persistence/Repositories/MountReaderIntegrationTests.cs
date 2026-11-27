@@ -9,6 +9,7 @@ using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
+using CloudSharp.Infrastructure.Persistence.Repositories;
 using Dapper;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
@@ -165,10 +166,9 @@ public sealed class MountReaderIntegrationTests
     public async Task ListReadAsync_ShouldPaginateBothDirectionsWithPublicIdTieBreakersAndOverwrites()
     {
         await using var scope = CreateScope();
-        var actor = CreateActor();
 
-        var descending = await ReadAllMountsAsync(scope, actor, sort: null, descending: true, batchSize: 2);
-        var ascending = await ReadAllMountsAsync(scope, actor, "CREATED_AT", descending: false, batchSize: 2);
+        var descending = await ReadAllMountsAsync(scope, sort: null, descending: true, batchSize: 2);
+        var ascending = await ReadAllMountsAsync(scope, "CREATED_AT", descending: false, batchSize: 2);
         var expectedDescending = new[]
         {
             FilelessMountPublicId,
@@ -211,9 +211,8 @@ public sealed class MountReaderIntegrationTests
     public async Task ListReadAsync_ShouldResumeFromAnyCandidateCursorWithinBatch()
     {
         await using var scope = CreateScope();
-        var actor = CreateActor();
         var first = RequireSuccess(await scope.ListCandidates.ReadAsync(
-            SpaceId, actor.UserId, null, 3, "CREATED_AT", descending: false));
+            SpaceId, null, 3, "CREATED_AT", descending: false));
         Assert.Multiple(() =>
         {
             Assert.That(first.Candidates, Has.Count.EqualTo(3));
@@ -221,7 +220,7 @@ public sealed class MountReaderIntegrationTests
         });
 
         var resumed = RequireSuccess(await scope.ListCandidates.ReadAsync(
-            SpaceId, actor.UserId, first.Candidates[1].CursorAfter, 3, "CREATED_AT", descending: false));
+            SpaceId, first.Candidates[1].CursorAfter, 3, "CREATED_AT", descending: false));
 
         Assert.Multiple(() =>
         {
@@ -232,23 +231,14 @@ public sealed class MountReaderIntegrationTests
     }
 
     [Test]
-    public async Task ListReadAsync_ShouldRejectTamperedOrReboundCursor()
+    public async Task ListReadAsync_ShouldRejectMalformedOrWrongKindCursor()
     {
         await using var scope = CreateScope();
-        var actor = CreateActor();
-        var page = RequireSuccess(await scope.ListCandidates.ReadAsync(
-            SpaceId, actor.UserId, null, 1, null, descending: true));
-        var cursor = page.Candidates.Single().CursorAfter;
-        var tampered = cursor[..^1] + (cursor[^1] == 'A' ? 'B' : 'A');
-        var otherActor = CurrentActor.ForSession(
-            5, OtherOwnerPublicId, SystemRole.User, new Guid("019b26d0-0000-7000-8000-000000004002"));
 
         var invalid = new[]
         {
-            await scope.ListCandidates.ReadAsync(SpaceId, actor.UserId, tampered, 1, null, true),
-            await scope.ListCandidates.ReadAsync(OtherSpaceId, actor.UserId, cursor, 1, null, true),
-            await scope.ListCandidates.ReadAsync(SpaceId, otherActor.UserId, cursor, 1, null, true),
-            await scope.ListCandidates.ReadAsync(SpaceId, actor.UserId, cursor, 1, null, false),
+            await scope.ListCandidates.ReadAsync(SpaceId, "not-a-cursor", 1, null, true),
+            await scope.ListCandidates.ReadAsync(SpaceId, KeysetCursor.Issue(LastMountPublicId), 1, null, true),
         };
 
         foreach (var result in invalid)
@@ -511,20 +501,15 @@ public sealed class MountReaderIntegrationTests
     }
 
     [Test]
-    public async Task OverwriteReadAsync_ShouldRejectMalformedOrReboundCursor()
+    public async Task OverwriteReadAsync_ShouldRejectMalformedOrWrongKindCursor()
     {
         await using var scope = CreateScope();
-        var page = RequireSuccess(await scope.Overwrites.ReadAsync(
-            SpaceId, FirstMountId, MountOverwriteTargetType.Role, null, 1));
-        var cursor = page.NextCursor;
-        Assert.That(cursor, Is.Not.Null);
+        var listCursor = KeysetCursor.Issue(LastMountPublicId, DateTimeOffset.UnixEpoch);
 
         var invalid = new[]
         {
             await scope.Overwrites.ReadAsync(SpaceId, FirstMountId, MountOverwriteTargetType.Role, "not-a-cursor", 1),
-            await scope.Overwrites.ReadAsync(OtherSpaceId, FirstMountId, MountOverwriteTargetType.Role, cursor, 1),
-            await scope.Overwrites.ReadAsync(SpaceId, ArchivedMountId, MountOverwriteTargetType.Role, cursor, 1),
-            await scope.Overwrites.ReadAsync(SpaceId, FirstMountId, MountOverwriteTargetType.User, cursor, 1),
+            await scope.Overwrites.ReadAsync(SpaceId, FirstMountId, MountOverwriteTargetType.Role, listCursor, 1),
         };
 
         foreach (var result in invalid)
@@ -602,7 +587,6 @@ public sealed class MountReaderIntegrationTests
 
     private static async Task<MountListCandidate[]> ReadAllMountsAsync(
         ReaderScope scope,
-        CurrentActor actor,
         string? sort,
         bool descending,
         int batchSize)
@@ -613,7 +597,7 @@ public sealed class MountReaderIntegrationTests
         while (true)
         {
             var page = RequireSuccess(await scope.ListCandidates.ReadAsync(
-                SpaceId, actor.UserId, cursor, batchSize, sort, descending));
+                SpaceId, cursor, batchSize, sort, descending));
             Assert.That(page.Candidates.Count, Is.LessThanOrEqualTo(batchSize));
             Assert.That(page.Candidates.Select(candidate => candidate.CursorAfter), Is.All.Not.Null.And.Not.Empty);
             candidates.AddRange(page.Candidates);
@@ -690,12 +674,6 @@ public sealed class MountReaderIntegrationTests
         long targetId) =>
         mount.FindOverwrite(targetType, targetId)
         ?? throw new AssertionException($"Missing {targetType} overwrite {targetId}.");
-
-    private static CurrentActor CreateActor() => CurrentActor.ForSession(
-        OwnerId,
-        OwnerPublicId,
-        SystemRole.User,
-        new Guid("019b26d0-0000-7000-8000-000000004001"));
 
     private static async Task<int> GetBackendPidAsync(AppDbContext context, CancellationToken cancellationToken)
     {

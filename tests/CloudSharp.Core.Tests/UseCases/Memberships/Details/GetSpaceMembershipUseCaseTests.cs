@@ -175,7 +175,6 @@ public class GetSpaceMembershipUseCaseTests
         public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
             long spaceId,
             long ownerUserId,
-            long requesterUserId,
             string? cursor,
             int limit,
             string? sort,

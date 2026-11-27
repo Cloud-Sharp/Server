@@ -62,7 +62,6 @@ public sealed class ListSpaceMembershipsUseCase : IUseCase<ListSpaceMembershipsQ
         var readResult = await MembershipReader.ReadPageAsync(
             space.Id,
             space.OwnerUserId,
-            query.Space.UserId,
             query.Cursor,
             query.Limit,
             query.Sort,

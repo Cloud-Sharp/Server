@@ -1,7 +1,6 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
-using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.UseCases.Invites.Dtos;
 using FluentResults;
@@ -12,18 +11,15 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
 {
     private ISpaceRepository SpaceRepository { get; } = null!;
     private ISpaceInviteReader InviteReader { get; } = null!;
-    private ITokenHasher TokenHasher { get; } = null!;
 
     public ListSpaceInvitesUseCase() { }
 
     public ListSpaceInvitesUseCase(
         ISpaceRepository spaceRepository,
-        ISpaceInviteReader inviteReader,
-        ITokenHasher tokenHasher)
+        ISpaceInviteReader inviteReader)
     {
         SpaceRepository = spaceRepository;
         InviteReader = inviteReader;
-        TokenHasher = tokenHasher;
     }
 
     public async Task<Result<SpaceInvitePageDto>> ExecuteAsync(
@@ -38,7 +34,7 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
             return validation.ToFailureResult<SpaceInvitePageDto>();
         }
 
-        if (SpaceRepository is null || InviteReader is null || TokenHasher is null)
+        if (SpaceRepository is null || InviteReader is null)
         {
             return Result.Fail<SpaceInvitePageDto>(CommonError.DependencyUnavailable());
         }
@@ -65,17 +61,9 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
             return Result.Fail<SpaceInvitePageDto>(SpaceAuthorizationError.StateNotAllowed(space.Status));
         }
 
-        var requesterUserId = query.Space.UserId;
-        string? readerCursor = null;
-        if (query.Cursor is { } cursor
-            && !SpaceInviteListCursor.TryOpen(cursor, requesterUserId, TokenHasher, out readerCursor))
-        {
-            return Result.Fail<SpaceInvitePageDto>(SpaceError.ListCursorInvalid());
-        }
-
         var readResult = await InviteReader.ReadPageAsync(
             space.Id,
-            readerCursor,
+            query.Cursor,
             query.Limit,
             query.Sort,
             query.Descending,
@@ -86,11 +74,8 @@ public sealed class ListSpaceInvitesUseCase : IUseCase<ListSpaceInvitesQuery, Sp
         }
 
         var page = readResult.Value;
-        var nextCursor = page.NextCursor is { } nextReaderCursor
-            ? SpaceInviteListCursor.Issue(nextReaderCursor, requesterUserId, TokenHasher)
-            : null;
         return Result.Ok(new SpaceInvitePageDto(
             page.Items.Select(SpaceInviteDto.FromInvite).ToArray(),
-            nextCursor));
+            page.NextCursor));
     }
 }

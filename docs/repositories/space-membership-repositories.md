@@ -8,6 +8,6 @@ Membership과 Role 부여 관계를 읽거나 변경을 등록하는 Core 포트
 | RP-15 | Membership 조회와 변경 등록 · [ISpaceMembershipRepository](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceMembershipRepository.cs) · [SpaceMembershipRepository](../../src/CloudSharp.Infrastructure/Persistence/Repositories/SpaceMembershipRepository.cs)                                                    | MB-03~MB-07, IN-05 · Space 내부 ID와 Membership PublicId 또는 사용자 내부 ID | 같은 Space의 독립 스냅샷을 반환한다. 사용자별 최신 조회는 `ACTIVE`·`SUSPENDED`를 우선하고 없으면 `LeftAt`이 가장 최근인 `LEFT`를 읽는다. 신규 추가와 관찰 버전을 사용한 갱신을 등록한다.                  | 구현 |
 | RP-16 | 소유권 이전용 Membership과 ADMIN Role 처리 · [ISpaceOwnershipMembershipRepository](../../src/CloudSharp.Core/Abstractions/Persistence/ISpaceOwnershipMembershipRepository.cs) · [SpaceOwnershipMembershipRepository](../../src/CloudSharp.Infrastructure/Persistence/Repositories/SpaceOwnershipMembershipRepository.cs) | SP-10 · Space 내부 ID, 이전 대상 사용자 ID, 관찰한 Membership 버전           | 이전 대상의 현재 Membership과 같은 Space의 삭제되지 않은 관리형 ADMIN Role을 조회한다. 새 OWNER의 Membership 삭제와 이전 OWNER의 ADMIN Membership 추가는 Space 소유자 변경과 같은 트랜잭션에서 저장한다.  | 구현 |
 
-목록은 기본적으로 `joinedAt` 내림차순을 사용하며 `updatedAt` 정렬과 오름차순을 지원한다. 시간이 같으면 같은 방향으로 Membership PublicId를 정렬한다. 서명된 cursor는 Space, 현재 OWNER, 정렬 필드와 방향이 같은 요청에서 유효하다.
+목록은 기본적으로 `joinedAt` 내림차순을 사용하며 `updatedAt` 정렬과 오름차순을 지원한다. 시간이 같으면 같은 방향으로 Membership PublicId를 정렬한다. cursor는 정렬값과 Membership PublicId를 담은 위치 토큰이며, 요청자·Space·정렬 조건에 묶어 서명하는 일은 API가 맡는다. 소유권이 바뀌어도 cursor는 유효하며 keyset 기준으로 이어서 조회한다.
 
 [공통 Repository 계약](persistence-repositories.md#공통-계약)

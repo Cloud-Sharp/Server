@@ -1,11 +1,7 @@
 using System.Linq.Expressions;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
-using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Memberships;
-using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
 using FluentResults;
@@ -13,24 +9,18 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Repositories;
 
-internal sealed class SpaceMembershipReader(
-    AppDbContext dbContext,
-    ITokenHasher tokenHasher) : ISpaceMembershipReader
+/// <summary>
+/// Space Membership을 조회한다. 목록 cursor는 <see cref="KeysetCursor"/> 위치 토큰이며 요청자·정렬 조건 묶음과
+/// 서명은 API가 맡는다.
+/// </summary>
+internal sealed class SpaceMembershipReader(AppDbContext dbContext) : ISpaceMembershipReader
 {
     private const string JoinedAtSort = "joinedAt";
     private const string UpdatedAtSort = "updatedAt";
-    private const string AscendingDirection = "ASC";
-    private const string DescendingDirection = "DESC";
-    private const string CursorSigningPrefix = "cloudsharp:space-membership-list:cursor:v1:";
-    private const string FilterScopePrefix = "cloudsharp:space-membership-list:scope:v1:";
-    private const int CursorVersion = 1;
-
-    private static readonly JsonSerializerOptions CursorJsonOptions = new();
 
     public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
         long spaceId,
         long ownerUserId,
-        long requesterUserId,
         string? cursor,
         int limit,
         string? sort,
@@ -44,12 +34,15 @@ internal sealed class SpaceMembershipReader(
             return Task.FromResult(Result.Fail<SpaceMembershipReadPage>(SpaceError.ListSortInvalid()));
         }
 
-        var filterScope = CreateFilterScope(spaceId, ownerUserId, requesterUserId);
-        CursorPosition? position = null;
-        if (cursor is not null
-            && !TryReadCursor(cursor, normalizedSort, descending, filterScope, out position))
+        KeysetCursor.Position? position = null;
+        if (cursor is not null)
         {
-            return Task.FromResult(Result.Fail<SpaceMembershipReadPage>(SpaceError.ListCursorInvalid()));
+            if (!KeysetCursor.TryRead(cursor, out var parsed) || parsed.SortValue is null)
+            {
+                return Task.FromResult(Result.Fail<SpaceMembershipReadPage>(SpaceError.ListCursorInvalid()));
+            }
+
+            position = parsed;
         }
 
         return dbContext.ExecuteReadAsync(
@@ -62,9 +55,9 @@ internal sealed class SpaceMembershipReader(
                             || member.Status == SpaceMembershipStatus.Suspended
                             || member.Status == SpaceMembershipStatus.Left));
 
-                if (position is not null)
+                if (position is { SortValue: { } sortValue, PublicId: var publicId })
                 {
-                    memberships = ApplySeek(memberships, normalizedSort, position, descending);
+                    memberships = ApplySeek(memberships, normalizedSort, sortValue, publicId, descending);
                 }
 
                 var sortByJoinedAt = normalizedSort == JoinedAtSort;
@@ -87,12 +80,7 @@ internal sealed class SpaceMembershipReader(
                 }
 
                 var last = snapshots[^1].Membership;
-                var nextCursor = CreateCursor(
-                    sortByJoinedAt ? last.JoinedAt : last.UpdatedAt,
-                    last.PublicId,
-                    normalizedSort,
-                    descending,
-                    filterScope);
+                var nextCursor = KeysetCursor.Issue(last.PublicId, sortByJoinedAt ? last.JoinedAt : last.UpdatedAt);
                 return new SpaceMembershipReadPage(snapshots, nextCursor);
             },
             cancellationToken);
@@ -157,11 +145,10 @@ internal sealed class SpaceMembershipReader(
     private static IQueryable<SpaceMembershipEntity> ApplySeek(
         IQueryable<SpaceMembershipEntity> memberships,
         string normalizedSort,
-        CursorPosition position,
+        DateTimeOffset sortValue,
+        Guid publicId,
         bool descending)
     {
-        var sortValue = position.SortValue;
-        var publicId = position.PublicId;
         if (normalizedSort == JoinedAtSort)
         {
             return descending
@@ -191,78 +178,6 @@ internal sealed class SpaceMembershipReader(
             ? query.OrderByDescending(sortValue).ThenByDescending(publicId)
             : query.OrderBy(sortValue).ThenBy(publicId);
 
-    private string CreateCursor(
-        DateTimeOffset sortValue,
-        Guid publicId,
-        string normalizedSort,
-        bool descending,
-        string filterScope)
-    {
-        var claims = new CursorClaims(
-            CursorVersion,
-            sortValue.UtcDateTime.Ticks,
-            publicId,
-            normalizedSort,
-            descending ? DescendingDirection : AscendingDirection,
-            filterScope);
-        var envelope = new CursorEnvelope(claims, Sign(claims));
-        return Base64Url.Encode(JsonSerializer.SerializeToUtf8Bytes(envelope, CursorJsonOptions));
-    }
-
-    private bool TryReadCursor(
-        string cursor,
-        string normalizedSort,
-        bool descending,
-        string filterScope,
-        out CursorPosition? position)
-    {
-        position = null;
-        try
-        {
-            var bytes = Base64Url.Decode(cursor);
-            if (!string.Equals(Base64Url.Encode(bytes), cursor, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            var envelope = JsonSerializer.Deserialize<CursorEnvelope>(bytes, CursorJsonOptions);
-            var claims = envelope?.Claims;
-            if (envelope is null || claims is null || string.IsNullOrEmpty(envelope.Signature)
-                || !bytes.AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(envelope, CursorJsonOptions)))
-            {
-                return false;
-            }
-
-            var expectedDirection = descending ? DescendingDirection : AscendingDirection;
-            if (claims.Version != CursorVersion
-                || claims.MembershipPublicId == Guid.Empty
-                || !string.Equals(claims.Sort, normalizedSort, StringComparison.Ordinal)
-                || !string.Equals(claims.Direction, expectedDirection, StringComparison.Ordinal)
-                || !string.Equals(claims.FilterScope, filterScope, StringComparison.Ordinal)
-                || !tokenHasher.Verify(SigningInput(claims), envelope.Signature))
-            {
-                return false;
-            }
-
-            position = new CursorPosition(
-                new DateTimeOffset(claims.SortValueTicks, TimeSpan.Zero),
-                claims.MembershipPublicId);
-            return true;
-        }
-        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentOutOfRangeException)
-        {
-            return false;
-        }
-    }
-
-    private string Sign(CursorClaims claims) => tokenHasher.Hash(SigningInput(claims));
-
-    private static string SigningInput(CursorClaims claims) =>
-        CursorSigningPrefix + Base64Url.Encode(JsonSerializer.SerializeToUtf8Bytes(claims, CursorJsonOptions));
-
-    private string CreateFilterScope(long spaceId, long ownerUserId, long requesterUserId) =>
-        tokenHasher.Hash(FormattableString.Invariant($"{FilterScopePrefix}{spaceId}:{ownerUserId}:{requesterUserId}"));
-
     private static bool TryNormalizeSort(string? sort, out string normalizedSort)
     {
         if (sort is null
@@ -281,20 +196,6 @@ internal sealed class SpaceMembershipReader(
         normalizedSort = string.Empty;
         return false;
     }
-
-    private sealed record CursorPosition(DateTimeOffset SortValue, Guid PublicId);
-
-    private sealed record CursorClaims(
-        [property: JsonPropertyName("v")] int Version,
-        [property: JsonPropertyName("sortValueTicks")] long SortValueTicks,
-        [property: JsonPropertyName("membershipPublicId")] Guid MembershipPublicId,
-        [property: JsonPropertyName("sort")] string? Sort,
-        [property: JsonPropertyName("direction")] string? Direction,
-        [property: JsonPropertyName("filterScope")] string? FilterScope);
-
-    private sealed record CursorEnvelope(
-        [property: JsonPropertyName("claims")] CursorClaims? Claims,
-        [property: JsonPropertyName("signature")] string? Signature);
 
     private sealed class MembershipRow
     {

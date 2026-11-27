@@ -30,7 +30,7 @@ CloudSharp Production v1의 Mount 조회·개설·설정·보관·사용량과 R
 
 ## 조회와 권한 미리보기
 
-- **MT-01**은 `ACTIVE`·`ARCHIVED` Mount 중 요청자에게 유효 `MOUNT_VIEW`가 있는 항목으로 페이지를 채운다. `CREATED_AT`의 기본 방향은 `DESC`이며 같은 생성 시각은 `mountPublicId`로 정렬한다. `limit`은 기본 50, 범위 1~100이다. 서명한 cursor는 Space·행위자·정렬 조건에 묶고, 다음 페이지에서도 최신 권한을 평가한다. `canCreateMount`는 활성 Space의 유효 `MOUNT_MANAGE`를 나타내며, 빈 첫 페이지에서도 제공한다.
+- **MT-01**은 `ACTIVE`·`ARCHIVED` Mount 중 요청자에게 유효 `MOUNT_VIEW`가 있는 항목으로 페이지를 채운다. `CREATED_AT`의 기본 방향은 `DESC`이며 같은 생성 시각은 `mountPublicId`로 정렬한다. `limit`은 기본 50, 범위 1~100이다. cursor는 저장 계층 위치 토큰을 그대로 주고받으며, 요청자·정렬 조건 묶음과 서명은 API가 맡는다. 다음 페이지에서도 최신 권한을 평가한다. `canCreateMount`는 활성 Space의 유효 `MOUNT_MANAGE`를 나타내며, 빈 첫 페이지에서도 제공한다.
 - **MT-03**은 이름·공개 범위·상태·시각, Space와 Mount PublicId, `myAccess`를 반환한다. ETag는 함께 조회한 Mount 버전에서 만든다. MT-02와 MT-04~06도 같은 상세 형식을 사용한다.
 - **MT-11**은 Content 구현을 마친 뒤 추가한다. MT-03과 같은 열람 자격을 확인한 뒤 사용량 Reader를 호출한다. 같은 Mount의 `PURGED` 이외 파일 크기 합계를 64비트 `usedBytes`로 반환하며 파일이 없으면 0이다. 집계에는 Mount 버전과 독립적으로 바뀌는 콘텐츠가 포함되므로 Mount ETag를 사용하지 않는다.
 - **MT-07**은 지정한 한 유형의 덮어쓰기를 대상 PublicId 오름차순으로 반환한다. 각 항목은 `targetType`, `targetPublicId`, `allow`, `deny`다. 대상의 유효 권한 계산은 MT-10에서 제공한다.

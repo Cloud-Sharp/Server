@@ -336,7 +336,7 @@ public abstract class SpaceMembershipMutationTests
             }
 
             public Task<Result<SpaceMembershipReadPage>> ReadPageAsync(
-                long spaceId, long ownerUserId, long requesterUserId, string? cursor, int limit, string? sort, bool descending,
+                long spaceId, long ownerUserId, string? cursor, int limit, string? sort, bool descending,
                 CancellationToken cancellationToken = default) =>
                 throw new InvalidOperationException("Membership mutations read a single target.");
         }

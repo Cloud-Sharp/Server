@@ -10,6 +10,7 @@ using CloudSharp.Core.Policies.Authorization;
 using CloudSharp.Core.UseCases.Spaces.OwnershipTransfers;
 using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
+using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.Infrastructure.Persistence.Entities;
 using CloudSharp.TestSupport.Fakes;
 using FluentResults;
@@ -213,77 +214,23 @@ public sealed class SpaceMembershipPersistenceIntegrationTests
         await using var scope = CreateScope();
 
         var result = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, owner.Id, null, 10, sort, descending: true);
+            space.Id, owner.Id, null, 10, sort, descending: true);
 
         AssertError(result, ErrorCodes.Space.ListSortInvalid);
     }
 
     [Test]
-    public async Task ReadPageAsync_WithTamperedCursor_ShouldReturnCursorInvalid()
+    public async Task ReadPageAsync_WithMalformedOrWrongKindCursor_ShouldReturnCursorInvalid()
     {
         var owner = await SeedUserAsync();
         var space = await SeedSpaceAsync(owner.Id, Timestamp);
-        var memberRole = await SeedManagedRoleAsync(space.Id, SpaceRoleSystemKey.Member, Timestamp);
-        for (var index = 1; index <= 3; index++)
-        {
-            var member = await SeedUserAsync($"Member {index}");
-            var membership = await SeedMembershipAsync(
-                space.Id, member.Id, SpaceMembershipStatus.Active,
-                Timestamp.AddHours(index), Timestamp.AddHours(index));
-            await LinkAsync(membership, memberRole, owner.Id, membership.JoinedAt);
-        }
-
         await using var scope = CreateScope();
-        var first = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, owner.Id, null, 1, null, descending: true);
-        Assert.That(first.IsSuccess, Is.True, first.ToString());
-        Assert.That(first.Value.NextCursor, Is.Not.Null.And.Not.Empty);
-        var cursor = first.Value.NextCursor!;
-        var last = cursor[^1] == 'A' ? 'B' : 'A';
-        var tampered = cursor[..^1] + last;
 
-        var result = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, owner.Id, tampered, 1, null, descending: true);
-
-        AssertError(result, ErrorCodes.Space.ListCursorInvalid);
-    }
-
-    [Test]
-    public async Task ReadPageAsync_WithMismatchedCursorContext_ShouldReturnCursorInvalid()
-    {
-        var owner = await SeedUserAsync();
-        var space = await SeedSpaceAsync(owner.Id, Timestamp);
-        var otherSpace = await SeedSpaceAsync(owner.Id, Timestamp);
-        var memberRole = await SeedManagedRoleAsync(space.Id, SpaceRoleSystemKey.Member, Timestamp);
-        var member = await SeedUserAsync();
-        var otherMember = await SeedUserAsync();
-        var firstMembership = await SeedMembershipAsync(
-            space.Id, member.Id, SpaceMembershipStatus.Active, Timestamp.AddHours(1), Timestamp.AddHours(1));
-        var secondMembership = await SeedMembershipAsync(
-            space.Id, otherMember.Id, SpaceMembershipStatus.Active, Timestamp.AddHours(2), Timestamp.AddHours(2));
-        await LinkAsync(firstMembership, memberRole, owner.Id, Timestamp.AddHours(1));
-        await LinkAsync(secondMembership, memberRole, owner.Id, Timestamp.AddHours(2));
-
-        await using var scope = CreateScope();
-        var first = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, member.Id, null, 1, null, descending: true);
-        Assert.That(first.IsSuccess, Is.True, first.ToString());
-        var cursor = first.Value.NextCursor;
-        Assert.That(cursor, Is.Not.Null.And.Not.Empty);
-
-        var directionMismatch = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, member.Id, cursor, 1, null, descending: false);
-        var sortMismatch = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, member.Id, cursor, 1, "updatedAt", descending: true);
-        var spaceMismatch = await scope.MembershipReader.ReadPageAsync(
-            otherSpace.Id, owner.Id, member.Id, cursor, 1, null, descending: true);
-        var ownerMismatch = await scope.MembershipReader.ReadPageAsync(
-            space.Id, otherMember.Id, member.Id, cursor, 1, null, descending: true);
-        var requesterMismatch = await scope.MembershipReader.ReadPageAsync(
-            space.Id, owner.Id, otherMember.Id, cursor, 1, null, descending: true);
-
-        foreach (var result in new[] { directionMismatch, sortMismatch, spaceMismatch, ownerMismatch, requesterMismatch })
+        foreach (var cursor in new[] { "not-a-cursor", KeysetCursor.Issue(Guid.CreateVersion7()) })
         {
+            var result = await scope.MembershipReader.ReadPageAsync(
+                space.Id, owner.Id, cursor, 1, null, descending: true);
+
             AssertError(result, ErrorCodes.Space.ListCursorInvalid);
         }
     }
@@ -1115,7 +1062,7 @@ public sealed class SpaceMembershipPersistenceIntegrationTests
         while (true)
         {
             var result = await scope.MembershipReader.ReadPageAsync(
-                spaceId, ownerUserId, ownerUserId, cursor, limit, sort, descending);
+                spaceId, ownerUserId, cursor, limit, sort, descending);
             Assert.That(result.IsSuccess, Is.True, result.ToString());
             var page = result.Value;
             Assert.That(page.Items.Count, Is.LessThanOrEqualTo(limit));

@@ -10,6 +10,7 @@ using CloudSharp.Core.UseCases.Spaces.Creations;
 using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
+using CloudSharp.Infrastructure.Persistence.Repositories;
 using CloudSharp.TestSupport.Fakes;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
@@ -796,46 +797,17 @@ public sealed class SpaceRepositoryIntegrationTests
     }
 
     [Test]
-    public async Task ListReadAsync_ShouldRejectTamperedCursor()
+    public async Task ListReadAsync_ShouldRejectMalformedOrWrongKindCursor()
     {
         var owner = await SeedUserAsync();
         await SeedSpaceAsync(ownerId: owner.Id);
         var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
         await using var scope = CreateScope();
-        var page = await scope.ListCandidateReader.ReadAsync(actor, null, 1, null, descending: true);
-        var cursor = page.Value.Candidates[0].CursorAfter;
-        var last = cursor[^1] == 'A' ? 'B' : 'A';
-        var tampered = cursor[..^1] + last;
 
-        var result = await scope.ListCandidateReader.ReadAsync(actor, tampered, 1, null, descending: true);
-
-        AssertError(result, ErrorCodes.Space.ListCursorInvalid, "PropertyName", "Cursor");
-    }
-
-    [Test]
-    public async Task ListReadAsync_ShouldRejectMismatchedCursorScopeOrDirection()
-    {
-        var owner = await SeedUserAsync();
-        await SeedSpaceAsync(ownerId: owner.Id);
-        var actor = CurrentActor.ForSession(owner.Id, owner.PublicId, SystemRole.User, Guid.CreateVersion7());
-        await using var scope = CreateScope();
-        var page = await scope.ListCandidateReader.ReadAsync(actor, null, 1, null, descending: true);
-        var cursor = page.Value.Candidates[0].CursorAfter;
-
-        var directionMismatch = await scope.ListCandidateReader.ReadAsync(
-            actor, cursor, 1, null, descending: false);
-        var userMismatch = await scope.ListCandidateReader.ReadAsync(
-            CurrentActor.ForSession(actor.UserId, Guid.CreateVersion7(), actor.SystemRole, Guid.CreateVersion7()),
-            cursor, 1, null, descending: true);
-        var roleMismatch = await scope.ListCandidateReader.ReadAsync(
-            CurrentActor.ForSession(actor.UserId, actor.UserPublicId, SystemRole.SystemAdmin, Guid.CreateVersion7()),
-            cursor, 1, null, descending: true);
-        var typeMismatch = await scope.ListCandidateReader.ReadAsync(
-            CurrentActor.ForMcp(actor.UserId, actor.UserPublicId, actor.SystemRole, 99, Guid.CreateVersion7()),
-            cursor, 1, null, descending: true);
-
-        foreach (var result in new[] { directionMismatch, userMismatch, roleMismatch, typeMismatch })
+        foreach (var cursor in new[] { "not-a-cursor", KeysetCursor.Issue(Guid.CreateVersion7()) })
         {
+            var result = await scope.ListCandidateReader.ReadAsync(actor, cursor, 1, null, descending: true);
+
             AssertError(result, ErrorCodes.Space.ListCursorInvalid, "PropertyName", "Cursor");
         }
     }

@@ -64,7 +64,6 @@ public sealed class ListMountsUseCase : IUseCase<ListMountsQuery, MountPageDto>
         {
             var readResult = await CandidateReader.ReadAsync(
                 space.Id,
-                context.UserId,
                 traversalCursor,
                 query.Limit + 1,
                 query.Sort,

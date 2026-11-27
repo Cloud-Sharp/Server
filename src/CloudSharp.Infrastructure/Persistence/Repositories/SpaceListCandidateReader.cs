@@ -1,12 +1,8 @@
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
-using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Policies.Authorization;
-using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
 using FluentResults;
@@ -14,18 +10,13 @@ using Microsoft.EntityFrameworkCore;
 
 namespace CloudSharp.Infrastructure.Persistence.Repositories;
 
-internal sealed class SpaceListCandidateReader(
-    AppDbContext dbContext,
-    ITokenHasher tokenHasher) : ISpaceListCandidateReader
+/// <summary>
+/// Space 목록 후보를 생성 시각과 PublicId keyset으로 조회한다. cursor는 <see cref="KeysetCursor"/> 위치 토큰이며
+/// 요청자·정렬 조건 묶음과 서명은 API가 맡는다.
+/// </summary>
+internal sealed class SpaceListCandidateReader(AppDbContext dbContext) : ISpaceListCandidateReader
 {
     private const string CreatedAtSort = "createdAt";
-    private const string AscendingDirection = "ASC";
-    private const string DescendingDirection = "DESC";
-    private const string CursorSigningPrefix = "cloudsharp:space-list:cursor:v1:";
-    private const string ActorScopePrefix = "cloudsharp:space-list:actor:v1:";
-    private const int CursorVersion = 1;
-
-    private static readonly JsonSerializerOptions CursorJsonOptions = new();
 
     public Task<Result<SpaceListCandidatePage>> ReadAsync(
         CurrentActor actor,
@@ -38,27 +29,28 @@ internal sealed class SpaceListCandidateReader(
         ArgumentNullException.ThrowIfNull(actor);
         cancellationToken.ThrowIfCancellationRequested();
 
-        if (!TryNormalizeSort(sort, out var normalizedSort))
+        if (!TryNormalizeSort(sort, out _))
         {
             return Task.FromResult(Result.Fail<SpaceListCandidatePage>(SpaceError.ListSortInvalid()));
         }
 
-        var actorScope = CreateActorScope(actor);
-        CursorPosition? position = null;
-        if (cursor is not null
-            && !TryReadCursor(cursor, normalizedSort, descending, actorScope, out position))
+        KeysetCursor.Position? position = null;
+        if (cursor is not null)
         {
-            return Task.FromResult(Result.Fail<SpaceListCandidatePage>(SpaceError.ListCursorInvalid()));
+            if (!KeysetCursor.TryRead(cursor, out var parsed) || parsed.SortValue is null)
+            {
+                return Task.FromResult(Result.Fail<SpaceListCandidatePage>(SpaceError.ListCursorInvalid()));
+            }
+
+            position = parsed;
         }
 
         return dbContext.ExecuteReadAsync(
             async (context, ct) =>
             {
                 var spaces = context.Spaces.AsNoTracking();
-                if (position is not null)
+                if (position is { SortValue: { } createdAt, PublicId: var publicId })
                 {
-                    var createdAt = position.CreatedAt;
-                    var publicId = position.PublicId;
                     spaces = descending
                         ? spaces.Where(space =>
                             space.CreatedAt < createdAt
@@ -113,17 +105,12 @@ internal sealed class SpaceListCandidateReader(
                         .ThenBy(row => row.Space.PublicId);
 
                 var rows = await expanded.ToArrayAsync(ct);
-                return CreatePage(rows, batchSize, normalizedSort, descending, actorScope);
+                return CreatePage(rows, batchSize);
             },
             cancellationToken);
     }
 
-    private SpaceListCandidatePage CreatePage(
-        IReadOnlyCollection<SpaceListRow> rows,
-        int batchSize,
-        string normalizedSort,
-        bool descending,
-        string actorScope)
+    private static SpaceListCandidatePage CreatePage(IReadOnlyCollection<SpaceListRow> rows, int batchSize)
     {
         var groups = rows.GroupBy(row => row.Space.Id).ToArray();
         var candidates = groups.Take(batchSize).Select(group =>
@@ -140,89 +127,12 @@ internal sealed class SpaceListCandidateReader(
                 .Select(row => row.Role!.ToDomain())
                 .ToArray();
             var authorization = new SpaceAuthorizationSnapshot(first.Space.ToDomain(), membership, roles);
-            var cursorAfter = CreateCursor(
-                first.Space.CreatedAt,
-                first.Space.PublicId,
-                normalizedSort,
-                descending,
-                actorScope);
+            var cursorAfter = KeysetCursor.Issue(first.Space.PublicId, first.Space.CreatedAt);
             return new SpaceListCandidate(authorization, first.OwnerUserPublicId, cursorAfter);
         }).ToArray();
 
         return new SpaceListCandidatePage(candidates, groups.Length > batchSize);
     }
-
-    private string CreateCursor(
-        DateTimeOffset createdAt,
-        Guid publicId,
-        string normalizedSort,
-        bool descending,
-        string actorScope)
-    {
-        var claims = new CursorClaims(
-            CursorVersion,
-            createdAt.UtcDateTime.Ticks,
-            publicId,
-            normalizedSort,
-            descending ? DescendingDirection : AscendingDirection,
-            actorScope);
-        var envelope = new CursorEnvelope(claims, Sign(claims));
-        return Base64Url.Encode(JsonSerializer.SerializeToUtf8Bytes(envelope, CursorJsonOptions));
-    }
-
-    private bool TryReadCursor(
-        string cursor,
-        string normalizedSort,
-        bool descending,
-        string actorScope,
-        out CursorPosition? position)
-    {
-        position = null;
-        try
-        {
-            var bytes = Base64Url.Decode(cursor);
-            if (!string.Equals(Base64Url.Encode(bytes), cursor, StringComparison.Ordinal))
-            {
-                return false;
-            }
-
-            var envelope = JsonSerializer.Deserialize<CursorEnvelope>(bytes, CursorJsonOptions);
-            var claims = envelope?.Claims;
-            if (envelope is null || claims is null || string.IsNullOrEmpty(envelope.Signature)
-                || !bytes.AsSpan().SequenceEqual(JsonSerializer.SerializeToUtf8Bytes(envelope, CursorJsonOptions)))
-            {
-                return false;
-            }
-
-            var expectedDirection = descending ? DescendingDirection : AscendingDirection;
-            if (claims.Version != CursorVersion
-                || claims.SpacePublicId == Guid.Empty
-                || !string.Equals(claims.Sort, normalizedSort, StringComparison.Ordinal)
-                || !string.Equals(claims.Direction, expectedDirection, StringComparison.Ordinal)
-                || !string.Equals(claims.ActorScope, actorScope, StringComparison.Ordinal)
-                || !tokenHasher.Verify(SigningInput(claims), envelope.Signature))
-            {
-                return false;
-            }
-
-            position = new CursorPosition(
-                new DateTimeOffset(claims.CreatedAtTicks, TimeSpan.Zero),
-                claims.SpacePublicId);
-            return true;
-        }
-        catch (Exception exception) when (exception is FormatException or JsonException or ArgumentOutOfRangeException)
-        {
-            return false;
-        }
-    }
-
-    private string Sign(CursorClaims claims) => tokenHasher.Hash(SigningInput(claims));
-
-    private static string SigningInput(CursorClaims claims) =>
-        CursorSigningPrefix + Base64Url.Encode(JsonSerializer.SerializeToUtf8Bytes(claims, CursorJsonOptions));
-
-    private string CreateActorScope(CurrentActor actor) =>
-        tokenHasher.Hash($"{ActorScopePrefix}{actor.ActorType}:{actor.UserPublicId:N}:{actor.SystemRole}");
 
     private static bool TryNormalizeSort(string? sort, out string normalizedSort)
     {
@@ -235,20 +145,6 @@ internal sealed class SpaceListCandidateReader(
         normalizedSort = string.Empty;
         return false;
     }
-
-    private sealed record CursorPosition(DateTimeOffset CreatedAt, Guid PublicId);
-
-    private sealed record CursorClaims(
-        [property: JsonPropertyName("v")] int Version,
-        [property: JsonPropertyName("createdAtTicks")] long CreatedAtTicks,
-        [property: JsonPropertyName("spacePublicId")] Guid SpacePublicId,
-        [property: JsonPropertyName("sort")] string? Sort,
-        [property: JsonPropertyName("direction")] string? Direction,
-        [property: JsonPropertyName("actorScope")] string? ActorScope);
-
-    private sealed record CursorEnvelope(
-        [property: JsonPropertyName("claims")] CursorClaims? Claims,
-        [property: JsonPropertyName("signature")] string? Signature);
 
     private sealed class SpaceListRow
     {

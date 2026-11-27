@@ -62,7 +62,7 @@ Space 멤버 목록·상세 조회, Role 할당, 상태 변경과 본인 탈퇴�
 
 - 현재 OWNER를 제외한 같은 Space의 `ACTIVE`·`SUSPENDED`·`LEFT` Membership을 조회한다. 재가입한 사용자는 과거 `LEFT` 이력과 새 Membership이 별도 항목으로 나올 수 있다. 항목은 `membershipPublicId`로 식별한다. [목록 저장소](../../src/CloudSharp.Infrastructure/Persistence/Repositories/SpaceMembershipReader.cs)
 - `limit`은 1~100인 정수이며 기본은 50이다. `sort`는 대소문자를 구분하지 않는 `joinedAt` 또는 `updatedAt`이며 기본은 `joinedAt`이다. `direction`은 `ASC` 또는 `DESC`이며 기본은 `DESC`다. 시간이 같으면 Membership PublicId에 같은 방향을 적용한다.
-- 첫 페이지는 `cursor`를 생략한다. 후속 요청에 직전 응답의 서명된 base64url `nextCursor`를 그대로 보낸다. 빈 페이지는 `items: []`, 마지막 페이지는 `nextCursor: null`이다. cursor는 요청자, Space, 현재 OWNER를 포함한 조회 범위, 정렬과 방향에 묶인다. 비어 있거나 위조됐거나 범위가 다른 cursor는 400 `CURSOR_INVALID`다. [Cursor 검증 기준](../../.llm/api/validation.md#3-cursor)
+- 첫 페이지는 `cursor`를 생략한다. 후속 요청에 직전 응답의 서명된 base64url `nextCursor`를 그대로 보낸다. 빈 페이지는 `items: []`, 마지막 페이지는 `nextCursor: null`이다. cursor는 요청자, Space, 정렬과 방향에 묶인다. 비어 있거나 위조됐거나 범위가 다른 cursor는 400 `CURSOR_INVALID`다. 소유권이 바뀌어도 발급된 cursor로 이어서 조회한다. [Cursor 검증 기준](../../.llm/api/validation.md#3-cursor)
 
 ## MB-02 멤버 상세 조회
 
@@ -94,4 +94,4 @@ Space 멤버 목록·상세 조회, Role 할당, 상태 변경과 본인 탈퇴�
 ## 엔드포인트 구현 시 연결할 계약
 
 - MB-01~MB-06과 Role 목록은 `ISpaceAuthorizationService`의 인가 결과를 유즈케이스에 전달한다. MB-07에는 인증된 `CurrentActor`와 요청 Space를 전달해 별도 관계 정책을 적용한다. 변경 응답에 `ETagFormatter`를 재사용하고 Space·Membership 인가 실패를 공통 계약에 따라 매핑한다. 관리자 권한 우회와 실제 Role 변경의 영속 감사 연결은 후속 범위다. [인가 필터 설계](../../.llm/auth/aspnet-filters.md) · [Membership DI 등록](../../src/CloudSharp.Api/DependencyInjection/MembershipServiceCollectionExtensions.cs)
-- 목록 cursor 서명에 요청자 범위를 추가한다. Role 교체에서 관리형 목록과 같은 Role 적격성을 검증하고, 배열 형식 오류와 Role 조회 실패의 외부 응답을 구분한다. MB-07의 저장 경합은 본인 탈퇴 계약에 따라 매핑한다. [Membership 테스트 케이스](../tests/core/space-membership-test-cases.md)
+- Role 교체에서 관리형 목록과 같은 Role 적격성을 검증하고, 배열 형식 오류와 Role 조회 실패의 외부 응답을 구분한다. MB-07의 저장 경합은 본인 탈퇴 계약에 따라 매핑한다. [Membership 테스트 케이스](../tests/core/space-membership-test-cases.md)

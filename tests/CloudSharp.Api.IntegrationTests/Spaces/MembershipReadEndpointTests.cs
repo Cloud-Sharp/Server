@@ -187,14 +187,34 @@ public sealed class MembershipReadEndpointTests : MembershipIntegrationTestBase
         await AssertCursorRejectedAsync($"{MembershipsPath(otherSpace.PublicId)}?{cursorQuery}", actor);
         await AssertCursorRejectedAsync($"{path}?{cursorQuery}&sort=updatedAt", actor);
         await AssertCursorRejectedAsync($"{path}?{cursorQuery}&direction=ASC", actor);
+    }
 
-        await using var scope = Environment.Factory.Services.CreateAsyncScope();
-        var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        var persistedSpace = await context.Spaces.SingleAsync(candidate => candidate.Id == space.Id);
-        persistedSpace.OwnerUserId = otherActor.Id;
-        await context.SaveChangesAsync();
+    [Test]
+    public async Task ListMemberships_AfterOwnershipChange_ShouldContinueFromCursor()
+    {
+        var owner = await RegisterSpaceUserAsync();
+        var actor = await RegisterSpaceUserAsync();
+        var otherActor = await RegisterSpaceUserAsync();
+        var space = await SeedSpaceAsync(owner);
+        await SeedMembershipAsync(space, actor, owner);
+        await SeedMembershipAsync(space, otherActor, owner);
 
-        await AssertCursorRejectedAsync($"{path}?{cursorQuery}", actor);
+        var path = MembershipsPath(space.PublicId);
+        using var first = await Api.GetAsync($"{path}?limit=1", actor.AccessToken);
+        var cursor = (await ReadMembershipPageAsync(first)).NextCursor;
+        Assert.That(cursor, Is.Not.Null.And.Not.Empty);
+
+        await using (var scope = Environment.Factory.Services.CreateAsyncScope())
+        {
+            var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var persistedSpace = await context.Spaces.SingleAsync(candidate => candidate.Id == space.Id);
+            persistedSpace.OwnerUserId = otherActor.Id;
+            await context.SaveChangesAsync();
+        }
+
+        using var next = await Api.GetAsync(
+            $"{path}?limit=1&cursor={Uri.EscapeDataString(cursor!)}", actor.AccessToken);
+        await ReadMembershipPageAsync(next);
     }
 
     [TestCase("cursor=", "CURSOR_INVALID")]
