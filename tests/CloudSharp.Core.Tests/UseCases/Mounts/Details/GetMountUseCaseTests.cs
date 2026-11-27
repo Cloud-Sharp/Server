@@ -35,8 +35,7 @@ public sealed class GetMountUseCaseTests
                     MountPermission.FilesWrite),
                 Grant(MountGrantTargetType.User, actor.UserId, MountPermission.FilesDownload),
             ]);
-        var snapshot = new MountDetailsSnapshot(mount, PublicId(400_100), 123_456_789);
-        var harness = new Harness(Member(actor, [role]), snapshot);
+        var harness = new Harness(Member(actor, [role]), mount);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
@@ -52,8 +51,6 @@ public sealed class GetMountUseCaseTests
             Assert.That(dto.Name, Is.EqualTo(mount.Name));
             Assert.That(dto.Visibility, Is.EqualTo(mount.Visibility));
             Assert.That(dto.Status, Is.EqualTo(mount.Status));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(snapshot.RootFolderPublicId));
-            Assert.That(dto.UsedBytes, Is.EqualTo(snapshot.UsedBytes));
             Assert.That(
                 dto.MyAccess.Permissions,
                 Is.EquivalentTo(new[]
@@ -66,7 +63,7 @@ public sealed class GetMountUseCaseTests
             Assert.That(dto.CreatedAt, Is.EqualTo(mount.CreatedAt));
             Assert.That(dto.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
             Assert.That(dto.ArchivedAt, Is.EqualTo(mount.ArchivedAt));
-            Assert.That(harness.DetailsReader.Reads.Single(), Is.EqualTo((SpaceId, mount.PublicId)));
+            Assert.That(harness.MountReader.Reads.Single(), Is.EqualTo((SpaceId, mount.PublicId)));
         });
     }
 
@@ -90,9 +87,7 @@ public sealed class GetMountUseCaseTests
                     MountPermission.FilesDownload,
                     MountPermission.FilesWrite),
             ]);
-        var harness = new Harness(
-            Owner(actor, spaceStatus),
-            new MountDetailsSnapshot(mount, PublicId(400_110), 1_024));
+        var harness = new Harness(Owner(actor, spaceStatus), mount);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
@@ -110,9 +105,7 @@ public sealed class GetMountUseCaseTests
         // Arrange
         var actor = Actor();
         var mount = Mount(120);
-        var harness = new Harness(
-            Owner(actor, SpaceStatus.Archived),
-            new MountDetailsSnapshot(mount, PublicId(400_120), 0));
+        var harness = new Harness(Owner(actor, SpaceStatus.Archived), mount);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
@@ -133,11 +126,9 @@ public sealed class GetMountUseCaseTests
             130,
             spaceId: scenario == "CrossSpace" ? SpaceId + 1 : SpaceId,
             visibility: scenario == "Unreadable" ? MountVisibility.Private : MountVisibility.Public);
-        var snapshot = scenario == "Missing"
-            ? null
-            : new MountDetailsSnapshot(mount, PublicId(400_130), 0);
+        var loadedMount = scenario == "Missing" ? null : mount;
         var authorization = scenario == "Unreadable" ? Member(actor) : Owner(actor);
-        var harness = new Harness(authorization, snapshot);
+        var harness = new Harness(authorization, loadedMount);
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
@@ -164,21 +155,19 @@ public sealed class GetMountUseCaseTests
         Assert.Multiple(() =>
         {
             Assert.That(harness.AuthorizationReader.Reads, Is.Empty);
-            Assert.That(harness.DetailsReader.Reads, Is.Empty);
+            Assert.That(harness.MountReader.Reads, Is.Empty);
         });
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldPropagateDetailsReaderFailure()
+    public async Task ExecuteAsync_ShouldPropagateMountReaderFailure()
     {
         // Arrange
         var actor = Actor();
         var mount = Mount(140);
         var failure = CommonError.DependencyUnavailable();
-        var harness = new Harness(
-            Owner(actor),
-            new MountDetailsSnapshot(mount, PublicId(400_140), 0));
-        harness.DetailsReader.Failure = failure;
+        var harness = new Harness(Owner(actor), mount);
+        harness.MountReader.Failure = failure;
 
         // Act
         var result = await harness.UseCase.ExecuteAsync(Query(actor, mount.PublicId));
@@ -221,25 +210,25 @@ public sealed class GetMountUseCaseTests
 
     private sealed class Harness
     {
-        public Harness(SpaceAuthorizationSnapshot authorization, MountDetailsSnapshot? snapshot)
+        public Harness(SpaceAuthorizationSnapshot authorization, Mount? mount)
         {
             AuthorizationReader = new FakeSpaceAuthorizationReader(authorization);
-            DetailsReader = new RecordingMountDetailsReader(snapshot);
+            MountReader = new RecordingMountReader(mount);
         }
 
         public FakeSpaceAuthorizationReader AuthorizationReader { get; }
-        public RecordingMountDetailsReader DetailsReader { get; }
-        public GetMountUseCase UseCase => new(AuthorizationReader, DetailsReader);
+        public RecordingMountReader MountReader { get; }
+        public GetMountUseCase UseCase => new(AuthorizationReader, MountReader);
     }
 
-    private sealed class RecordingMountDetailsReader(MountDetailsSnapshot? snapshot) : IMountDetailsReader
+    private sealed class RecordingMountReader(Mount? mount) : IMountReader
     {
         private readonly List<(long SpaceId, Guid MountPublicId)> reads = [];
 
         public IError? Failure { get; set; }
         public IReadOnlyList<(long SpaceId, Guid MountPublicId)> Reads => reads;
 
-        public Task<Result<MountDetailsSnapshot?>> ReadAsync(
+        public Task<Result<Mount?>> ReadAsync(
             long spaceId,
             Guid mountPublicId,
             CancellationToken cancellationToken = default)
@@ -247,8 +236,8 @@ public sealed class GetMountUseCaseTests
             cancellationToken.ThrowIfCancellationRequested();
             reads.Add((spaceId, mountPublicId));
             return Task.FromResult(Failure is { } failure
-                ? Result.Fail<MountDetailsSnapshot?>(failure)
-                : Result.Ok(snapshot));
+                ? Result.Fail<Mount?>(failure)
+                : Result.Ok(mount));
         }
     }
 }

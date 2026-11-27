@@ -26,8 +26,6 @@ internal sealed class MountMutationTestHarness
     public const long OtherRoleTargetId = 103;
     public const long UserTargetId = 43;
     public const long OtherUserTargetId = 44;
-    public const long DefaultUsedBytes = 4096;
-    public static readonly Guid DefaultRootFolderPublicId = TestMountReadSnapshots.PublicId(800_001);
 
     private MountMutationTestHarness(
         CurrentActor actor,
@@ -36,7 +34,6 @@ internal sealed class MountMutationTestHarness
     {
         Actor = actor;
         AuthorizationReader = new RecordingAuthorizationReader(PersistenceSession, authorizationSnapshot, Events);
-        DetailsReader = new RecordingDetailsReader(this);
         MountReader = new RecordingMountReader(this);
         GrantTargetReader = new RecordingGrantTargetReader(PersistenceSession, Events);
         Writer = new RecordingMutationWriter(PersistenceSession, Events);
@@ -50,7 +47,6 @@ internal sealed class MountMutationTestHarness
     public CurrentActor Actor { get; }
     public FakePersistenceSession PersistenceSession { get; } = new();
     public RecordingAuthorizationReader AuthorizationReader { get; }
-    public RecordingDetailsReader DetailsReader { get; }
     public RecordingMountReader MountReader { get; }
     public RecordingGrantTargetReader GrantTargetReader { get; }
     public RecordingMutationWriter Writer { get; }
@@ -60,12 +56,10 @@ internal sealed class MountMutationTestHarness
     public List<string> Events { get; } = [];
     public Mount? StoredMount { get; set; }
     public Mount? LastReadMount { get; set; }
-    public Guid RootFolderPublicId { get; set; } = DefaultRootFolderPublicId;
-    public long UsedBytes { get; set; } = DefaultUsedBytes;
 
     public UpdateMountUseCase UpdateUseCase => new(
         AuthorizationReader,
-        DetailsReader,
+        MountReader,
         Writer,
         UnitOfWork,
         TransactionExecutor,
@@ -73,7 +67,7 @@ internal sealed class MountMutationTestHarness
 
     public ArchiveMountUseCase ArchiveUseCase => new(
         AuthorizationReader,
-        DetailsReader,
+        MountReader,
         Writer,
         UnitOfWork,
         TransactionExecutor,
@@ -81,7 +75,7 @@ internal sealed class MountMutationTestHarness
 
     public ReactivateMountUseCase ReactivateUseCase => new(
         AuthorizationReader,
-        DetailsReader,
+        MountReader,
         Writer,
         UnitOfWork,
         TransactionExecutor,
@@ -226,7 +220,6 @@ internal sealed class MountMutationTestHarness
         Assert.Multiple(() =>
         {
             Assert.That(harness.AuthorizationReader.Reads, Is.Empty);
-            Assert.That(harness.DetailsReader.Reads, Is.Empty);
             Assert.That(harness.MountReader.Reads, Is.Empty);
             Assert.That(harness.GrantTargetReader.ReadCount, Is.Zero);
             Assert.That(harness.Writer.UpdateCalls, Is.Empty);
@@ -329,33 +322,6 @@ internal sealed class MountMutationTestHarness
             return Task.FromResult(Failure is { } failure
                 ? Result.Fail<SpaceAuthorizationSnapshot?>(failure)
                 : Result.Ok(Snapshot));
-        }
-    }
-
-    public sealed class RecordingDetailsReader(MountMutationTestHarness harness) : IMountDetailsReader
-    {
-        public List<(long SpaceId, Guid MountPublicId)> Reads { get; } = [];
-        public IError? Failure { get; set; }
-        public bool WasInTransaction { get; private set; }
-
-        public Task<Result<MountDetailsSnapshot?>> ReadAsync(
-            long spaceId,
-            Guid mountPublicId,
-            CancellationToken cancellationToken = default)
-        {
-            Reads.Add((spaceId, mountPublicId));
-            WasInTransaction = harness.PersistenceSession.IsTransactionActive;
-            harness.Events.Add("read-details");
-            if (Failure is { } failure)
-            {
-                return Task.FromResult(Result.Fail<MountDetailsSnapshot?>(failure));
-            }
-
-            harness.LastReadMount = harness.StoredMount is { } mount ? Copy(mount) : null;
-            var snapshot = harness.LastReadMount is { } readMount
-                ? new MountDetailsSnapshot(readMount, harness.RootFolderPublicId, harness.UsedBytes)
-                : null;
-            return Task.FromResult(Result.Ok(snapshot));
         }
     }
 

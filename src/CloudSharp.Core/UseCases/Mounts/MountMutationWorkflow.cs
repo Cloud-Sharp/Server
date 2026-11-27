@@ -14,7 +14,7 @@ namespace CloudSharp.Core.UseCases.Mounts;
 
 internal sealed class MountMutationWorkflow(
     ISpaceAuthorizationReader? authorizationReader,
-    IMountDetailsReader? detailsReader,
+    IMountReader? mountReader,
     IMountMutationWriter? writer,
     IUnitOfWork? unitOfWork,
     ITransactionExecutor? transactionExecutor,
@@ -28,7 +28,7 @@ internal sealed class MountMutationWorkflow(
         Func<Mount, DateTimeOffset, Result> domainOperation,
         CancellationToken cancellationToken = default)
     {
-        if (authorizationReader is null || detailsReader is null || writer is null
+        if (authorizationReader is null || mountReader is null || writer is null
             || unitOfWork is null || transactionExecutor is null || clock is null)
         {
             return Result.Fail<MountResultDto>(CommonError.DependencyUnavailable());
@@ -76,22 +76,21 @@ internal sealed class MountMutationWorkflow(
         }
 
         var authorizationSnapshot = authorizationResult.Value!;
-        var detailsResult = await detailsReader!.ReadAsync(
+        var mountResult = await mountReader!.ReadAsync(
             authorizationSnapshot.Space.Id,
             mountPublicId,
             cancellationToken);
-        if (detailsResult.IsFailed)
+        if (mountResult.IsFailed)
         {
-            return Result.Fail<MountResultDto>(detailsResult.Errors);
+            return Result.Fail<MountResultDto>(mountResult.Errors);
         }
 
-        var snapshot = detailsResult.Value;
-        if (snapshot is null || snapshot.Mount.SpaceId != authorizationSnapshot.Space.Id)
+        var mount = mountResult.Value;
+        if (mount is null || mount.SpaceId != authorizationSnapshot.Space.Id)
         {
             return Result.Fail<MountResultDto>(CommonError.ResourceNotFound());
         }
 
-        var mount = snapshot.Mount;
         var access = MountAccessEvaluator.Evaluate(authorizationSnapshot, actor.UserId, mount);
         if (!access.Permissions.Contains(MountPermission.FilesRead))
         {
@@ -137,8 +136,6 @@ internal sealed class MountMutationWorkflow(
             mount.Name,
             mount.Visibility,
             mount.Status,
-            snapshot.RootFolderPublicId,
-            snapshot.UsedBytes,
             new MountAccessDto(
                 access.Permissions,
                 access.IsManager && authorizationSnapshot.Space.Status == SpaceStatus.Active),

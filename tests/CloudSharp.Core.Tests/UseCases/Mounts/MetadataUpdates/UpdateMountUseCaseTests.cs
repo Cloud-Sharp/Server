@@ -51,8 +51,6 @@ public sealed class UpdateMountUseCaseTests
             Assert.That(update.Grants, Is.EquivalentTo(mount.Grants));
             Assert.That(dto.Name, Is.EqualTo(expectedName));
             Assert.That(dto.Visibility, Is.EqualTo(expectedVisibility));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(DefaultRootFolderPublicId));
-            Assert.That(dto.UsedBytes, Is.EqualTo(DefaultUsedBytes));
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(
                 new[] { MountPermission.FilesRead, MountPermission.FilesDownload, MountPermission.FilesWrite }));
             Assert.That(dto.MyAccess.CanManage, Is.True);
@@ -60,9 +58,9 @@ public sealed class UpdateMountUseCaseTests
             Assert.That(dto.UpdatedAt, Is.EqualTo(Now));
             Assert.That(dto.ArchivedAt, Is.EqualTo(mount.ArchivedAt));
             Assert.That(result.Value.Version, Is.EqualTo(mount.Version + 1));
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details", "stage", "save" }));
+            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount", "stage", "save" }));
             Assert.That(harness.AuthorizationReader.WasInTransaction, Is.True);
-            Assert.That(harness.DetailsReader.WasInTransaction, Is.True);
+            Assert.That(harness.MountReader.WasInTransaction, Is.True);
         });
     }
 
@@ -94,9 +92,7 @@ public sealed class UpdateMountUseCaseTests
             Assert.That(result.Value.Mount.Name, Is.EqualTo(mount.Name));
             Assert.That(result.Value.Mount.Visibility, Is.EqualTo(mount.Visibility));
             Assert.That(result.Value.Mount.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
-            Assert.That(result.Value.Mount.RootFolderPublicId, Is.EqualTo(DefaultRootFolderPublicId));
-            Assert.That(result.Value.Mount.UsedBytes, Is.EqualTo(DefaultUsedBytes));
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
         });
     }
 
@@ -151,7 +147,7 @@ public sealed class UpdateMountUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.PreconditionFailed);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [TestCase("Missing")]
@@ -176,7 +172,7 @@ public sealed class UpdateMountUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.ResourceNotFound);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [TestCase(MountVisibility.Public, ErrorCodes.Auth.SpacePermissionDenied)]
@@ -200,7 +196,7 @@ public sealed class UpdateMountUseCaseTests
         // Assert
         AssertError(result, expectedError);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [TestCase(SpaceStatus.Archived)]

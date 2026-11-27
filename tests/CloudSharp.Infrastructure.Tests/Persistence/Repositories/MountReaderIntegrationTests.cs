@@ -9,7 +9,6 @@ using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Infrastructure.Auth.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
-using CloudSharp.Infrastructure.Persistence.Repositories;
 using Dapper;
 using FluentResults;
 using Microsoft.EntityFrameworkCore;
@@ -41,7 +40,6 @@ public sealed class MountReaderIntegrationTests
     private const long ArchivedMountId = 102;
     private const long FilelessMountId = 103;
     private const long CurrentMembershipId = 14;
-    private const long ExpectedUsage = 7_000_000_000;
 
     private static readonly TimeSpan TestTimeout = TimeSpan.FromSeconds(15);
     private static readonly DateTimeOffset CreatedAt = new(2026, 11, 26, 1, 2, 3, TimeSpan.Zero);
@@ -61,8 +59,6 @@ public sealed class MountReaderIntegrationTests
     private static readonly Guid FilelessMountPublicId = new("019b26d0-0000-7000-8000-000000000300");
     private static readonly Guid LastMountPublicId = new("019b26d0-0000-7000-8000-000000000200");
     private static readonly Guid OtherMountPublicId = new("019b26d0-0000-7000-8000-000000001500");
-    private static readonly Guid CurrentRootPublicId = new("019b26d0-0000-7000-8000-000000002100");
-    private static readonly Guid FilelessRootPublicId = new("019b26d0-0000-7000-8000-000000002300");
 
     private PostgreSqlContainer? postgres;
     private NpgsqlConnection? sql;
@@ -94,20 +90,10 @@ public sealed class MountReaderIntegrationTests
                 ActiveKey = Convert.ToBase64String(new byte[32]),
             }))
             .AddPostgreSqlPersistence(configuration)
-            .AddScoped<IMountListCandidateReader, MountListCandidateReader>()
-            .AddScoped<IMountCreationGrantTargetReader, MountCreationGrantTargetReader>()
-            .AddScoped<IMountDetailsReader, MountDetailsReader>()
-            .AddScoped<IMountReader, MountReader>()
-            .AddScoped<IMountGrantReader, MountGrantReader>()
-            .AddScoped<IMountPreviewUserReader, MountPreviewUserReader>()
             .BuildServiceProvider();
 
-        await using (var scope = CreateScope())
-        {
-            await scope.Context.Database.EnsureCreatedAsync();
-        }
-
-        await sql!.ExecuteAsync(CreateMountSchemaSql);
+        await using var scope = CreateScope();
+        await scope.Context.Database.EnsureCreatedAsync();
     }
 
     [SetUp]
@@ -115,9 +101,6 @@ public sealed class MountReaderIntegrationTests
     {
         await sql!.ExecuteAsync("""
             TRUNCATE TABLE
-                files,
-                folders,
-                directory_entries,
                 mount_user_grants,
                 mount_role_grants,
                 mounts,
@@ -434,49 +417,6 @@ public sealed class MountReaderIntegrationTests
     }
 
     [Test]
-    public async Task DetailsReadAsync_ShouldReturnArchivedMountCurrentRootAndExact64BitUsage()
-    {
-        await using var scope = CreateScope();
-
-        var details = RequireSuccess(await scope.Details.ReadAsync(SpaceId, ArchivedMountPublicId));
-
-        Assert.That(details, Is.Not.Null);
-        Assert.Multiple(() =>
-        {
-            Assert.That(details!.Mount.Id, Is.EqualTo(ArchivedMountId));
-            Assert.That(details.Mount.Status, Is.EqualTo(MountStatus.Archived));
-            Assert.That(details.Mount.Version, Is.EqualTo(7));
-            Assert.That(details.Mount.ArchivedAt, Is.EqualTo(CreatedAt.AddHours(6)));
-            Assert.That(details.RootFolderPublicId, Is.EqualTo(CurrentRootPublicId));
-            Assert.That(details.UsedBytes, Is.EqualTo(ExpectedUsage));
-            Assert.That(RequireGrant(details.Mount, MountGrantTargetType.Role, DeletedRoleId).Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesRead, MountPermission.FilesDownload }));
-            Assert.That(RequireGrant(details.Mount, MountGrantTargetType.User, SuspendedId).Permissions,
-                Is.EquivalentTo(new[] { MountPermission.FilesWrite, MountPermission.FilesDownload }));
-        });
-    }
-
-    [Test]
-    public async Task DetailsReadAsync_ShouldReturnZeroForFilelessMountAndNullOutsideSpace()
-    {
-        await using var scope = CreateScope();
-
-        var fileless = RequireSuccess(await scope.Details.ReadAsync(SpaceId, FilelessMountPublicId));
-        var wrongSpace = RequireSuccess(await scope.Details.ReadAsync(SpaceId, OtherMountPublicId));
-        var missing = RequireSuccess(await scope.Details.ReadAsync(
-            SpaceId, new Guid("019b26d0-0000-7000-8000-000000006001")));
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(fileless, Is.Not.Null);
-            Assert.That(fileless!.RootFolderPublicId, Is.EqualTo(FilelessRootPublicId));
-            Assert.That(fileless.UsedBytes, Is.Zero);
-            Assert.That(wrongSpace, Is.Null);
-            Assert.That(missing, Is.Null);
-        });
-    }
-
-    [Test]
     public async Task MountReadAsync_ShouldRestoreStoredMasksAndReturnFreshIndependentSnapshots()
     {
         await using var scope = CreateScope();
@@ -785,7 +725,6 @@ public sealed class MountReaderIntegrationTests
         public AppDbContext Context => scope.ServiceProvider.GetRequiredService<AppDbContext>();
         public IMountListCandidateReader ListCandidates => scope.ServiceProvider.GetRequiredService<IMountListCandidateReader>();
         public IMountCreationGrantTargetReader CreationTargets => scope.ServiceProvider.GetRequiredService<IMountCreationGrantTargetReader>();
-        public IMountDetailsReader Details => scope.ServiceProvider.GetRequiredService<IMountDetailsReader>();
         public IMountReader Mounts => scope.ServiceProvider.GetRequiredService<IMountReader>();
         public IMountGrantReader Grants => scope.ServiceProvider.GetRequiredService<IMountGrantReader>();
         public IMountPreviewUserReader PreviewUsers => scope.ServiceProvider.GetRequiredService<IMountPreviewUserReader>();
@@ -795,106 +734,6 @@ public sealed class MountReaderIntegrationTests
 
         public ValueTask DisposeAsync() => scope.DisposeAsync();
     }
-
-    private const string CreateMountSchemaSql = """
-        CREATE TYPE mount_visibility_t AS ENUM ('PUBLIC', 'PRIVATE');
-        CREATE TYPE mount_status_t AS ENUM ('ACTIVE', 'ARCHIVED');
-        CREATE TYPE directory_entry_type_t AS ENUM ('FILE', 'FOLDER');
-        CREATE TYPE content_lifecycle_status_t AS ENUM ('ACTIVE', 'TRASHING', 'TRASHED', 'PURGING', 'PURGED');
-        CREATE TYPE file_scan_status_t AS ENUM ('PENDING', 'PASSED', 'FAILED', 'MALICIOUS');
-        CREATE TYPE file_access_status_t AS ENUM ('AVAILABLE', 'QUARANTINED');
-
-        CREATE TABLE mounts (
-            id bigint PRIMARY KEY,
-            public_id uuid NOT NULL UNIQUE,
-            space_id bigint NOT NULL REFERENCES spaces(id) ON DELETE RESTRICT,
-            name varchar(200) NOT NULL CHECK (btrim(name) <> ''),
-            visibility mount_visibility_t NOT NULL,
-            status mount_status_t NOT NULL DEFAULT 'ACTIVE',
-            version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
-            created_at timestamptz NOT NULL,
-            updated_at timestamptz NOT NULL,
-            archived_at timestamptz NULL,
-            CONSTRAINT ak_mounts_id_space_id UNIQUE (id, space_id),
-            CONSTRAINT chk_mounts_archived_at CHECK ((status = 'ARCHIVED') = (archived_at IS NOT NULL))
-        );
-
-        CREATE TABLE mount_role_grants (
-            mount_id bigint NOT NULL,
-            space_id bigint NOT NULL,
-            role_id bigint NOT NULL,
-            permission_mask bigint NOT NULL CHECK (permission_mask > 0 AND (permission_mask & 7::bigint) = permission_mask),
-            CONSTRAINT pk_mount_role_grants PRIMARY KEY (mount_id, role_id),
-            CONSTRAINT fk_mount_role_grants_mount FOREIGN KEY (mount_id, space_id)
-                REFERENCES mounts(id, space_id) ON DELETE CASCADE,
-            CONSTRAINT fk_mount_role_grants_role FOREIGN KEY (role_id, space_id)
-                REFERENCES space_roles(id, space_id) ON DELETE RESTRICT
-        );
-
-        CREATE TABLE mount_user_grants (
-            mount_id bigint NOT NULL,
-            user_id bigint NOT NULL,
-            permission_mask bigint NOT NULL CHECK (permission_mask > 0 AND (permission_mask & 7::bigint) = permission_mask),
-            CONSTRAINT pk_mount_user_grants PRIMARY KEY (mount_id, user_id),
-            CONSTRAINT fk_mount_user_grants_mount FOREIGN KEY (mount_id)
-                REFERENCES mounts(id) ON DELETE CASCADE,
-            CONSTRAINT fk_mount_user_grants_user FOREIGN KEY (user_id)
-                REFERENCES users(id) ON DELETE RESTRICT
-        );
-
-        CREATE TABLE directory_entries (
-            id bigint PRIMARY KEY,
-            public_id uuid NOT NULL UNIQUE,
-            space_id bigint NOT NULL,
-            mount_id bigint NOT NULL,
-            parent_folder_id bigint NULL,
-            entry_type directory_entry_type_t NOT NULL,
-            name varchar(255) NOT NULL CHECK (btrim(name) <> ''),
-            normalized_name varchar(255) NOT NULL CHECK (btrim(normalized_name) <> ''),
-            lifecycle_status content_lifecycle_status_t NOT NULL DEFAULT 'ACTIVE',
-            created_by_user_id bigint NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
-            trash_operation_id bigint NULL,
-            version bigint NOT NULL DEFAULT 1 CHECK (version > 0),
-            created_at timestamptz NOT NULL,
-            updated_at timestamptz NOT NULL,
-            trashed_at timestamptz NULL,
-            purged_at timestamptz NULL,
-            CONSTRAINT ux_entries_id_mount UNIQUE (id, mount_id),
-            CONSTRAINT fk_entries_mount FOREIGN KEY (mount_id, space_id)
-                REFERENCES mounts(id, space_id) ON DELETE RESTRICT,
-            CONSTRAINT chk_entries_root_is_folder CHECK (parent_folder_id IS NOT NULL OR entry_type = 'FOLDER')
-        );
-
-        CREATE TABLE folders (
-            id bigint PRIMARY KEY,
-            mount_id bigint NOT NULL,
-            is_root boolean NOT NULL DEFAULT false,
-            CONSTRAINT ux_folders_id_mount UNIQUE (id, mount_id),
-            CONSTRAINT fk_folders_entry FOREIGN KEY (id, mount_id)
-                REFERENCES directory_entries(id, mount_id) ON DELETE CASCADE
-        );
-
-        ALTER TABLE directory_entries
-            ADD CONSTRAINT fk_entries_parent_folder FOREIGN KEY (parent_folder_id, mount_id)
-            REFERENCES folders(id, mount_id) ON DELETE RESTRICT;
-
-        CREATE UNIQUE INDEX ux_entries_mount_root_folder ON directory_entries(mount_id)
-            WHERE parent_folder_id IS NULL AND entry_type = 'FOLDER' AND lifecycle_status <> 'PURGED';
-
-        CREATE TABLE files (
-            id bigint PRIMARY KEY,
-            mount_id bigint NOT NULL,
-            storage_provider varchar(30) NOT NULL DEFAULT 'local',
-            storage_object_key varchar(512) NOT NULL,
-            size_bytes bigint NOT NULL CHECK (size_bytes >= 0),
-            scan_status file_scan_status_t NOT NULL DEFAULT 'PENDING',
-            access_status file_access_status_t NOT NULL DEFAULT 'AVAILABLE',
-            CONSTRAINT ux_files_id_mount UNIQUE (id, mount_id),
-            CONSTRAINT fk_files_entry FOREIGN KEY (id, mount_id)
-                REFERENCES directory_entries(id, mount_id) ON DELETE CASCADE,
-            CONSTRAINT ux_files_storage_object UNIQUE (storage_provider, storage_object_key)
-        );
-        """;
 
     private const string SeedSql = """
         INSERT INTO users (
@@ -995,46 +834,5 @@ public sealed class MountReaderIntegrationTests
             (104, 2, 2),
             (201, 6, 1);
 
-        INSERT INTO directory_entries (
-            id, public_id, space_id, mount_id, parent_folder_id, entry_type, name, normalized_name,
-            lifecycle_status, created_by_user_id, trash_operation_id, version, created_at, updated_at,
-            trashed_at, purged_at)
-        VALUES
-            (1002, '019b26d0-0000-7000-8000-000000002100', 100, 102, NULL, 'FOLDER', 'root', 'root',
-                'ACTIVE', 1, NULL, 1, @CreatedAt, @CreatedAt, NULL, NULL),
-            (1102, '019b26d0-0000-7000-8000-000000002000', 100, 102, NULL, 'FOLDER', 'old root', 'old root',
-                'PURGED', 1, NULL, 2, @PriorJoinedAt, @PriorLeftAt, @PriorLeftAt, @PriorLeftAt),
-            (1003, '019b26d0-0000-7000-8000-000000002300', 100, 103, NULL, 'FOLDER', 'root', 'root',
-                'ACTIVE', 1, NULL, 1, @Later, @Later, NULL, NULL),
-            (1201, '019b26d0-0000-7000-8000-000000002201', 200, 201, NULL, 'FOLDER', 'root', 'root',
-                'ACTIVE', 5, NULL, 1, @Later, @Later, NULL, NULL);
-
-        INSERT INTO folders (id, mount_id, is_root)
-        VALUES
-            (1002, 102, true),
-            (1102, 102, true),
-            (1003, 103, true),
-            (1201, 201, true);
-
-        INSERT INTO directory_entries (
-            id, public_id, space_id, mount_id, parent_folder_id, entry_type, name, normalized_name,
-            lifecycle_status, created_by_user_id, trash_operation_id, version, created_at, updated_at,
-            trashed_at, purged_at)
-        VALUES
-            (2002, '019b26d0-0000-7000-8000-000000003102', 100, 102, 1002, 'FILE', 'active', 'active',
-                'ACTIVE', 1, NULL, 1, @CreatedAt, @CreatedAt, NULL, NULL),
-            (2003, '019b26d0-0000-7000-8000-000000003103', 100, 102, 1002, 'FILE', 'trashed', 'trashed',
-                'TRASHED', 1, NULL, 2, @CreatedAt, @Later, @Later, NULL),
-            (2004, '019b26d0-0000-7000-8000-000000003104', 100, 102, 1002, 'FILE', 'purged', 'purged',
-                'PURGED', 1, NULL, 3, @CreatedAt, @Later, @Later, @Later),
-            (2201, '019b26d0-0000-7000-8000-000000003201', 200, 201, 1201, 'FILE', 'foreign', 'foreign',
-                'ACTIVE', 5, NULL, 1, @Later, @Later, NULL, NULL);
-
-        INSERT INTO files (id, mount_id, storage_provider, storage_object_key, size_bytes, scan_status, access_status)
-        VALUES
-            (2002, 102, 'local', 'mount-102-active', 3000000000, 'PENDING', 'AVAILABLE'),
-            (2003, 102, 'local', 'mount-102-trashed', 4000000000, 'PENDING', 'AVAILABLE'),
-            (2004, 102, 'local', 'mount-102-purged', 8000000000, 'PENDING', 'AVAILABLE'),
-            (2201, 201, 'local', 'mount-201-foreign', 16000000000, 'PENDING', 'AVAILABLE');
         """;
 }

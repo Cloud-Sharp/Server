@@ -8,7 +8,7 @@
 
 - [Auth 유즈케이스](use-cases/auth-use-cases.md) — 인증·내 계정 API, Session 수명주기와 구현 현황
 - [Space 유즈케이스](use-cases/space-use-cases.md) — Space·Role·Membership·Invite의 API별 행위자, 상태, 결과와 구현 경계
-- [Mount 유즈케이스](use-cases/mount-use-cases.md) — 목록·개설·설정·보관, Role·사용자별 권한과 미리보기
+- [Mount 유즈케이스](use-cases/mount-use-cases.md) — 목록·개설·설정·보관, Role·사용자별 권한과 미리보기, 후속 사용량 조회
 
 ## 구현된 API
 
@@ -44,7 +44,7 @@
 - [Space Role Repository](repositories/space-role-repositories.md)
 - [Space Membership Repository](repositories/space-membership-repositories.md)
 - [Space Invite Repository](repositories/space-invite-repositories.md)
-- [Mount Repository](repositories/mount-repositories.md) — 구현 대상 포트 8개와 저장 선행 조건
+- [Mount Repository](repositories/mount-repositories.md) — Mount 저장·조회와 후속 전용 사용량 집계
 
 ## 설계·운영 문서
 

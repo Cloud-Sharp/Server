@@ -44,15 +44,13 @@ public sealed class ReactivateMountUseCaseTests
             Assert.That(dto.Status, Is.EqualTo(MountStatus.Active));
             Assert.That(dto.ArchivedAt, Is.Null);
             Assert.That(dto.UpdatedAt, Is.EqualTo(Now));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(DefaultRootFolderPublicId));
-            Assert.That(dto.UsedBytes, Is.EqualTo(DefaultUsedBytes));
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(
                 new[] { MountPermission.FilesRead, MountPermission.FilesDownload, MountPermission.FilesWrite }));
             Assert.That(dto.MyAccess.CanManage, Is.True);
             Assert.That(result.Value.Version, Is.EqualTo(mount.Version + 1));
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details", "stage", "save" }));
+            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount", "stage", "save" }));
             Assert.That(harness.AuthorizationReader.WasInTransaction, Is.True);
-            Assert.That(harness.DetailsReader.WasInTransaction, Is.True);
+            Assert.That(harness.MountReader.WasInTransaction, Is.True);
         });
     }
 
@@ -69,7 +67,7 @@ public sealed class ReactivateMountUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.RequestConflict);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [Test]
@@ -86,7 +84,7 @@ public sealed class ReactivateMountUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.PreconditionFailed);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [TestCase("Missing")]
@@ -107,7 +105,7 @@ public sealed class ReactivateMountUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.ResourceNotFound);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [TestCase(MountVisibility.Public, ErrorCodes.Auth.SpacePermissionDenied)]
@@ -127,7 +125,7 @@ public sealed class ReactivateMountUseCaseTests
         // Assert
         AssertError(result, expectedError);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-details" }));
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
     }
 
     [TestCase(SpaceStatus.Archived)]
