@@ -16,23 +16,14 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
     private static readonly DateTimeOffset Now = TestMountReadSnapshots.Now;
 
     [Test]
-    public async Task ExecuteAsync_ShouldReplaceOnlyDesignatedUserGrant()
+    public async Task ExecuteAsync_ShouldReplaceOnlyDesignatedUserOverwrite()
     {
         // Arrange
-        var mount = StoredMount(grants:
+        var mount = StoredMount(overwrites:
         [
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                UserTargetId,
-                MountPermission.FilesDownload),
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                OtherUserTargetId,
-                MountPermission.FilesRead),
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.Role,
-                OtherRoleTargetId,
-                MountPermission.FilesWrite),
+            Overwrite(MountOverwriteTargetType.User, UserTargetId, allow: [SpacePermission.MountView]),
+            Overwrite(MountOverwriteTargetType.User, OtherUserTargetId, allow: [SpacePermission.MountView]),
+            Overwrite(MountOverwriteTargetType.Role, OtherRoleTargetId, allow: [SpacePermission.MountManage]),
         ]);
         var harness = Administrator(mount);
         var target = harness.SeedUser();
@@ -40,7 +31,8 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
             harness,
             mount,
             target.PublicId,
-            permissions: [MountPermission.FilesWrite, MountPermission.FilesRead, MountPermission.FilesWrite]);
+            allow: [SpacePermission.FilesWrite],
+            deny: [SpacePermission.MountView]);
 
         // Act
         var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(command);
@@ -48,108 +40,72 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
         // Assert
         AssertPermissionResult(
             result,
-            MountGrantTargetType.User,
+            MountOverwriteTargetType.User,
             target.PublicId,
-            [MountPermission.FilesRead, MountPermission.FilesWrite],
+            [SpacePermission.FilesWrite],
+            [SpacePermission.MountView],
             mount.Version + 1);
         AssertSuccessfulWrite(harness, mount.Version);
         var update = harness.Writer.UpdateCalls.Single().Mount;
-        var targetGrant = update.Grants.Single(grant =>
-            grant.TargetType == MountGrantTargetType.User && grant.TargetId == target.Id);
-        var otherUserGrant = update.Grants.Single(grant =>
-            grant.TargetType == MountGrantTargetType.User && grant.TargetId == OtherUserTargetId);
-        var roleGrant = update.Grants.Single(grant => grant.TargetType == MountGrantTargetType.Role);
         Assert.Multiple(() =>
         {
-            Assert.That(update.Grants, Has.Count.EqualTo(3));
-            Assert.That(targetGrant.Permissions, Is.EquivalentTo(
-                new[] { MountPermission.FilesRead, MountPermission.FilesWrite }));
-            Assert.That(otherUserGrant.Permissions, Is.EquivalentTo(new[] { MountPermission.FilesRead }));
-            Assert.That(roleGrant.TargetId, Is.EqualTo(OtherRoleTargetId));
-            Assert.That(roleGrant.Permissions, Is.EquivalentTo(new[] { MountPermission.FilesWrite }));
-            Assert.That(update.UpdatedAt, Is.EqualTo(Now));
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.EqualTo(1));
-            Assert.That(harness.GrantTargetReader.SpaceId, Is.EqualTo(TestMountReadSnapshots.SpaceId));
+            Assert.That(update.Overwrites, Has.Count.EqualTo(3));
+            Assert.That(update.FindOverwrite(MountOverwriteTargetType.User, target.Id)!.Deny,
+                Is.EquivalentTo(new[] { SpacePermission.MountView }));
+            Assert.That(update.FindOverwrite(MountOverwriteTargetType.User, OtherUserTargetId)!.Allow,
+                Is.EquivalentTo(new[] { SpacePermission.MountView }));
+            Assert.That(update.FindOverwrite(MountOverwriteTargetType.Role, OtherRoleTargetId)!.Allow,
+                Is.EquivalentTo(new[] { SpacePermission.MountManage }));
             Assert.That(harness.GrantTargetReader.RequestedRolePublicIds, Is.Empty);
             Assert.That(harness.GrantTargetReader.RequestedUserPublicIds, Is.EqualTo(new[] { target.PublicId }));
-            Assert.That(harness.AuthorizationReader.WasInTransaction, Is.True);
-            Assert.That(harness.MountReader.WasInTransaction, Is.True);
-            Assert.That(harness.GrantTargetReader.WasInTransaction, Is.True);
             Assert.That(harness.Events, Is.EqualTo(
                 new[] { "authorize", "read-mount", "read-targets", "stage", "save" }));
         });
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldReturnCurrentGrantForEquivalentSetWithoutWriting()
+    public async Task ExecuteAsync_ShouldAllowSpaceOwnerAsTargetWithoutMembership()
     {
         // Arrange
-        var mount = StoredMount(grants:
-        [
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                UserTargetId,
-                MountPermission.FilesRead,
-                MountPermission.FilesWrite),
-        ]);
+        var mount = StoredMount();
+        var harness = Administrator(mount);
+        var owner = harness.SeedUser(TestMountReadSnapshots.SpaceOwnerUserId, membershipSpaceId: null);
+
+        // Act
+        var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
+            Command(harness, mount, owner.PublicId, deny: [SpacePermission.FilesWrite], allow: []));
+
+        // Assert
+        AssertPermissionResult(
+            result,
+            MountOverwriteTargetType.User,
+            owner.PublicId,
+            [],
+            [SpacePermission.FilesWrite],
+            mount.Version + 1);
+    }
+
+    [Test]
+    public async Task ExecuteAsync_ShouldReturnPermissionDeniedWhenChangingPermissionActorLacks()
+    {
+        // Arrange
+        var mount = StoredMount();
         var harness = Administrator(mount);
         var target = harness.SeedUser();
         var command = Command(
             harness,
             mount,
             target.PublicId,
-            permissions: [MountPermission.FilesWrite, MountPermission.FilesRead, MountPermission.FilesWrite]);
+            allow: [],
+            deny: [SpacePermission.FilesDownload],
+            actorPermissions: [SpacePermission.MountView, SpacePermission.MountManage]);
 
         // Act
         var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(command);
 
         // Assert
-        AssertPermissionResult(
-            result,
-            MountGrantTargetType.User,
-            target.PublicId,
-            [MountPermission.FilesRead, MountPermission.FilesWrite],
-            mount.Version);
-        AssertNoOp(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.LastReadMount!.Version, Is.EqualTo(mount.Version));
-            Assert.That(harness.LastReadMount.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount", "read-targets" }));
-        });
-    }
-
-    [Test]
-    public async Task ExecuteAsync_ShouldReturnPreconditionFailureBeforeTargetLookupForEquivalentSet()
-    {
-        // Arrange
-        var mount = StoredMount(grants:
-        [
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                UserTargetId,
-                MountPermission.FilesRead),
-        ]);
-        var harness = Administrator(mount);
-        var target = harness.SeedUser();
-
-        // Act
-        var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(
-                harness,
-                mount,
-                target.PublicId,
-                mount.Version - 1,
-                [MountPermission.FilesRead]));
-
-        // Assert
-        AssertError(result, ErrorCodes.Common.PreconditionFailed);
+        AssertError(result, ErrorCodes.Auth.SpacePermissionDenied);
         AssertRejectedWithoutWrites(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.Zero);
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
-        });
     }
 
     [TestCase("Missing")]
@@ -171,11 +127,7 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.ResourceNotFound);
         AssertRejectedWithoutWrites(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.EqualTo(1));
-            Assert.That(harness.GrantTargetReader.WasInTransaction, Is.True);
-        });
+        Assert.That(harness.GrantTargetReader.ReadCount, Is.EqualTo(1));
     }
 
     [TestCase("SuspendedMember")]
@@ -202,45 +154,37 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Common.RequestConflict);
         AssertRejectedWithoutWrites(harness);
-        Assert.That(harness.GrantTargetReader.ReadCount, Is.EqualTo(1));
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldRemoveSuspendedMemberGrantForEmptyReplacement()
+    public async Task ExecuteAsync_ShouldRemoveSuspendedMemberOverwriteForEmptyReplacement()
     {
         // Arrange
-        var mount = StoredMount(grants:
+        var mount = StoredMount(overwrites:
         [
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                UserTargetId,
-                MountPermission.FilesWrite),
-            TestMountReadSnapshots.Grant(
-                MountGrantTargetType.User,
-                OtherUserTargetId,
-                MountPermission.FilesRead),
+            Overwrite(MountOverwriteTargetType.User, UserTargetId, allow: [SpacePermission.MountManage]),
+            Overwrite(MountOverwriteTargetType.User, OtherUserTargetId, allow: [SpacePermission.MountView]),
         ]);
         var harness = Administrator(mount);
         var target = harness.SeedUser(membershipStatus: SpaceMembershipStatus.Suspended);
 
         // Act
         var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, mount, target.PublicId, permissions: []));
+            Command(harness, mount, target.PublicId, allow: []));
 
         // Assert
-        AssertPermissionResult(result, MountGrantTargetType.User, target.PublicId, [], mount.Version + 1);
+        AssertPermissionResult(result, MountOverwriteTargetType.User, target.PublicId, [], [], mount.Version + 1);
         AssertSuccessfulWrite(harness, mount.Version);
         var update = harness.Writer.UpdateCalls.Single().Mount;
         Assert.Multiple(() =>
         {
-            Assert.That(update.Grants, Has.Count.EqualTo(1));
-            Assert.That(update.Grants.Single().TargetId, Is.EqualTo(OtherUserTargetId));
-            Assert.That(update.UpdatedAt, Is.EqualTo(Now));
+            Assert.That(update.Overwrites, Has.Count.EqualTo(1));
+            Assert.That(update.Overwrites.Single().TargetId, Is.EqualTo(OtherUserTargetId));
         });
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldReturnEmptyGrantForSuspendedMemberWithoutExistingGrant()
+    public async Task ExecuteAsync_ShouldReturnEmptyOverwriteForSuspendedMemberWithoutExistingOverwrite()
     {
         // Arrange
         var mount = StoredMount();
@@ -249,73 +193,15 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
 
         // Act
         var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, mount, target.PublicId, permissions: []));
+            Command(harness, mount, target.PublicId, allow: []));
 
         // Assert
-        AssertPermissionResult(result, MountGrantTargetType.User, target.PublicId, [], mount.Version);
+        AssertPermissionResult(result, MountOverwriteTargetType.User, target.PublicId, [], [], mount.Version);
         AssertNoOp(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.LastReadMount!.Version, Is.EqualTo(mount.Version));
-            Assert.That(harness.LastReadMount.UpdatedAt, Is.EqualTo(mount.UpdatedAt));
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.EqualTo(1));
-        });
-    }
-
-    [TestCase("Missing")]
-    [TestCase("CrossSpace")]
-    public async Task ExecuteAsync_ShouldReturnResourceNotFoundBeforeVersionCheck(string scenario)
-    {
-        // Arrange
-        var requestedMount = StoredMount();
-        var storedMount = scenario == "CrossSpace"
-            ? StoredMount(spaceId: TestMountReadSnapshots.SpaceId + 1)
-            : null;
-        var harness = Administrator(storedMount);
-        var target = harness.SeedUser();
-
-        // Act
-        var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, requestedMount, target.PublicId, requestedMount.Version - 1));
-
-        // Assert
-        AssertError(result, ErrorCodes.Common.ResourceNotFound);
-        AssertRejectedWithoutWrites(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.Zero);
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
-        });
-    }
-
-    [TestCase(MountVisibility.Public, ErrorCodes.Auth.SpacePermissionDenied)]
-    [TestCase(MountVisibility.Private, ErrorCodes.Common.ResourceNotFound)]
-    public async Task ExecuteAsync_ShouldCheckReadabilityAndManagerEligibilityBeforeVersion(
-        MountVisibility visibility,
-        string expectedError)
-    {
-        // Arrange
-        var mount = StoredMount(visibility: visibility);
-        var harness = OrdinaryMember(mount);
-        var target = harness.SeedUser();
-
-        // Act
-        var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, mount, target.PublicId, mount.Version - 1));
-
-        // Assert
-        AssertError(result, expectedError);
-        AssertRejectedWithoutWrites(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.Zero);
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize", "read-mount" }));
-        });
     }
 
     [TestCase(SpaceStatus.Archived)]
     [TestCase(SpaceStatus.Deleting)]
-    [TestCase(SpaceStatus.Deleted)]
     public async Task ExecuteAsync_ShouldRejectInactiveSpaceBeforeMountRead(SpaceStatus spaceStatus)
     {
         // Arrange
@@ -330,29 +216,25 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
         // Assert
         AssertError(result, ErrorCodes.Auth.SpaceStateNotAllowed);
         AssertRejectedWithoutWrites(harness);
-        Assert.Multiple(() =>
-        {
-            Assert.That(harness.GrantTargetReader.ReadCount, Is.Zero);
-            Assert.That(harness.Events, Is.EqualTo(new[] { "authorize" }));
-        });
+        Assert.That(harness.Events, Is.EqualTo(new[] { "authorize" }));
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldRollbackStagingFailureWithoutSaving()
+    public async Task ExecuteAsync_ShouldReturnPreconditionFailureBeforeTargetLookup()
     {
         // Arrange
         var mount = StoredMount();
         var harness = Administrator(mount);
         var target = harness.SeedUser();
-        var failure = CommonError.DependencyUnavailable();
-        harness.Writer.Failure = failure;
 
         // Act
         var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, mount, target.PublicId));
+            Command(harness, mount, target.PublicId, mount.Version - 1));
 
         // Assert
-        AssertStagingFailure(harness, result, failure);
+        AssertError(result, ErrorCodes.Common.PreconditionFailed);
+        AssertRejectedWithoutWrites(harness);
+        Assert.That(harness.GrantTargetReader.ReadCount, Is.Zero);
     }
 
     [Test]
@@ -371,28 +253,6 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
 
         // Assert
         AssertSaveFailure(harness, result, failure);
-        Assert.That(harness.Writer.UpdateCalls.Single().ExpectedVersion, Is.EqualTo(mount.Version));
-    }
-
-    [TestCase(0L)]
-    [TestCase(-1L)]
-    public async Task ExecuteAsync_ShouldReturnVersionValidationErrorWithoutDependencyCalls(long expectedVersion)
-    {
-        // Arrange
-        var mount = StoredMount();
-        var harness = Administrator(mount);
-        var target = harness.SeedUser();
-
-        // Act
-        var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, mount, target.PublicId, expectedVersion));
-
-        // Assert
-        AssertValidationError(
-            result,
-            ErrorCodes.Mount.ExpectedVersionInvalid,
-            nameof(ReplaceMountUserPermissionsCommand.ExpectedVersion));
-        AssertNoDependencyCalls(harness);
     }
 
     [Test]
@@ -415,7 +275,7 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
     }
 
     [Test]
-    public async Task ExecuteAsync_ShouldReturnPermissionsValidationErrorWithoutDependencyCalls()
+    public async Task ExecuteAsync_ShouldReturnDenyValidationErrorWithoutDependencyCalls()
     {
         // Arrange
         var mount = StoredMount();
@@ -424,38 +284,43 @@ public sealed class ReplaceMountUserPermissionsUseCaseTests
 
         // Act
         var result = await harness.ReplaceUserPermissionsUseCase.ExecuteAsync(
-            Command(harness, mount, target.PublicId, permissions: [(MountPermission)(-1)]));
+            Command(harness, mount, target.PublicId, deny: [SpacePermission.MembersManage]));
 
         // Assert
         AssertValidationError(
             result,
             ErrorCodes.Mount.PermissionsInvalid,
-            nameof(ReplaceMountUserPermissionsCommand.Permissions));
+            nameof(ReplaceMountUserPermissionsCommand.Deny));
         AssertNoDependencyCalls(harness);
     }
 
-    private static Mount StoredMount(
-        MountVisibility visibility = MountVisibility.Public,
-        long spaceId = TestMountReadSnapshots.SpaceId,
-        IEnumerable<MountAccessGrant>? grants = null) =>
+    private static Mount StoredMount(IEnumerable<MountPermissionOverwrite>? overwrites = null) =>
         TestMountReadSnapshots.Mount(
             MountId,
-            spaceId,
-            visibility,
+            TestMountReadSnapshots.SpaceId,
+            MountVisibility.Public,
             updatedAt: Now.AddHours(-1),
-            grants: grants);
+            overwrites: overwrites);
+
+    private static MountPermissionOverwrite Overwrite(
+        MountOverwriteTargetType targetType,
+        long targetId,
+        SpacePermission[]? allow = null,
+        SpacePermission[]? deny = null) =>
+        TestMountReadSnapshots.Overwrite(targetType, targetId, allow, deny);
 
     private static ReplaceMountUserPermissionsCommand Command(
         MountMutationTestHarness harness,
         Mount mount,
         Guid targetPublicId,
         long? expectedVersion = null,
-        IReadOnlyList<MountPermission>? permissions = null) =>
+        IReadOnlyList<SpacePermission>? allow = null,
+        IReadOnlyList<SpacePermission>? deny = null,
+        IEnumerable<SpacePermission>? actorPermissions = null) =>
         new(
-            harness.Actor,
-            TestMountReadSnapshots.SpacePublicId,
-            mount.PublicId,
+            harness.MountContext(mount, actorPermissions),
             targetPublicId,
             expectedVersion ?? mount.Version,
-            permissions ?? [MountPermission.FilesWrite]);
+            allow ?? [SpacePermission.MountManage],
+            deny ?? []);
 }

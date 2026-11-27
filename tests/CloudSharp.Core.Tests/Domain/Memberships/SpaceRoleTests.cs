@@ -256,6 +256,7 @@ public class SpaceRoleTests
                     SpacePermission.SpaceView,
                     SpacePermission.FilesRead,
                     SpacePermission.FilesDownload,
+                    SpacePermission.MountView,
                 })
             .SetArgDisplayNames("viewer");
         yield return new TestCaseData(
@@ -270,6 +271,7 @@ public class SpaceRoleTests
                     SpacePermission.SharesManage,
                     SpacePermission.TagsManage,
                     SpacePermission.MembersView,
+                    SpacePermission.MountView,
                 })
             .SetArgDisplayNames("member");
     }

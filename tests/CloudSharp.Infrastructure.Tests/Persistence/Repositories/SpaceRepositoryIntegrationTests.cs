@@ -931,11 +931,11 @@ public sealed class SpaceRepositoryIntegrationTests
             Assert.That(staged, Has.Length.EqualTo(3));
             Assert.That(staged.Select(role => scope.Context.Entry(role).State), Is.All.EqualTo(EntityState.Added));
             Assert.That(staged.Single(role => role.SystemKey == SpaceRoleSystemKey.Admin).PermissionMask,
-                Is.EqualTo(8191L));
+                Is.EqualTo(32767L));
             Assert.That(staged.Single(role => role.SystemKey == SpaceRoleSystemKey.Member).PermissionMask,
-                Is.EqualTo(765L));
+                Is.EqualTo(17149L));
             Assert.That(staged.Single(role => role.SystemKey == SpaceRoleSystemKey.Viewer).PermissionMask,
-                Is.EqualTo(21L));
+                Is.EqualTo(16405L));
             Assert.That(roles.Select(role => role.Id), Is.All.Zero);
         });
         await using (var probe = CreateScope())
@@ -954,11 +954,11 @@ public sealed class SpaceRepositoryIntegrationTests
         {
             Assert.That(saved, Has.Length.EqualTo(3));
             Assert.That(saved.Single(role => role.SystemKey == SpaceRoleSystemKey.Admin).PermissionMask,
-                Is.EqualTo(8191L));
+                Is.EqualTo(32767L));
             Assert.That(saved.Single(role => role.SystemKey == SpaceRoleSystemKey.Member).PermissionMask,
-                Is.EqualTo(765L));
+                Is.EqualTo(17149L));
             Assert.That(saved.Single(role => role.SystemKey == SpaceRoleSystemKey.Viewer).PermissionMask,
-                Is.EqualTo(21L));
+                Is.EqualTo(16405L));
             Assert.That(roles.Select(role => role.Id), Is.All.Zero);
         });
     }

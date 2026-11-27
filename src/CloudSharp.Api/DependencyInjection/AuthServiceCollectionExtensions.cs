@@ -25,6 +25,7 @@ internal static class AuthServiceCollectionExtensions
 
         services.AddScoped<SessionIssuanceService>();
         services.AddScoped<ISpaceAuthorizationService, SpaceAuthorizationService>();
+        services.AddScoped<IMountAuthorizationService, MountAuthorizationService>();
         services.AddLoggedUseCase<RegistrationCommand, RegistrationResultDto, RegistrationUseCase>();
         services.AddLoggedUseCase<LoginCommand, LoginResultDto, LoginUseCase>();
         services.AddLoggedUseCase<PasswordChangeCommand, PasswordChangeResultDto, PasswordChangeUseCase>();

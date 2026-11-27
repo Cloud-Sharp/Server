@@ -11,7 +11,7 @@ namespace CloudSharp.Core.UseCases.Mounts.RolePermissionReplacements;
 public sealed class ReplaceMountRolePermissionsUseCase
     : IUseCase<ReplaceMountRolePermissionsCommand, MountPermissionResultDto>
 {
-    private MountGrantMutationWorkflow MutationWorkflow { get; }
+    private MountOverwriteMutationWorkflow MutationWorkflow { get; }
 
     public ReplaceMountRolePermissionsUseCase()
         : this(null!, null!, null!, null!, null!, null!, null!) { }
@@ -19,16 +19,16 @@ public sealed class ReplaceMountRolePermissionsUseCase
     public ReplaceMountRolePermissionsUseCase(
         ISpaceAuthorizationReader authorizationReader,
         IMountReader mountReader,
-        IMountCreationGrantTargetReader grantTargetReader,
+        IMountCreationGrantTargetReader targetReader,
         IMountMutationWriter writer,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
         IClock clock)
     {
-        MutationWorkflow = new MountGrantMutationWorkflow(
+        MutationWorkflow = new MountOverwriteMutationWorkflow(
             authorizationReader,
             mountReader,
-            grantTargetReader,
+            targetReader,
             writer,
             unitOfWork,
             transactionExecutor,
@@ -48,13 +48,12 @@ public sealed class ReplaceMountRolePermissionsUseCase
         }
 
         return await MutationWorkflow.ExecuteAsync(
-            command.Actor,
-            command.SpacePublicId,
-            command.MountPublicId,
-            MountGrantTargetType.Role,
+            command.Mount,
+            MountOverwriteTargetType.Role,
             command.RolePublicId,
             command.ExpectedVersion,
-            command.Permissions,
+            command.Allow,
+            command.Deny,
             cancellationToken);
     }
 }

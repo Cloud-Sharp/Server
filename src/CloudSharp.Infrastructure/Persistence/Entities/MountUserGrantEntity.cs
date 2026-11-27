@@ -2,41 +2,53 @@ using CloudSharp.Core.Domain.Mounts;
 
 namespace CloudSharp.Infrastructure.Persistence.Entities;
 
-/// <summary>Persistence row for an explicit grant directly to a User.</summary>
+/// <summary>Persistence row for a Mount permission overwrite for a User.</summary>
 public sealed class MountUserGrantEntity
 {
     public long MountId { get; set; }
     public long UserId { get; set; }
-    public long PermissionMask { get; set; }
+    public long AllowMask { get; set; }
+    public long DenyMask { get; set; }
     public MountEntity Mount { get; set; } = null!;
 
-    public MountAccessGrant ToDomain() =>
-        MountAccessGrant.Reconstitute(MountGrantTargetType.User, UserId, MountPermissionMask.Decode(PermissionMask));
+    public MountPermissionOverwrite ToDomain() =>
+        MountPermissionOverwrite.Reconstitute(
+            MountOverwriteTargetType.User,
+            UserId,
+            MountOverwriteMask.Decode(AllowMask),
+            MountOverwriteMask.Decode(DenyMask));
 
-    public static MountUserGrantEntity FromDomain(MountEntity mount, MountAccessGrant grant)
+    public static MountUserGrantEntity FromDomain(MountEntity mount, MountPermissionOverwrite overwrite)
     {
         ArgumentNullException.ThrowIfNull(mount);
-        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(overwrite);
 
         var entity = new MountUserGrantEntity
         {
             MountId = mount.Id,
-            UserId = grant.TargetId,
+            UserId = overwrite.TargetId,
             Mount = mount,
         };
-        entity.UpdateFrom(grant);
+        entity.UpdateFrom(overwrite);
         return entity;
     }
 
-    public void UpdateFrom(MountAccessGrant grant)
+    public void UpdateFrom(MountPermissionOverwrite overwrite)
     {
-        ArgumentNullException.ThrowIfNull(grant);
+        ArgumentNullException.ThrowIfNull(overwrite);
 
-        if (grant.TargetType != MountGrantTargetType.User || grant.TargetId != UserId)
+        if (overwrite.TargetType != MountOverwriteTargetType.User || overwrite.TargetId != UserId)
         {
-            throw new ArgumentException("The grant must target this row's User.", nameof(grant));
+            throw new ArgumentException("The overwrite must target this row's User.", nameof(overwrite));
         }
 
-        PermissionMask = MountPermissionMask.Encode(grant.Permissions);
+        if (overwrite.IsEmpty)
+        {
+            throw new ArgumentException(
+                "A stored Mount overwrite must allow or deny at least one permission.", nameof(overwrite));
+        }
+
+        AllowMask = MountOverwriteMask.Encode(overwrite.Allow);
+        DenyMask = MountOverwriteMask.Encode(overwrite.Deny);
     }
 }

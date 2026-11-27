@@ -79,9 +79,9 @@ internal sealed class MountMutationWriter(AppDbContext dbContext) : IMountMutati
             }
         }
 
-        var remainingGrants = mount.Grants
-            .Where(grant => grant.TargetType == MountGrantTargetType.Role)
-            .ToDictionary(grant => grant.TargetId);
+        var remainingGrants = mount.Overwrites
+            .Where(overwrite => overwrite.TargetType == MountOverwriteTargetType.Role)
+            .ToDictionary(overwrite => overwrite.TargetId);
         foreach (var grant in grantsByRoleId.Values)
         {
             if (!remainingGrants.Remove(grant.RoleId, out var desired))
@@ -121,9 +121,9 @@ internal sealed class MountMutationWriter(AppDbContext dbContext) : IMountMutati
             }
         }
 
-        var remainingGrants = mount.Grants
-            .Where(grant => grant.TargetType == MountGrantTargetType.User)
-            .ToDictionary(grant => grant.TargetId);
+        var remainingGrants = mount.Overwrites
+            .Where(overwrite => overwrite.TargetType == MountOverwriteTargetType.User)
+            .ToDictionary(overwrite => overwrite.TargetId);
         foreach (var grant in grantsByUserId.Values)
         {
             if (!remainingGrants.Remove(grant.UserId, out var desired))

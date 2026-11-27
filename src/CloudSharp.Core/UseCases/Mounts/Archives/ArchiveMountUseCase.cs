@@ -44,9 +44,7 @@ public sealed class ArchiveMountUseCase : IUseCase<ArchiveMountCommand, MountRes
         }
 
         return await MutationWorkflow.ExecuteAsync(
-            command.Actor,
-            command.SpacePublicId,
-            command.MountPublicId,
+            command.Mount,
             command.ExpectedVersion,
             (mount, now) => mount.Archive(now),
             cancellationToken);

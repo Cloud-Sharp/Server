@@ -45,6 +45,19 @@ internal sealed class MountMutationTestHarness
     }
 
     public CurrentActor Actor { get; }
+
+    /// <summary>
+    /// endpoint 필터가 넘긴 것과 같은 Mount context. 권한을 생략하면 harness snapshot으로 계산한
+    /// 실제 유효 권한을 사용한다.
+    /// </summary>
+    public AuthorizedMountContext MountContext(Mount mount, IEnumerable<SpacePermission>? permissions = null) =>
+        TestMountReadSnapshots.MountContext(
+            Actor,
+            mount,
+            permissions ?? (AuthorizationReader.Snapshot is { } snapshot
+                ? MountPermissionPolicy.Evaluate(snapshot, Actor.UserId, mount).Permissions
+                : MountScopedPermissions.All),
+            TestMountReadSnapshots.SpaceId);
     public FakePersistenceSession PersistenceSession { get; } = new();
     public RecordingAuthorizationReader AuthorizationReader { get; }
     public RecordingMountReader MountReader { get; }
@@ -174,7 +187,7 @@ internal sealed class MountMutationTestHarness
             mount.CreatedAt,
             mount.UpdatedAt,
             mount.ArchivedAt,
-            mount.Grants);
+            mount.Overwrites);
 
     public static void AssertError<T>(Result<T> result, string errorCode)
     {
@@ -200,17 +213,19 @@ internal sealed class MountMutationTestHarness
 
     public static void AssertPermissionResult(
         Result<MountPermissionResultDto> result,
-        MountGrantTargetType targetType,
+        MountOverwriteTargetType targetType,
         Guid targetPublicId,
-        IEnumerable<MountPermission> expectedPermissions,
+        IEnumerable<SpacePermission> expectedAllow,
+        IEnumerable<SpacePermission> expectedDeny,
         long expectedVersion)
     {
         Assert.That(result.IsSuccess, Is.True);
         Assert.Multiple(() =>
         {
-            Assert.That(result.Value.Grant.TargetType, Is.EqualTo(targetType));
-            Assert.That(result.Value.Grant.TargetPublicId, Is.EqualTo(targetPublicId));
-            Assert.That(result.Value.Grant.Permissions, Is.EquivalentTo(expectedPermissions));
+            Assert.That(result.Value.Overwrite.TargetType, Is.EqualTo(targetType));
+            Assert.That(result.Value.Overwrite.TargetPublicId, Is.EqualTo(targetPublicId));
+            Assert.That(result.Value.Overwrite.Allow, Is.EquivalentTo(expectedAllow));
+            Assert.That(result.Value.Overwrite.Deny, Is.EquivalentTo(expectedDeny));
             Assert.That(result.Value.Version, Is.EqualTo(expectedVersion));
         });
     }

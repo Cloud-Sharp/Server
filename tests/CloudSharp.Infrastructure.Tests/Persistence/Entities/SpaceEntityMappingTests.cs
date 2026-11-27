@@ -115,9 +115,9 @@ public sealed class SpaceEntityMappingTests
         });
     }
 
-    [TestCase(SpaceRoleSystemKey.Admin, 8191L)]
-    [TestCase(SpaceRoleSystemKey.Member, 765L)]
-    [TestCase(SpaceRoleSystemKey.Viewer, 21L)]
+    [TestCase(SpaceRoleSystemKey.Admin, 32767L)]
+    [TestCase(SpaceRoleSystemKey.Member, 17149L)]
+    [TestCase(SpaceRoleSystemKey.Viewer, 16405L)]
     public void SpaceRoleEntity_ShouldEncodeManagedRolePermissions(SpaceRoleSystemKey systemKey, long expectedMask)
     {
         var role = SpaceRole.CreateManaged(21, systemKey, CreatedAt).Value;
@@ -172,6 +172,7 @@ public sealed class SpaceEntityMappingTests
     [TestCase(SpacePermission.MembersManage, 1024L)]
     [TestCase(SpacePermission.UploadsManage, 2048L)]
     [TestCase(SpacePermission.OperationsManage, 4096L)]
+    [TestCase(SpacePermission.MountManage, 8192L)]
     public void SpaceRoleEntity_ShouldRoundTripEveryPermissionAtItsAssignedBit(
         SpacePermission permission,
         long expectedMask)
@@ -191,7 +192,7 @@ public sealed class SpaceEntityMappingTests
     }
 
     [TestCase(-1L)]
-    [TestCase(8192L)]
+    [TestCase(32768L)]
     public void SpaceRoleEntity_ToDomain_ShouldRejectInvalidStoredPermissionMask(long mask)
     {
         var role = SpaceRole.CreateManaged(21, SpaceRoleSystemKey.Viewer, CreatedAt).Value;

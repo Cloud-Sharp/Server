@@ -1,13 +1,13 @@
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Policies.Authorization;
+using CloudSharp.Core.UseCases.Spaces;
 using FluentValidation;
 
 namespace CloudSharp.Core.UseCases.Mounts.Listings;
 
-/// <summary>Session 사용자가 읽을 수 있는 Mount 페이지를 조회한다.</summary>
+/// <summary>Space 접근 인가를 받은 사용자가 MOUNT_VIEW를 가진 Mount 페이지를 조회한다.</summary>
 public sealed record ListMountsQuery(
-    CurrentActor Actor,
-    Guid SpacePublicId,
+    AuthorizedSpaceContext Space,
     string? Cursor = null,
     int Limit = 50,
     string? Sort = null,
@@ -17,8 +17,7 @@ internal sealed class ListMountsQueryValidator : AbstractValidator<ListMountsQue
 {
     public ListMountsQueryValidator()
     {
-        RuleFor(query => query.Actor).RequireSessionActor();
-        RuleFor(query => query.SpacePublicId).RequireSpacePublicId();
+        RuleFor(query => query.Space).RequireAuthorizedSpaceContext();
         RuleFor(query => query.Cursor).ValidateCursor();
         RuleFor(query => query.Limit).RequirePageLimit();
 

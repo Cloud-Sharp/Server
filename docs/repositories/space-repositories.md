@@ -5,7 +5,7 @@ Space의 저장, 상세·목록·인가 조회, 생성 시 기본 Role 등록에
 ## Mount와의 경계
 
 - 새 Space의 Mount 목록은 비어 있다. 개설한 Mount는 자체 PublicId로 파일 탐색의 시작점이 된다. 초기 권한 부여는 Mount와 함께 등록한다. Mount별 사용량 전용 조회는 Content 구현 이후에 추가한다. [Mount Repository](mount-repositories.md)
-- Space 인가 스냅샷은 Mount 접근 자격과 관리 자격을 판단하는 데에도 사용한다. Space 소유자와 활성 `ADMIN` 멤버가 Mount를 관리한다. 콘텐츠 접근은 Mount의 `PUBLIC`·`PRIVATE` 기본 권한과 해당 Mount의 Role·개인별 `MountPermission` 부여를 합산해 판단한다. Mount 권한은 `mount_role_grants.permission_mask`와 `mount_user_grants.permission_mask`에 저장한다.
+- Space 인가 스냅샷으로 Mount 접근 자격과 Space의 `MOUNT_MANAGE`를 확인한다. 기존 Mount의 유효 권한은 Space Role 권한을 기본값으로 공개 범위와 해당 Mount의 Role·사용자 덮어쓰기를 적용해 계산한다. 덮어쓰기는 `mount_role_grants`·`mount_user_grants`의 `allow_mask`·`deny_mask`에 저장한다. [Mount 권한](../security/permissions.md#mount-유효-권한-계산)
 
 ## 저장소 계약
 

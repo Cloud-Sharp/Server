@@ -126,6 +126,7 @@ public static class ErrorCodes
         public const string ListLimitInvalid = "MOUNT_LIST_LIMIT_INVALID";
         public const string ListSortInvalid = "MOUNT_LIST_SORT_INVALID";
         public const string PreviewInputRequired = "MOUNT_PREVIEW_INPUT_REQUIRED";
+        public const string AuthorizationContextRequired = "MOUNT_AUTHORIZATION_CONTEXT_REQUIRED";
     }
 
     public static class Session

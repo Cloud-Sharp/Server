@@ -52,4 +52,5 @@
 - [아키텍처 결정 기록](adr/README.md)
 - [제품·프로세스 결정 기록](decisions/README.md)
 - [보안 문서](security/README.md)
+- [Space와 Mount 권한](security/permissions.md) — Space 권한 코드와 기본 Role, Mount의 유효 권한 계산과 작업별 인가
 - [출시 검증 문서](verification/README.md)

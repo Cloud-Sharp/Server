@@ -1,4 +1,5 @@
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using FluentResults;
 using NUnit.Framework;
@@ -12,7 +13,7 @@ public class MountTests
         new(2026, 11, 26, 3, 30, 0, TimeSpan.Zero);
 
     [Test]
-    public void Create_WithInitialGrants_ShouldCreateActiveMountWithDefaults()
+    public void Create_WithInitialOverwrites_ShouldCreateActiveMountWithDefaults()
     {
         var result = Mount.Create(
             11,
@@ -20,8 +21,8 @@ public class MountTests
             MountVisibility.Private,
             Now,
             [
-                Grant(MountGrantTargetType.Role, 7, MountPermission.FilesWrite, MountPermission.FilesRead),
-                Grant(MountGrantTargetType.User, 7, MountPermission.FilesDownload),
+                Overwrite(MountOverwriteTargetType.Role, 7, allow: [SpacePermission.MountManage, SpacePermission.MountView]),
+                Overwrite(MountOverwriteTargetType.User, 7, deny: [SpacePermission.FilesWrite]),
             ]);
 
         Assert.That(result.IsSuccess, Is.True);
@@ -37,11 +38,13 @@ public class MountTests
         Assert.That(mount.CreatedAt, Is.EqualTo(Now));
         Assert.That(mount.UpdatedAt, Is.EqualTo(Now));
         Assert.That(mount.ArchivedAt, Is.Null);
-        Assert.That(mount.Grants, Has.Count.EqualTo(2));
-        Assert.That(FindGrant(mount, MountGrantTargetType.Role, 7).Permissions.SetEquals(
-            [MountPermission.FilesRead, MountPermission.FilesWrite]), Is.True);
-        Assert.That(FindGrant(mount, MountGrantTargetType.User, 7).Permissions.SetEquals(
-            [MountPermission.FilesDownload]), Is.True);
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(2));
+        var role = FindOverwrite(mount, MountOverwriteTargetType.Role, 7);
+        Assert.That(role.Allow, Is.EquivalentTo(new[] { SpacePermission.MountView, SpacePermission.MountManage }));
+        Assert.That(role.Deny, Is.Empty);
+        var user = FindOverwrite(mount, MountOverwriteTargetType.User, 7);
+        Assert.That(user.Allow, Is.Empty);
+        Assert.That(user.Deny, Is.EquivalentTo(new[] { SpacePermission.FilesWrite }));
     }
 
     [TestCase(1)]
@@ -111,7 +114,7 @@ public class MountTests
     }
 
     [Test]
-    public void Create_WithNullGrantEntry_ShouldReturnGrantsInvalid()
+    public void Create_WithNullOverwriteEntry_ShouldReturnGrantsInvalid()
     {
         var result = Mount.Create(7, "Design", MountVisibility.Public, Now, [null!]);
 
@@ -127,36 +130,36 @@ public class MountTests
             MountVisibility.Public,
             Now,
             [
-                Grant(MountGrantTargetType.Role, 7, MountPermission.FilesRead),
-                Grant(MountGrantTargetType.Role, 7, MountPermission.FilesWrite),
+                Overwrite(MountOverwriteTargetType.Role, 7, allow: [SpacePermission.MountView]),
+                Overwrite(MountOverwriteTargetType.Role, 7, deny: [SpacePermission.MountManage]),
             ]);
 
         AssertError(result, ErrorCodes.Mount.GrantsInvalid);
     }
 
     [Test]
-    public void Create_ShouldIsolateGrantsFromCallerCollectionMutation()
+    public void Create_ShouldIsolateOverwritesFromCallerCollectionMutation()
     {
-        var source = new List<MountAccessGrant> { RoleGrant() };
+        var source = new List<MountPermissionOverwrite> { RoleOverwrite() };
         var mount = Mount.Create(7, "Design", MountVisibility.Public, Now, source).Value;
 
         source.Clear();
 
-        Assert.That(mount.Grants, Has.Count.EqualTo(1));
-        Assert.That(FindGrant(mount, MountGrantTargetType.Role, 7).Permissions.SetEquals(
-            [MountPermission.FilesRead, MountPermission.FilesDownload]), Is.True);
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(1));
+        Assert.That(FindOverwrite(mount, MountOverwriteTargetType.Role, 7).Allow,
+            Is.EquivalentTo(new[] { SpacePermission.MountView }));
     }
 
     [Test]
-    public void Grants_ShouldRejectMutationAttempts()
+    public void Overwrites_ShouldRejectMutationAttempts()
     {
         var mount = Restore();
-        var collection = (ICollection<MountAccessGrant>)mount.Grants;
+        var collection = (ICollection<MountPermissionOverwrite>)mount.Overwrites;
 
-        Assert.That(() => collection.Add(RoleGrant()), Throws.TypeOf<NotSupportedException>());
+        Assert.That(() => collection.Add(RoleOverwrite()), Throws.TypeOf<NotSupportedException>());
         Assert.That(() => collection.Remove(collection.First()), Throws.TypeOf<NotSupportedException>());
         Assert.That(() => collection.Clear(), Throws.TypeOf<NotSupportedException>());
-        Assert.That(mount.Grants, Has.Count.EqualTo(1));
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(1));
     }
 
     [TestCase(MountStatus.Active)]
@@ -176,7 +179,7 @@ public class MountTests
             original.CreatedAt,
             original.UpdatedAt,
             original.ArchivedAt,
-            original.Grants);
+            original.Overwrites);
 
         Assert.That(Snapshot(restored), Is.EqualTo(Snapshot(original)));
         Assert.That(restored, Is.Not.SameAs(original));
@@ -192,14 +195,14 @@ public class MountTests
     }
 
     [Test]
-    public void Reconstitute_ShouldIsolateGrantsFromCallerCollectionMutation()
+    public void Reconstitute_ShouldIsolateOverwritesFromCallerCollectionMutation()
     {
-        var source = new List<MountAccessGrant> { RoleGrant() };
-        var mount = Restore(grants: source);
+        var source = new List<MountPermissionOverwrite> { RoleOverwrite() };
+        var mount = Restore(overwrites: source);
 
         source.Clear();
 
-        Assert.That(mount.Grants, Has.Count.EqualTo(1));
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(1));
     }
 
     [TestCaseSource(nameof(InvalidSnapshots))]
@@ -209,7 +212,7 @@ public class MountTests
     }
 
     [Test]
-    public void Reconstitute_WithNullGrants_ShouldThrowArgumentNullException()
+    public void Reconstitute_WithNullOverwrites_ShouldThrowArgumentNullException()
     {
         Assert.That(() => Mount.Reconstitute(
             42,
@@ -226,10 +229,10 @@ public class MountTests
     }
 
     [Test]
-    public void UpdateSettings_ShouldApplyBothFieldsAndPreserveGrants()
+    public void UpdateSettings_ShouldApplyBothFieldsAndPreserveOverwrites()
     {
         var mount = Restore();
-        var grantsBefore = GrantsSnapshot(mount);
+        var overwritesBefore = OverwritesSnapshot(mount);
         var changedAt = Now.AddMinutes(1);
 
         var result = mount.UpdateSettings("  Design  ", MountVisibility.Public, changedAt);
@@ -240,7 +243,7 @@ public class MountTests
         Assert.That(mount.Version, Is.EqualTo(2));
         Assert.That(mount.UpdatedAt, Is.EqualTo(changedAt));
         Assert.That(mount.CreatedAt, Is.EqualTo(Now.AddDays(-1)));
-        Assert.That(GrantsSnapshot(mount), Is.EqualTo(grantsBefore));
+        Assert.That(OverwritesSnapshot(mount), Is.EqualTo(overwritesBefore));
     }
 
     [Test]
@@ -281,10 +284,10 @@ public class MountTests
     }
 
     [Test]
-    public void ArchiveThenReactivate_ShouldMaintainLifecycleTimestampsAndGrants()
+    public void ArchiveThenReactivate_ShouldMaintainLifecycleTimestampsAndOverwrites()
     {
         var mount = Restore();
-        var grantsBefore = GrantsSnapshot(mount);
+        var overwritesBefore = OverwritesSnapshot(mount);
         var archivedAt = Now.AddMinutes(1);
         var reactivatedAt = Now.AddMinutes(2);
 
@@ -299,7 +302,7 @@ public class MountTests
         Assert.That(mount.ArchivedAt, Is.Null);
         Assert.That(mount.Version, Is.EqualTo(3));
         Assert.That(mount.UpdatedAt, Is.EqualTo(reactivatedAt));
-        Assert.That(GrantsSnapshot(mount), Is.EqualTo(grantsBefore));
+        Assert.That(OverwritesSnapshot(mount), Is.EqualTo(overwritesBefore));
     }
 
     [TestCase("archive", MountStatus.Archived)]
@@ -317,161 +320,102 @@ public class MountTests
     }
 
     [Test]
-    public void ArchivedMount_ShouldAcceptSettingsAndGrantChanges()
+    public void ArchivedMount_ShouldAcceptSettingsAndOverwriteChanges()
     {
         var mount = InState(MountStatus.Archived);
         var archivedAt = mount.ArchivedAt;
 
         Assert.That(mount.UpdateSettings("Archived design", null, Now.AddMinutes(1)).IsSuccess, Is.True);
-        Assert.That(mount.SetGrant(
-            MountGrantTargetType.User,
+        Assert.That(mount.SetOverwrite(
+            MountOverwriteTargetType.User,
             9,
-            [MountPermission.FilesWrite],
+            [SpacePermission.MountManage],
+            [],
             Now.AddMinutes(2)).IsSuccess, Is.True);
-        Assert.That(mount.RevokePermissions(
-            MountGrantTargetType.Role,
-            7,
-            [MountPermission.FilesRead, MountPermission.FilesDownload],
-            Now.AddMinutes(3)).IsSuccess, Is.True);
+        Assert.That(mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [], [], Now.AddMinutes(3)).IsSuccess, Is.True);
 
         Assert.That(mount.Status, Is.EqualTo(MountStatus.Archived));
         Assert.That(mount.ArchivedAt, Is.EqualTo(archivedAt));
         Assert.That(mount.Name, Is.EqualTo("Archived design"));
-        Assert.That(mount.Grants, Has.Count.EqualTo(1));
-        Assert.That(FindGrant(mount, MountGrantTargetType.User, 9).Permissions.SetEquals(
-            [MountPermission.FilesWrite]), Is.True);
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(1));
+        Assert.That(FindOverwrite(mount, MountOverwriteTargetType.User, 9).Allow,
+            Is.EquivalentTo(new[] { SpacePermission.MountManage }));
         Assert.That(mount.Version, Is.EqualTo(4));
         Assert.That(mount.UpdatedAt, Is.EqualTo(Now.AddMinutes(3)));
     }
 
     [Test]
-    public void SetGrant_ShouldReplaceEntireSetAndPreserveOtherTargets()
+    public void SetOverwrite_ShouldReplaceBothSetsAndPreserveOtherTargets()
     {
-        var mount = Restore(grants:
+        var mount = Restore(overwrites:
         [
-            RoleGrant(),
-            Grant(MountGrantTargetType.User, 8, MountPermission.FilesRead),
+            RoleOverwrite(),
+            Overwrite(MountOverwriteTargetType.User, 8, allow: [SpacePermission.MountView]),
         ]);
         var changedAt = Now.AddMinutes(1);
 
-        var result = mount.SetGrant(
-            MountGrantTargetType.Role,
+        var result = mount.SetOverwrite(
+            MountOverwriteTargetType.Role,
             7,
-            [MountPermission.FilesWrite, MountPermission.FilesWrite],
+            [SpacePermission.FilesWrite, SpacePermission.FilesWrite],
+            [SpacePermission.MountView],
             changedAt);
 
         Assert.That(result.IsSuccess, Is.True);
-        Assert.That(mount.Grants, Has.Count.EqualTo(2));
-        Assert.That(FindGrant(mount, MountGrantTargetType.Role, 7).Permissions.SetEquals(
-            [MountPermission.FilesWrite]), Is.True);
-        Assert.That(FindGrant(mount, MountGrantTargetType.User, 8).Permissions.SetEquals(
-            [MountPermission.FilesRead]), Is.True);
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(2));
+        var role = FindOverwrite(mount, MountOverwriteTargetType.Role, 7);
+        Assert.That(role.Allow, Is.EquivalentTo(new[] { SpacePermission.FilesWrite }));
+        Assert.That(role.Deny, Is.EquivalentTo(new[] { SpacePermission.MountView }));
+        Assert.That(FindOverwrite(mount, MountOverwriteTargetType.User, 8).Allow,
+            Is.EquivalentTo(new[] { SpacePermission.MountView }));
         Assert.That(mount.Version, Is.EqualTo(2));
         Assert.That(mount.UpdatedAt, Is.EqualTo(changedAt));
     }
 
     [Test]
-    public void SetGrant_WithEmptySet_ShouldRemoveExistingGrant()
+    public void SetOverwrite_WithEmptySets_ShouldRemoveExistingOverwrite()
     {
         var mount = Restore();
 
-        var result = mount.SetGrant(MountGrantTargetType.Role, 7, [], Now.AddMinutes(1));
+        var result = mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [], [], Now.AddMinutes(1));
 
         Assert.That(result.IsSuccess, Is.True);
-        Assert.That(mount.Grants, Is.Empty);
+        Assert.That(mount.Overwrites, Is.Empty);
+        Assert.That(mount.FindOverwrite(MountOverwriteTargetType.Role, 7), Is.Null);
         Assert.That(mount.Version, Is.EqualTo(2));
         Assert.That(mount.UpdatedAt, Is.EqualTo(Now.AddMinutes(1)));
     }
 
     [Test]
-    public void SetGrant_ShouldIsolatePermissionsFromCallerCollectionMutation()
+    public void SetOverwrite_ShouldIsolatePermissionsFromCallerCollectionMutation()
     {
-        var mount = Restore(grants: []);
-        var source = new List<MountPermission> { MountPermission.FilesRead };
+        var mount = Restore(overwrites: []);
+        var allow = new List<SpacePermission> { SpacePermission.MountView };
+        var deny = new List<SpacePermission> { SpacePermission.FilesWrite };
 
-        Assert.That(mount.SetGrant(MountGrantTargetType.User, 9, source, Now).IsSuccess, Is.True);
-        source.Clear();
-        source.Add(MountPermission.FilesWrite);
+        Assert.That(mount.SetOverwrite(MountOverwriteTargetType.User, 9, allow, deny, Now).IsSuccess, Is.True);
+        allow.Clear();
+        deny.Add(SpacePermission.FilesDownload);
 
-        Assert.That(FindGrant(mount, MountGrantTargetType.User, 9).Permissions.SetEquals(
-            [MountPermission.FilesRead]), Is.True);
+        var stored = FindOverwrite(mount, MountOverwriteTargetType.User, 9);
+        Assert.That(stored.Allow, Is.EquivalentTo(new[] { SpacePermission.MountView }));
+        Assert.That(stored.Deny, Is.EquivalentTo(new[] { SpacePermission.FilesWrite }));
     }
 
     [Test]
-    public void RevokePermissions_ShouldSubtractRequestedSet()
+    public void SetOverwrite_ShouldKeepSeparateRoleAndUserTargets()
     {
-        var mount = Restore(grants:
+        var mount = Restore(overwrites:
         [
-            Grant(
-                MountGrantTargetType.Role,
-                7,
-                MountPermission.FilesRead,
-                MountPermission.FilesDownload,
-                MountPermission.FilesWrite),
+            Overwrite(MountOverwriteTargetType.Role, 7, allow: [SpacePermission.MountView]),
+            Overwrite(MountOverwriteTargetType.User, 7, allow: [SpacePermission.MountView]),
         ]);
 
-        var result = mount.RevokePermissions(
-            MountGrantTargetType.Role,
-            7,
-            [MountPermission.FilesDownload, MountPermission.FilesDownload],
-            Now.AddMinutes(1));
+        var result = mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [], [], Now);
 
         Assert.That(result.IsSuccess, Is.True);
-        Assert.That(FindGrant(mount, MountGrantTargetType.Role, 7).Permissions.SetEquals(
-            [MountPermission.FilesRead, MountPermission.FilesWrite]), Is.True);
-        Assert.That(mount.Version, Is.EqualTo(2));
-        Assert.That(mount.UpdatedAt, Is.EqualTo(Now.AddMinutes(1)));
-    }
-
-    [Test]
-    public void RevokePermissions_WithAllGrantedPermissions_ShouldRemoveGrant()
-    {
-        var mount = Restore(grants:
-        [
-            Grant(
-                MountGrantTargetType.Role,
-                7,
-                MountPermission.FilesRead,
-                MountPermission.FilesDownload,
-                MountPermission.FilesWrite),
-        ]);
-
-        var result = mount.RevokePermissions(
-            MountGrantTargetType.Role,
-            7,
-            [
-                MountPermission.FilesWrite,
-                MountPermission.FilesRead,
-                MountPermission.FilesDownload,
-                MountPermission.FilesRead,
-            ],
-            Now.AddMinutes(1));
-
-        Assert.That(result.IsSuccess, Is.True);
-        Assert.That(mount.Grants, Is.Empty);
-        Assert.That(mount.Version, Is.EqualTo(2));
-        Assert.That(mount.UpdatedAt, Is.EqualTo(Now.AddMinutes(1)));
-    }
-
-    [Test]
-    public void RevokePermissions_ShouldKeepSeparateRoleAndUserTargets()
-    {
-        var mount = Restore(grants:
-        [
-            Grant(MountGrantTargetType.Role, 7, MountPermission.FilesRead),
-            Grant(MountGrantTargetType.User, 7, MountPermission.FilesDownload),
-        ]);
-
-        var result = mount.RevokePermissions(
-            MountGrantTargetType.Role,
-            7,
-            [MountPermission.FilesRead],
-            Now);
-
-        Assert.That(result.IsSuccess, Is.True);
-        Assert.That(mount.Grants, Has.Count.EqualTo(1));
-        Assert.That(FindGrant(mount, MountGrantTargetType.User, 7).Permissions.SetEquals(
-            [MountPermission.FilesDownload]), Is.True);
+        Assert.That(mount.Overwrites, Has.Count.EqualTo(1));
+        Assert.That(mount.FindOverwrite(MountOverwriteTargetType.User, 7), Is.Not.Null);
     }
 
     [Test]
@@ -484,8 +428,8 @@ public class MountTests
         }
     }
 
-    [TestCaseSource(nameof(InvalidGrantChanges))]
-    public void GrantMutation_WithInvalidInput_ShouldFailWithoutChangingSnapshot(
+    [TestCaseSource(nameof(InvalidOverwriteChanges))]
+    public void OverwriteMutation_WithInvalidInput_ShouldFailWithoutChangingSnapshot(
         Func<Mount, Result> mutate,
         string expectedCode)
     {
@@ -567,11 +511,11 @@ public class MountTests
             Restore(status: MountStatus.Archived, archivedAt: Now.AddDays(-2)));
         yield return InvalidSnapshot("archived after updated", () =>
             Restore(status: MountStatus.Archived, archivedAt: Now.AddTicks(1)));
-        yield return InvalidSnapshot("null grant entry", () => Restore(grants: [null!]));
-        yield return InvalidSnapshot("duplicate grant target", () => Restore(grants:
+        yield return InvalidSnapshot("null overwrite entry", () => Restore(overwrites: [null!]));
+        yield return InvalidSnapshot("duplicate overwrite target", () => Restore(overwrites:
         [
-            Grant(MountGrantTargetType.Role, 7, MountPermission.FilesRead),
-            Grant(MountGrantTargetType.Role, 7, MountPermission.FilesWrite),
+            Overwrite(MountOverwriteTargetType.Role, 7, allow: [SpacePermission.MountView]),
+            Overwrite(MountOverwriteTargetType.Role, 7, deny: [SpacePermission.MountManage]),
         ]));
     }
 
@@ -595,39 +539,40 @@ public class MountTests
             ErrorCodes.Mount.VisibilityInvalid);
     }
 
-    private static IEnumerable<TestCaseData> InvalidGrantChanges()
+    private static IEnumerable<TestCaseData> InvalidOverwriteChanges()
     {
         yield return InvalidChange(
-            "set null permissions",
-            mount => mount.SetGrant(MountGrantTargetType.Role, 7, null!, Now),
+            "null allow",
+            mount => mount.SetOverwrite(MountOverwriteTargetType.Role, 7, null!, [], Now),
             ErrorCodes.Mount.PermissionsInvalid);
         yield return InvalidChange(
-            "set undefined target type",
-            mount => mount.SetGrant((MountGrantTargetType)99, 7, [MountPermission.FilesRead], Now),
+            "null deny",
+            mount => mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [], null!, Now),
+            ErrorCodes.Mount.PermissionsInvalid);
+        yield return InvalidChange(
+            "undefined target type",
+            mount => mount.SetOverwrite((MountOverwriteTargetType)99, 7, [SpacePermission.MountView], [], Now),
             ErrorCodes.Mount.TargetTypeInvalid);
         yield return InvalidChange(
-            "set invalid target id",
-            mount => mount.SetGrant(MountGrantTargetType.Role, 0, [MountPermission.FilesRead], Now),
+            "invalid target id",
+            mount => mount.SetOverwrite(MountOverwriteTargetType.Role, 0, [SpacePermission.MountView], [], Now),
             ErrorCodes.Mount.TargetIdInvalid);
         yield return InvalidChange(
-            "set undefined permission",
-            mount => mount.SetGrant(MountGrantTargetType.Role, 7, [(MountPermission)99], Now),
+            "permission outside mount scope",
+            mount => mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [SpacePermission.InvitesManage], [], Now),
             ErrorCodes.Mount.PermissionsInvalid);
         yield return InvalidChange(
-            "revoke null permissions",
-            mount => mount.RevokePermissions(MountGrantTargetType.Role, 7, null!, Now),
+            "undefined permission",
+            mount => mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [], [(SpacePermission)99], Now),
             ErrorCodes.Mount.PermissionsInvalid);
         yield return InvalidChange(
-            "revoke undefined target type",
-            mount => mount.RevokePermissions((MountGrantTargetType)99, 7, [MountPermission.FilesRead], Now),
-            ErrorCodes.Mount.TargetTypeInvalid);
-        yield return InvalidChange(
-            "revoke invalid target id",
-            mount => mount.RevokePermissions(MountGrantTargetType.Role, 0, [MountPermission.FilesRead], Now),
-            ErrorCodes.Mount.TargetIdInvalid);
-        yield return InvalidChange(
-            "revoke undefined permission",
-            mount => mount.RevokePermissions(MountGrantTargetType.Role, 7, [(MountPermission)99], Now),
+            "allow and deny overlap",
+            mount => mount.SetOverwrite(
+                MountOverwriteTargetType.Role,
+                7,
+                [SpacePermission.FilesRead],
+                [SpacePermission.FilesRead],
+                Now),
             ErrorCodes.Mount.PermissionsInvalid);
     }
 
@@ -649,37 +594,30 @@ public class MountTests
             false,
             (mount, now) => mount.Reactivate(now));
         yield return new Mutation(
-            "add grant",
+            "add overwrite",
             MountStatus.Active,
             false,
-            (mount, now) => mount.SetGrant(
-                MountGrantTargetType.User,
+            (mount, now) => mount.SetOverwrite(
+                MountOverwriteTargetType.User,
                 9,
-                [MountPermission.FilesRead],
+                [SpacePermission.MountView],
+                [],
                 now));
         yield return new Mutation(
-            "replace grant",
+            "replace overwrite",
             MountStatus.Active,
             true,
-            (mount, now) => mount.SetGrant(
-                MountGrantTargetType.Role,
+            (mount, now) => mount.SetOverwrite(
+                MountOverwriteTargetType.Role,
                 7,
-                [MountPermission.FilesWrite],
+                [],
+                [SpacePermission.MountView],
                 now));
         yield return new Mutation(
-            "remove grant",
+            "remove overwrite",
             MountStatus.Active,
             true,
-            (mount, now) => mount.SetGrant(MountGrantTargetType.Role, 7, [], now));
-        yield return new Mutation(
-            "revoke permission",
-            MountStatus.Active,
-            true,
-            (mount, now) => mount.RevokePermissions(
-                MountGrantTargetType.Role,
-                7,
-                [MountPermission.FilesRead],
-                now));
+            (mount, now) => mount.SetOverwrite(MountOverwriteTargetType.Role, 7, [], [], now));
     }
 
     private static IEnumerable<Mutation> NoOpMutations()
@@ -690,42 +628,20 @@ public class MountTests
             true,
             (mount, now) => mount.UpdateSettings(" Engineering ", MountVisibility.Private, now));
         yield return new Mutation(
-            "equivalent grant",
+            "equivalent overwrite",
             MountStatus.Active,
             true,
-            (mount, now) => mount.SetGrant(
-                MountGrantTargetType.Role,
+            (mount, now) => mount.SetOverwrite(
+                MountOverwriteTargetType.Role,
                 7,
-                [MountPermission.FilesDownload, MountPermission.FilesRead, MountPermission.FilesRead],
+                [SpacePermission.MountView, SpacePermission.MountView],
+                [],
                 now));
         yield return new Mutation(
-            "empty set for missing grant",
+            "empty sets for missing overwrite",
             MountStatus.Active,
             true,
-            (mount, now) => mount.SetGrant(MountGrantTargetType.User, 99, [], now));
-        yield return new Mutation(
-            "empty revocation",
-            MountStatus.Active,
-            true,
-            (mount, now) => mount.RevokePermissions(MountGrantTargetType.Role, 7, [], now));
-        yield return new Mutation(
-            "revoke missing grant",
-            MountStatus.Active,
-            true,
-            (mount, now) => mount.RevokePermissions(
-                MountGrantTargetType.User,
-                99,
-                [MountPermission.FilesRead],
-                now));
-        yield return new Mutation(
-            "revoke permission not granted",
-            MountStatus.Active,
-            true,
-            (mount, now) => mount.RevokePermissions(
-                MountGrantTargetType.Role,
-                7,
-                [MountPermission.FilesWrite],
-                now));
+            (mount, now) => mount.SetOverwrite(MountOverwriteTargetType.User, 99, [], [], now));
     }
 
     private static TestCaseData InvalidSnapshot(string name, Func<Mount> restore) =>
@@ -739,9 +655,9 @@ public class MountTests
             status: mutation.Status,
             version: version,
             archivedAt: mutation.Status == MountStatus.Archived ? Now.AddHours(-1) : null,
-            grants: mutation.RequiresGrant
-                ? new[] { RoleGrant() }
-                : Array.Empty<MountAccessGrant>());
+            overwrites: mutation.RequiresOverwrite
+                ? new[] { RoleOverwrite() }
+                : Array.Empty<MountPermissionOverwrite>());
 
     private static Mount ForNoOpMutation(long version = 1) => Restore(version: version);
 
@@ -762,7 +678,7 @@ public class MountTests
         DateTimeOffset? createdAt = null,
         DateTimeOffset? updatedAt = null,
         DateTimeOffset? archivedAt = null,
-        IEnumerable<MountAccessGrant>? grants = null) =>
+        IEnumerable<MountPermissionOverwrite>? overwrites = null) =>
         Mount.Reconstitute(
             id,
             publicId ?? Guid.CreateVersion7(),
@@ -774,26 +690,24 @@ public class MountTests
             createdAt ?? Now.AddDays(-1),
             updatedAt ?? Now,
             archivedAt,
-            grants ?? [RoleGrant()]);
+            overwrites ?? [RoleOverwrite()]);
 
-    private static MountAccessGrant RoleGrant() =>
-        Grant(
-            MountGrantTargetType.Role,
-            7,
-            MountPermission.FilesRead,
-            MountPermission.FilesDownload);
+    private static MountPermissionOverwrite RoleOverwrite() =>
+        Overwrite(MountOverwriteTargetType.Role, 7, allow: [SpacePermission.MountView]);
 
-    private static MountAccessGrant Grant(
-        MountGrantTargetType targetType,
+    private static MountPermissionOverwrite Overwrite(
+        MountOverwriteTargetType targetType,
         long targetId,
-        params MountPermission[] permissions) =>
-        MountAccessGrant.Create(targetType, targetId, permissions).Value;
+        SpacePermission[]? allow = null,
+        SpacePermission[]? deny = null) =>
+        MountPermissionOverwrite.Create(targetType, targetId, allow ?? [], deny ?? []).Value;
 
-    private static MountAccessGrant FindGrant(
+    private static MountPermissionOverwrite FindOverwrite(
         Mount mount,
-        MountGrantTargetType targetType,
+        MountOverwriteTargetType targetType,
         long targetId) =>
-        mount.Grants.Single(grant => grant.TargetType == targetType && grant.TargetId == targetId);
+        mount.FindOverwrite(targetType, targetId)
+        ?? throw new AssertionException($"Missing {targetType} overwrite {targetId}.");
 
     private static object?[] Snapshot(Mount mount) =>
     [
@@ -807,13 +721,15 @@ public class MountTests
         mount.CreatedAt,
         mount.UpdatedAt,
         mount.ArchivedAt,
-        GrantsSnapshot(mount),
+        OverwritesSnapshot(mount),
     ];
 
-    private static string[] GrantsSnapshot(Mount mount) =>
-        mount.Grants
-            .Select(grant =>
-                $"{(int)grant.TargetType}:{grant.TargetId}:{string.Join(",", grant.Permissions.Select(permission => (int)permission).Order())}")
+    private static string[] OverwritesSnapshot(Mount mount) =>
+        mount.Overwrites
+            .Select(overwrite =>
+                $"{(int)overwrite.TargetType}:{overwrite.TargetId}"
+                + $":{string.Join(",", overwrite.Allow.Select(permission => (int)permission).Order())}"
+                + $":{string.Join(",", overwrite.Deny.Select(permission => (int)permission).Order())}")
             .Order()
             .ToArray();
 
@@ -847,6 +763,6 @@ public class MountTests
     private sealed record Mutation(
         string Name,
         MountStatus Status,
-        bool RequiresGrant,
+        bool RequiresOverwrite,
         Func<Mount, DateTimeOffset, Result> Apply);
 }

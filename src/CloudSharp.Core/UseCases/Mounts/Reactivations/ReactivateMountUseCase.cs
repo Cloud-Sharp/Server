@@ -44,9 +44,7 @@ public sealed class ReactivateMountUseCase : IUseCase<ReactivateMountCommand, Mo
         }
 
         return await MutationWorkflow.ExecuteAsync(
-            command.Actor,
-            command.SpacePublicId,
-            command.MountPublicId,
+            command.Mount,
             command.ExpectedVersion,
             (mount, now) => mount.Reactivate(now),
             cancellationToken);

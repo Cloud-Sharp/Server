@@ -15,14 +15,14 @@ internal sealed class MountCreationWriter(AppDbContext dbContext) : IMountCreati
 
         var entity = MountEntity.FromDomain(mount);
         dbContext.Mounts.Add(entity);
-        foreach (var grant in mount.Grants.Where(grant => grant.TargetType == MountGrantTargetType.Role))
+        foreach (var overwrite in mount.Overwrites.Where(overwrite => overwrite.TargetType == MountOverwriteTargetType.Role))
         {
-            dbContext.MountRoleGrants.Add(MountRoleGrantEntity.FromDomain(entity, grant));
+            dbContext.MountRoleGrants.Add(MountRoleGrantEntity.FromDomain(entity, overwrite));
         }
 
-        foreach (var grant in mount.Grants.Where(grant => grant.TargetType == MountGrantTargetType.User))
+        foreach (var overwrite in mount.Overwrites.Where(overwrite => overwrite.TargetType == MountOverwriteTargetType.User))
         {
-            dbContext.MountUserGrants.Add(MountUserGrantEntity.FromDomain(entity, grant));
+            dbContext.MountUserGrants.Add(MountUserGrantEntity.FromDomain(entity, overwrite));
         }
 
         return Task.FromResult(Result.Ok());

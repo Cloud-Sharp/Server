@@ -33,11 +33,11 @@ public sealed class RoleReadEndpointTests : MembershipIntegrationTestBase
             expected[SpaceRoleSystemKey.Admin],
             "SPACE_VIEW", "SPACE_UPDATE", "FILES_READ", "FILES_WRITE", "FILES_DOWNLOAD",
             "SHARES_VIEW", "SHARES_MANAGE", "TAGS_MANAGE", "INVITES_MANAGE", "MEMBERS_VIEW",
-            "MEMBERS_MANAGE", "UPLOADS_MANAGE", "OPERATIONS_MANAGE");
+            "MEMBERS_MANAGE", "UPLOADS_MANAGE", "OPERATIONS_MANAGE", "MOUNT_MANAGE", "MOUNT_VIEW");
         AssertRole(
             byCode["MEMBER"],
             expected[SpaceRoleSystemKey.Member],
-            "SPACE_VIEW", "FILES_READ", "FILES_DOWNLOAD");
+            "SPACE_VIEW", "FILES_READ", "FILES_DOWNLOAD", "MOUNT_VIEW");
         AssertRole(byCode["VIEWER"], expected[SpaceRoleSystemKey.Viewer]);
     }
 

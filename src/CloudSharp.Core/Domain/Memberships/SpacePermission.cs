@@ -50,4 +50,12 @@ public enum SpacePermission
 
     /// <summary>같은 Space의 타인 사용자 비동기 작업 조회·취소. 내부 WorkerJob·DLQ 운영은 포함하지 않는다.</summary>
     OperationsManage = 13,
+
+    /// <summary>Mount를 개설하고 조회 가능한 소속 Mount의 설정·상태·권한 덮어쓰기를 변경한다.</summary>
+    MountManage = 14,
+
+    /// <summary>
+    /// Mount를 목록·상세에서 보고 그 안에서 활동한다. 최종 값이 없으면 해당 Mount의 다른 권한도 모두 무효다.
+    /// </summary>
+    MountView = 15,
 }

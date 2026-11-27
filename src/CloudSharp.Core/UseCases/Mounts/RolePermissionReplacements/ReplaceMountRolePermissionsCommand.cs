@@ -1,28 +1,28 @@
-using CloudSharp.Core.Common.Actors;
-using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Policies.Authorization;
 using FluentValidation;
 
 namespace CloudSharp.Core.UseCases.Mounts.RolePermissionReplacements;
 
-/// <summary>Role의 명시적 Mount 권한을 전체 교체한다. 빈 집합은 부여를 회수한다.</summary>
+/// <summary>
+/// Role의 Mount 권한 덮어쓰기를 전체 교체한다. 허용·거부가 모두 비어 있으면 덮어쓰기를 제거한다.
+/// 바뀌는 권한은 요청자가 해당 Mount에서 가진 권한이어야 한다.
+/// </summary>
 public sealed record ReplaceMountRolePermissionsCommand(
-    CurrentActor Actor,
-    Guid SpacePublicId,
-    Guid MountPublicId,
+    AuthorizedMountContext Mount,
     Guid RolePublicId,
     long ExpectedVersion,
-    IReadOnlyList<MountPermission> Permissions);
+    IReadOnlyList<SpacePermission> Allow,
+    IReadOnlyList<SpacePermission> Deny);
 
 internal sealed class ReplaceMountRolePermissionsCommandValidator : AbstractValidator<ReplaceMountRolePermissionsCommand>
 {
     public ReplaceMountRolePermissionsCommandValidator()
     {
-        RuleFor(command => command.Actor).RequireSessionActor();
-        RuleFor(command => command.SpacePublicId).RequireSpacePublicId();
-        RuleFor(command => command.MountPublicId).RequireMountPublicId();
+        RuleFor(command => command.Mount).RequireAuthorizedMountContext();
         RuleFor(command => command.RolePublicId).RequireTargetPublicId();
         RuleFor(command => command.ExpectedVersion).RequireExpectedVersion();
-
-        RuleFor(command => command.Permissions).RequirePermissions(allowEmpty: true);
+        RuleFor(command => command.Allow).RequireMountScopedPermissions();
+        RuleFor(command => command.Deny).RequireMountScopedPermissions();
     }
 }

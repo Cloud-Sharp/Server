@@ -10,15 +10,15 @@ public sealed class MountRoleGrantConfiguration : IEntityTypeConfiguration<Mount
     {
         builder.ToTable("mount_role_grants", table =>
             table.HasCheckConstraint(
-                "chk_mount_role_grants_permission_mask",
-                FormattableString.Invariant(
-                    $"permission_mask > 0 AND (permission_mask & {MountPermissionMask.KnownBits}::bigint) = permission_mask")));
+                "chk_mount_role_grants_overwrite_masks",
+                MountOverwriteMask.CheckConstraintSql));
 
         builder.HasKey(grant => new { grant.MountId, grant.RoleId }).HasName("pk_mount_role_grants");
         builder.Property(grant => grant.MountId).HasColumnName("mount_id");
         builder.Property(grant => grant.SpaceId).HasColumnName("space_id");
         builder.Property(grant => grant.RoleId).HasColumnName("role_id");
-        builder.Property(grant => grant.PermissionMask).HasColumnName("permission_mask");
+        builder.Property(grant => grant.AllowMask).HasColumnName("allow_mask");
+        builder.Property(grant => grant.DenyMask).HasColumnName("deny_mask");
 
         builder.HasOne(grant => grant.Mount)
             .WithMany()

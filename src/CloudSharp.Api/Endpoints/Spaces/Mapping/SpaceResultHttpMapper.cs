@@ -52,6 +52,24 @@ internal static class SpaceResultHttpMapper
             ?? new FailureResult(result.Errors);
     }
 
+    /// <summary>
+    /// Mount 인가 실패를 Space 인가와 같은 규칙으로 변환한다. MOUNT_VIEW 부재·미존재는 RESOURCE_NOT_FOUND,
+    /// 허용하지 않는 Mount 상태는 REQUEST_CONFLICT로 공통 매핑한다.
+    /// </summary>
+    internal static IResult ToMountAuthorizationFailure(
+        this Result<AuthorizedMountContext> result,
+        bool maskPermissionDenied)
+    {
+        if (result.IsSuccess)
+        {
+            throw new ArgumentException("A successful authorization result is not a failure.", nameof(result));
+        }
+
+        var authorizationError = result.Errors.OfType<SpaceAuthorizationError>().FirstOrDefault();
+        return MapAuthorizationError(authorizationError, maskPermissionDenied)
+            ?? new FailureResult(result.Errors);
+    }
+
     private static IResult? MapSpaceError(SpaceError? error) => GetCode(error) switch
     {
         ErrorCodes.Space.InvalidState => ErrorHttpResults.FromCode(

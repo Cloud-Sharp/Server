@@ -1,6 +1,7 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Infrastructure.Persistence.DbContext;
 using CloudSharp.Infrastructure.Persistence.Entities;
@@ -23,6 +24,10 @@ public sealed class MountWriterIntegrationTests
     private const long SpaceId = 100;
     private const long OtherSpaceId = 200;
     private const long ForeignRoleId = 4;
+    private const long View = 1L << 14;
+    private const long Manage = 1L << 13;
+    private const long ViewManage = View | Manage;
+    private const long FilesWrite = 1L << 3;
     private const long SeededVersion = 7;
     private static readonly DateTimeOffset CreatedAt = new(2026, 11, 26, 1, 2, 3, TimeSpan.Zero);
     private static readonly DateTimeOffset ChangedAt = CreatedAt.AddHours(1);
@@ -106,7 +111,7 @@ public sealed class MountWriterIntegrationTests
             Assert.That(persisted.UpdatedAt, Is.EqualTo(CreatedAt));
             Assert.That(persisted.ArchivedAt, Is.Null);
         });
-        await AssertGrantsAsync(probe.Context, persisted!.Id, [(1, 5L)], [(1, 2L)]);
+        await AssertGrantsAsync(probe.Context, persisted!.Id, [(1, ViewManage, 0L)], [(1, Manage, 0L)]);
         Assert.That(mount.Id, Is.Zero);
     }
 
@@ -141,14 +146,15 @@ public sealed class MountWriterIntegrationTests
         var expectedVersion = mount.Version;
         AssertSuccess(mount.UpdateSettings("Renamed mount", MountVisibility.Private, ChangedAt));
         AssertSuccess(mount.Archive(ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 1,
-            [MountPermission.FilesRead, MountPermission.FilesWrite], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 2, [], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 3, [MountPermission.FilesDownload], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 1, [MountPermission.FilesDownload], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 2, [], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 3,
-            [MountPermission.FilesRead, MountPermission.FilesWrite, MountPermission.FilesDownload], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 1,
+            [SpacePermission.MountView, SpacePermission.MountManage], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 2, [], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(
+            MountOverwriteTargetType.Role, 3, [SpacePermission.MountView], [SpacePermission.FilesWrite], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 1, [SpacePermission.MountView], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 2, [], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 3,
+            [SpacePermission.MountView, SpacePermission.MountManage], [], ChangedAt));
 
         var writer = scope.Services.GetRequiredService<IMountMutationWriter>();
         var result = await scope.Executor.ExecuteAsync(async ct =>
@@ -178,7 +184,11 @@ public sealed class MountWriterIntegrationTests
             Assert.That(persisted.UpdatedAt, Is.EqualTo(ChangedAt));
             Assert.That(persisted.ArchivedAt, Is.EqualTo(ChangedAt));
         });
-        await AssertGrantsAsync(probe.Context, mount.Id, [(1, 3L), (3, 4L)], [(1, 4L), (3, 7L)]);
+        await AssertGrantsAsync(
+            probe.Context,
+            mount.Id,
+            [(1, ViewManage, 0L), (3, View, FilesWrite)],
+            [(1, View, 0L), (3, ViewManage, 0L)]);
 
         var otherMount = await FindMountAsync(probe.Context, otherMountPublicId);
         Assert.That(otherMount!.Version, Is.EqualTo(SeededVersion));
@@ -192,8 +202,8 @@ public sealed class MountWriterIntegrationTests
         await using var scope = CreateScope();
         var mount = await ReadSnapshotAsync(scope, publicId);
         var expectedVersion = mount.Version;
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 1, [], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 3, [MountPermission.FilesDownload], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 1, [], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 3, [SpacePermission.MountView], [], ChangedAt));
 
         // Advance the database version before the writer has a chance to load a tracked row.
         var winnerUpdatedAt = ChangedAt.AddHours(1);
@@ -231,9 +241,9 @@ public sealed class MountWriterIntegrationTests
         await AssertSeededGrantsAsync(probe.Context, mount.Id);
     }
 
-    [TestCase(MountGrantTargetType.Role)]
-    [TestCase(MountGrantTargetType.User)]
-    public async Task UpdateAsync_WithConcurrentGrantInsert_ShouldRejectLosingSave(MountGrantTargetType targetType)
+    [TestCase(MountOverwriteTargetType.Role)]
+    [TestCase(MountOverwriteTargetType.User)]
+    public async Task UpdateAsync_WithConcurrentGrantInsert_ShouldRejectLosingSave(MountOverwriteTargetType targetType)
     {
         var publicId = await SeedMountAsync();
         await using var winningScope = CreateScope();
@@ -242,9 +252,9 @@ public sealed class MountWriterIntegrationTests
         var losing = await ReadSnapshotAsync(losingScope, publicId);
         var expectedVersion = winning.Version;
 
-        AssertSuccess(winning.SetGrant(targetType, 3,
-            [MountPermission.FilesRead, MountPermission.FilesWrite], ChangedAt));
-        AssertSuccess(losing.SetGrant(targetType, 3, [MountPermission.FilesDownload], ChangedAt));
+        AssertSuccess(winning.SetOverwrite(targetType, 3,
+            [SpacePermission.MountView, SpacePermission.MountManage], [], ChangedAt));
+        AssertSuccess(losing.SetOverwrite(targetType, 3, [SpacePermission.MountView], [], ChangedAt));
         AssertSuccess(await winningScope.Services.GetRequiredService<IMountMutationWriter>()
             .UpdateAsync(winning, expectedVersion));
         AssertSuccess(await losingScope.Services.GetRequiredService<IMountMutationWriter>()
@@ -266,30 +276,30 @@ public sealed class MountWriterIntegrationTests
             Assert.That(persisted!.Version, Is.EqualTo(winning.Version));
             Assert.That(persisted.UpdatedAt, Is.EqualTo(ChangedAt));
         });
-        var expectedRoles = new List<(long TargetId, long Mask)> { (1, 1L), (2, 5L) };
-        var expectedUsers = new List<(long TargetId, long Mask)> { (1, 2L), (2, 3L) };
-        if (targetType == MountGrantTargetType.Role)
+        var expectedRoles = new List<(long TargetId, long Allow, long Deny)> { (1, View, 0L), (2, ViewManage, 0L) };
+        var expectedUsers = new List<(long TargetId, long Allow, long Deny)> { (1, Manage, 0L), (2, ViewManage, 0L) };
+        if (targetType == MountOverwriteTargetType.Role)
         {
-            expectedRoles.Add((3, 3L));
+            expectedRoles.Add((3, ViewManage, 0L));
         }
         else
         {
-            expectedUsers.Add((3, 3L));
+            expectedUsers.Add((3, ViewManage, 0L));
         }
 
         await AssertGrantsAsync(probe.Context, winning.Id, expectedRoles.ToArray(), expectedUsers.ToArray());
     }
 
-    [TestCase(MountGrantTargetType.Role)]
-    [TestCase(MountGrantTargetType.User)]
+    [TestCase(MountOverwriteTargetType.Role)]
+    [TestCase(MountOverwriteTargetType.User)]
     public async Task UpdateAsync_WhenMountWasDeletedBeforeGrantInsert_ShouldReturnPreconditionFailed(
-        MountGrantTargetType targetType)
+        MountOverwriteTargetType targetType)
     {
         var publicId = await SeedMountAsync();
         await using var scope = CreateScope();
         var mount = await ReadSnapshotAsync(scope, publicId);
         var expectedVersion = mount.Version;
-        AssertSuccess(mount.SetGrant(targetType, 3, [MountPermission.FilesRead], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(targetType, 3, [SpacePermission.MountView], [], ChangedAt));
         AssertSuccess(await scope.Services.GetRequiredService<IMountMutationWriter>()
             .UpdateAsync(mount, expectedVersion));
 
@@ -319,24 +329,24 @@ public sealed class MountWriterIntegrationTests
         var expectedVersion = mount.Version;
         var writer = scope.Services.GetRequiredService<IMountMutationWriter>();
 
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 1,
-            [MountPermission.FilesRead, MountPermission.FilesWrite], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 2,
-            [MountPermission.FilesWrite, MountPermission.FilesDownload], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 1,
+            [SpacePermission.MountView, SpacePermission.MountManage], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 2,
+            [SpacePermission.MountManage], [], ChangedAt));
         AssertSuccess(await writer.UpdateAsync(mount, expectedVersion));
 
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 1, [], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 3, [MountPermission.FilesRead], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 1, [], ChangedAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 3, [MountPermission.FilesRead], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 1, [], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 3, [SpacePermission.MountView], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 1, [], [], ChangedAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 3, [SpacePermission.MountView], [], ChangedAt));
         AssertSuccess(await writer.UpdateAsync(mount, expectedVersion));
 
         var finalAt = ChangedAt.AddHours(1);
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 1,
-            [MountPermission.FilesRead, MountPermission.FilesWrite], finalAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.Role, 3, [], finalAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 1, [MountPermission.FilesWrite], finalAt));
-        AssertSuccess(mount.SetGrant(MountGrantTargetType.User, 3, [], finalAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 1,
+            [SpacePermission.MountView, SpacePermission.MountManage], [], finalAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.Role, 3, [], [], finalAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 1, [SpacePermission.MountManage], [], finalAt));
+        AssertSuccess(mount.SetOverwrite(MountOverwriteTargetType.User, 3, [], [], finalAt));
         AssertSuccess(await writer.UpdateAsync(mount, expectedVersion));
 
         var stagedMount = scope.Context.Mounts.Local.Single();
@@ -353,14 +363,18 @@ public sealed class MountWriterIntegrationTests
             Assert.That(persisted!.Version, Is.EqualTo(mount.Version));
             Assert.That(persisted.UpdatedAt, Is.EqualTo(finalAt));
         });
-        await AssertGrantsAsync(probe.Context, mount.Id, [(1, 3L), (2, 6L)], [(1, 2L), (2, 3L)]);
+        await AssertGrantsAsync(
+            probe.Context,
+            mount.Id,
+            [(1, ViewManage, 0L), (2, Manage, 0L)],
+            [(1, Manage, 0L), (2, ViewManage, 0L)]);
     }
 
     private static Mount CreateMount(long roleId)
     {
-        var role = MountAccessGrant.Create(MountGrantTargetType.Role, roleId,
-            [MountPermission.FilesRead, MountPermission.FilesDownload]);
-        var user = MountAccessGrant.Create(MountGrantTargetType.User, 1, [MountPermission.FilesWrite]);
+        var role = MountPermissionOverwrite.Create(MountOverwriteTargetType.Role, roleId,
+            [SpacePermission.MountView, SpacePermission.MountManage], []);
+        var user = MountPermissionOverwrite.Create(MountOverwriteTargetType.User, 1, [SpacePermission.MountManage], []);
         AssertSuccess(role);
         AssertSuccess(user);
 
@@ -379,13 +393,13 @@ public sealed class MountWriterIntegrationTests
                 VALUES (@PublicId, @SpaceId, 'Seeded mount', 'PUBLIC', 'ACTIVE', @SeededVersion, @CreatedAt, @CreatedAt)
                 RETURNING id, space_id
             ), inserted_roles AS (
-                INSERT INTO mount_role_grants (mount_id, space_id, role_id, permission_mask)
-                SELECT id, space_id, role_id, permission_mask
-                FROM inserted_mount CROSS JOIN (VALUES (1, 1), (2, 5)) AS grants(role_id, permission_mask)
+                INSERT INTO mount_role_grants (mount_id, space_id, role_id, allow_mask, deny_mask)
+                SELECT id, space_id, role_id, allow_mask, 0
+                FROM inserted_mount CROSS JOIN (VALUES (1, 16384), (2, 24576)) AS grants(role_id, allow_mask)
             )
-            INSERT INTO mount_user_grants (mount_id, user_id, permission_mask)
-            SELECT id, user_id, permission_mask
-            FROM inserted_mount CROSS JOIN (VALUES (1, 2), (2, 3)) AS grants(user_id, permission_mask);
+            INSERT INTO mount_user_grants (mount_id, user_id, allow_mask, deny_mask)
+            SELECT id, user_id, allow_mask, 0
+            FROM inserted_mount CROSS JOIN (VALUES (1, 8192), (2, 24576)) AS grants(user_id, allow_mask);
             """, new { PublicId = publicId, SpaceId, SeededVersion, CreatedAt });
         return publicId;
     }
@@ -404,13 +418,18 @@ public sealed class MountWriterIntegrationTests
 
     private static Task AssertSeededGrantsAsync(
         AppDbContext context, long mountId, CancellationToken cancellationToken = default) =>
-        AssertGrantsAsync(context, mountId, [(1, 1L), (2, 5L)], [(1, 2L), (2, 3L)], cancellationToken);
+        AssertGrantsAsync(
+            context,
+            mountId,
+            [(1, View, 0L), (2, ViewManage, 0L)],
+            [(1, Manage, 0L), (2, ViewManage, 0L)],
+            cancellationToken);
 
     private static async Task AssertGrantsAsync(
         AppDbContext context,
         long mountId,
-        (long TargetId, long Mask)[] expectedRoles,
-        (long TargetId, long Mask)[] expectedUsers,
+        (long TargetId, long Allow, long Deny)[] expectedRoles,
+        (long TargetId, long Allow, long Deny)[] expectedUsers,
         CancellationToken cancellationToken = default)
     {
         var roles = await context.MountRoleGrants.AsNoTracking()
@@ -420,8 +439,10 @@ public sealed class MountWriterIntegrationTests
         Assert.Multiple(() =>
         {
             Assert.That(roles.Select(grant => grant.SpaceId), Is.All.EqualTo(SpaceId));
-            Assert.That(roles.Select(grant => (grant.RoleId, grant.PermissionMask)), Is.EquivalentTo(expectedRoles));
-            Assert.That(users.Select(grant => (grant.UserId, grant.PermissionMask)), Is.EquivalentTo(expectedUsers));
+            Assert.That(roles.Select(grant => (grant.RoleId, grant.AllowMask, grant.DenyMask)),
+                Is.EquivalentTo(expectedRoles));
+            Assert.That(users.Select(grant => (grant.UserId, grant.AllowMask, grant.DenyMask)),
+                Is.EquivalentTo(expectedUsers));
         });
     }
 

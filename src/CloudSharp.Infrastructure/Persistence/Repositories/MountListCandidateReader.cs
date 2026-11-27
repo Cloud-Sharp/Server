@@ -1,5 +1,4 @@
 using CloudSharp.Core.Abstractions.Persistence;
-using CloudSharp.Core.Common.Actors;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Tokens;
 using CloudSharp.Infrastructure.Persistence.DbContext;
@@ -14,14 +13,13 @@ internal sealed class MountListCandidateReader(AppDbContext dbContext, ITokenHas
 
     public Task<Result<MountListCandidatePage>> ReadAsync(
         long spaceId,
-        CurrentActor actor,
+        long userId,
         string? cursor,
         int batchSize,
         string? sort,
         bool descending,
         CancellationToken cancellationToken = default)
     {
-        ArgumentNullException.ThrowIfNull(actor);
         cancellationToken.ThrowIfCancellationRequested();
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(batchSize);
 
@@ -33,7 +31,7 @@ internal sealed class MountListCandidateReader(AppDbContext dbContext, ITokenHas
         }
 
         var scope = FormattableString.Invariant(
-            $"list:{spaceId}:{actor.ActorType}:{actor.UserId}:{actor.UserPublicId:N}:{actor.SystemRole}:{actor.McpCredentialPublicId:N}:{CreatedAtSort}:{descending}");
+            $"list:{spaceId}:{userId}:{CreatedAtSort}:{descending}");
         MountReadCursor.Position? position = null;
         if (cursor is not null)
         {

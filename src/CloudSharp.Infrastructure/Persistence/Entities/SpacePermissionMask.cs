@@ -21,6 +21,8 @@ internal static class SpacePermissionMask
             [SpacePermission.MembersManage] = 1L << 10,
             [SpacePermission.UploadsManage] = 1L << 11,
             [SpacePermission.OperationsManage] = 1L << 12,
+            [SpacePermission.MountManage] = 1L << 13,
+            [SpacePermission.MountView] = 1L << 14,
         };
 
     public static long KnownBits { get; } = Bits.Values.Aggregate(0L, static (mask, bit) => mask | bit);

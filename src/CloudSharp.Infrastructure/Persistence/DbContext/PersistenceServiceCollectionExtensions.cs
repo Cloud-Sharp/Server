@@ -77,7 +77,7 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<IMountCreationWriter, MountCreationWriter>();
         services.AddScoped<IMountReader, MountReader>();
         services.AddScoped<IMountMutationWriter, MountMutationWriter>();
-        services.AddScoped<IMountGrantReader, MountGrantReader>();
+        services.AddScoped<IMountOverwriteReader, MountOverwriteReader>();
         services.AddScoped<IMountPreviewUserReader, MountPreviewUserReader>();
         services.AddScoped<DapperDbSession>();
         services.AddSingleton<IdempotencyRecoverySerializer>();

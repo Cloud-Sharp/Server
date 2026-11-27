@@ -44,9 +44,7 @@ public sealed class UpdateMountUseCase : IUseCase<UpdateMountCommand, MountResul
         }
 
         return await MutationWorkflow.ExecuteAsync(
-            command.Actor,
-            command.SpacePublicId,
-            command.MountPublicId,
+            command.Mount,
             command.ExpectedVersion,
             (mount, now) => mount.UpdateSettings(
                 command.Name?.Value,
