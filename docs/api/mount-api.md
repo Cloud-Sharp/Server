@@ -1,6 +1,6 @@
 # Mount API
 
-Space 안의 Mount를 조회·개설하고, 설정·보관 상태와 Role·사용자별 권한 덮어쓰기를 관리하는 v2 HTTP 계약이다. MT-01~MT-10의 Core 유즈케이스는 DI에 등록되어 있으며 HTTP 라우트는 등록 예정이다. [Mount 유즈케이스](../use-cases/mount-use-cases.md) · [Mount API 설계](../../.llm/api/mounts.md) · [유즈케이스 등록](../../src/CloudSharp.Api/DependencyInjection/MountServiceCollectionExtensions.cs) · [현재 라우트 등록](../../src/CloudSharp.Api/Program.cs)
+Space 안의 Mount를 조회·개설하고, 설정·보관 상태와 Role·사용자별 권한 덮어쓰기를 관리하는 v2 HTTP 계약이다. MT-01~MT-10은 Space 하위 라우트에 등록되어 기존 Core 유즈케이스를 호출한다. [Mount 유즈케이스](../use-cases/mount-use-cases.md) · [Mount API 설계](../../.llm/api/mounts.md) · [유즈케이스 등록](../../src/CloudSharp.Api/DependencyInjection/MountServiceCollectionExtensions.cs) · [Mount 라우트 등록](../../src/CloudSharp.Api/Endpoints/Mounts/MountEndpoints.cs)
 
 `S`는 `/api/v2/spaces/{spacePublicId}`, `M`은 `S/mounts/{mountPublicId}`다.
 

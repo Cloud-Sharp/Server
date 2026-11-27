@@ -1,3 +1,5 @@
+using CloudSharp.Api.Endpoints.Mounts;
+using CloudSharp.Api.Endpoints.Mounts.Mapping;
 using CloudSharp.Core.UseCases.Mounts.Archives;
 using CloudSharp.Core.UseCases.Mounts.Creations;
 using CloudSharp.Core.UseCases.Mounts.Details;
@@ -9,6 +11,7 @@ using CloudSharp.Core.UseCases.Mounts.PermissionPreviews;
 using CloudSharp.Core.UseCases.Mounts.Reactivations;
 using CloudSharp.Core.UseCases.Mounts.RolePermissionReplacements;
 using CloudSharp.Core.UseCases.Mounts.UserPermissionReplacements;
+using CloudSharp.Infrastructure.Persistence.Idempotency;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace CloudSharp.Api.DependencyInjection;
@@ -19,6 +22,8 @@ internal static class MountServiceCollectionExtensions
     {
         services.AddLoggedUseCase<ListMountsQuery, MountPageDto, ListMountsUseCase>();
         services.AddLoggedUseCase<CreateMountCommand, MountResultDto, CreateMountUseCase>();
+        services.AddIdempotencyReplayType<MountCreationReplay>(
+            MountEndpoints.CreateMountOperationId, MountEndpoints.CreateMountResultVersion);
         services.AddLoggedUseCase<GetMountQuery, MountResultDto, GetMountUseCase>();
         services.AddLoggedUseCase<UpdateMountCommand, MountResultDto, UpdateMountUseCase>();
         services.AddLoggedUseCase<ArchiveMountCommand, MountResultDto, ArchiveMountUseCase>();

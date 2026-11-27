@@ -44,6 +44,7 @@ public sealed class IdempotencyOpenApiEndpointTests : ApiIntegrationTestBase
             "/api/v2/auth/registrations",
             "/api/v2/spaces",
             "/api/v2/spaces/{spacePublicId}/invites",
+            "/api/v2/spaces/{spacePublicId}/mounts",
             "/api/v2/invites/{inviteToken}/accept",
         }));
     }

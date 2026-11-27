@@ -6,6 +6,7 @@ using CloudSharp.Api.Contracts.ProblemDetails;
 using CloudSharp.Api.Endpoints.Idempotency;
 using CloudSharp.Api.Endpoints.Invites;
 using CloudSharp.Api.Endpoints.Memberships;
+using CloudSharp.Api.Endpoints.Mounts;
 using CloudSharp.Api.Endpoints.Spaces.Mapping;
 using CloudSharp.Api.Endpoints.Spaces.Requests;
 using CloudSharp.Api.Endpoints.Spaces.Responses;
@@ -206,6 +207,7 @@ public static class SpaceEndpoints
 
         group.MapMembershipEndpoints();
         group.MapInviteManagementEndpoints();
+        group.MapMountEndpoints();
         return endpoints;
     }
 
