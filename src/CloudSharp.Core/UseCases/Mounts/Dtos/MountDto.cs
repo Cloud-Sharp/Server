@@ -8,8 +8,6 @@ public sealed record MountDto(
     string Name,
     MountVisibility Visibility,
     MountStatus Status,
-    Guid RootFolderPublicId,
-    long UsedBytes,
     MountAccessDto MyAccess,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,

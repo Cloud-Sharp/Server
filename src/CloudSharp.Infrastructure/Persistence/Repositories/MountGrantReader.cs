@@ -1,0 +1,71 @@
+using CloudSharp.Core.Abstractions.Persistence;
+using CloudSharp.Core.Common.Errors;
+using CloudSharp.Core.Common.Tokens;
+using CloudSharp.Core.Domain.Mounts;
+using CloudSharp.Infrastructure.Persistence.DbContext;
+using CloudSharp.Infrastructure.Persistence.Entities;
+using FluentResults;
+using Microsoft.EntityFrameworkCore;
+
+namespace CloudSharp.Infrastructure.Persistence.Repositories;
+
+internal sealed class MountGrantReader(AppDbContext dbContext, ITokenHasher tokenHasher) : IMountGrantReader
+{
+    public Task<Result<MountGrantPage>> ReadAsync(
+        long spaceId,
+        long mountId,
+        MountGrantTargetType targetType,
+        string? cursor,
+        int limit,
+        CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(limit);
+        if (!Enum.IsDefined(targetType))
+        {
+            return Task.FromResult(Result.Fail<MountGrantPage>(MountError.TargetTypeInvalid()));
+        }
+
+        var scope = FormattableString.Invariant($"grants:{spaceId}:{mountId}:{targetType}");
+        MountReadCursor.Position? position = null;
+        if (cursor is not null)
+        {
+            if (!MountReadCursor.TryRead(tokenHasher, scope, cursor, out var parsed) || parsed.CreatedAtTicks is not null)
+            {
+                return Task.FromResult(Result.Fail<MountGrantPage>(MountReadCursor.Invalid()));
+            }
+
+            position = parsed;
+        }
+
+        return dbContext.ExecuteReadAsync(
+            async (context, ct) =>
+            {
+                var grants = targetType == MountGrantTargetType.Role
+                    ? from grant in context.MountRoleGrants.AsNoTracking()
+                      join role in context.SpaceRoles.AsNoTracking() on grant.RoleId equals role.Id
+                      where grant.MountId == mountId && grant.SpaceId == spaceId && role.SpaceId == spaceId
+                      select new { PublicId = role.PublicId, TargetId = role.Id, grant.PermissionMask }
+                    : from grant in context.MountUserGrants.AsNoTracking()
+                      join user in context.Users.AsNoTracking() on grant.UserId equals user.Id
+                      join mount in context.Mounts.AsNoTracking() on grant.MountId equals mount.Id
+                      where mount.Id == mountId && mount.SpaceId == spaceId
+                      select new { PublicId = user.PublicId, TargetId = user.Id, grant.PermissionMask };
+
+                if (position is { PublicId: var publicId })
+                {
+                    grants = grants.Where(grant => grant.PublicId.CompareTo(publicId) > 0);
+                }
+
+                var rows = await grants.OrderBy(grant => grant.PublicId).Take(checked(limit + 1)).ToArrayAsync(ct);
+                var items = rows.Take(limit).Select(row => new MountGrantSnapshot(
+                    MountAccessGrant.Reconstitute(targetType, row.TargetId, MountPermissionMask.Decode(row.PermissionMask)),
+                    row.PublicId)).ToArray();
+                var next = rows.Length > limit
+                    ? MountReadCursor.Issue(tokenHasher, scope, items[^1].TargetPublicId)
+                    : null;
+                return new MountGrantPage(items, next);
+            },
+            cancellationToken);
+    }
+}

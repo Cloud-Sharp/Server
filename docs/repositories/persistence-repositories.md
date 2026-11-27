@@ -16,3 +16,4 @@ CloudSharp PostgreSQL Repository에 적용하는 공통 저장·트랜잭션 계
 - [Space Role Repository](space-role-repositories.md)
 - [Space Membership Repository](space-membership-repositories.md)
 - [Space Invite Repository](space-invite-repositories.md)
+- [Mount Repository](mount-repositories.md)

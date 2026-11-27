@@ -3,6 +3,7 @@ using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Abstractions.Transactions;
 using CloudSharp.Core.Domain.Invites;
 using CloudSharp.Core.Domain.Memberships;
+using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Domain.Users;
 using CloudSharp.Infrastructure.Persistence.Idempotency;
@@ -50,7 +51,9 @@ public static class PersistenceServiceCollectionExtensions
                     .MapEnum<UserStatus>(UserStatusEnumName, nameTranslator: EnumNameTranslator)
                     .MapEnum<SpaceStatus>(SpaceStatusEnumName, nameTranslator: EnumNameTranslator)
                     .MapEnum<SpaceMembershipStatus>(MembershipStatusEnumName, nameTranslator: EnumNameTranslator)
-                    .MapEnum<SpaceInviteStatus>(InviteStatusEnumName, nameTranslator: EnumNameTranslator)));
+                    .MapEnum<SpaceInviteStatus>(InviteStatusEnumName, nameTranslator: EnumNameTranslator)
+                    .MapEnum<MountVisibility>(MountVisibilityEnumName, nameTranslator: EnumNameTranslator)
+                    .MapEnum<MountStatus>(MountStatusEnumName, nameTranslator: EnumNameTranslator)));
         services.AddScoped<ITransactionExecutor, EfCoreTransactionExecutor>();
         services.AddScoped<IdempotencyTransactionContext>();
         services.AddScoped<IIdempotencyTransactionContext>(provider =>
@@ -69,6 +72,13 @@ public static class PersistenceServiceCollectionExtensions
         services.AddScoped<ISpaceInviteRepository, SpaceInviteRepository>();
         services.AddScoped<ISpaceInviteReader, SpaceInviteReader>();
         services.AddScoped<ISpaceInviteTargetReader, SpaceInviteTargetReader>();
+        services.AddScoped<IMountListCandidateReader, MountListCandidateReader>();
+        services.AddScoped<IMountCreationGrantTargetReader, MountCreationGrantTargetReader>();
+        services.AddScoped<IMountCreationWriter, MountCreationWriter>();
+        services.AddScoped<IMountReader, MountReader>();
+        services.AddScoped<IMountMutationWriter, MountMutationWriter>();
+        services.AddScoped<IMountGrantReader, MountGrantReader>();
+        services.AddScoped<IMountPreviewUserReader, MountPreviewUserReader>();
         services.AddScoped<DapperDbSession>();
         services.AddSingleton<IdempotencyRecoverySerializer>();
         services.AddScoped<IIdempotencyStore, PostgresIdempotencyStore>();
@@ -83,4 +93,6 @@ public static class PersistenceServiceCollectionExtensions
     internal const string SpaceStatusEnumName = "space_status_t";
     internal const string MembershipStatusEnumName = "membership_status_t";
     internal const string InviteStatusEnumName = "invite_status_t";
+    internal const string MountVisibilityEnumName = "mount_visibility_t";
+    internal const string MountStatusEnumName = "mount_status_t";
 }

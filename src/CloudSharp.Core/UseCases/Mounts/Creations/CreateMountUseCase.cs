@@ -120,7 +120,7 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
         }
 
         var mount = creation.Value;
-        var registration = await Writer.AddAsync(mount, command.Actor.UserId, cancellationToken);
+        var registration = await Writer.AddAsync(mount, cancellationToken);
         if (registration.IsFailed)
         {
             return Result.Fail<MountResultDto>(registration.Errors);
@@ -150,8 +150,6 @@ public sealed class CreateMountUseCase : IUseCase<CreateMountCommand, MountResul
             mount.Name,
             mount.Visibility,
             mount.Status,
-            registration.Value,
-            UsedBytes: 0,
             new MountAccessDto(permissions, CanManage: true),
             mount.CreatedAt,
             mount.UpdatedAt,

@@ -25,7 +25,6 @@ public sealed class CreateMountUseCaseTests
     private const long UserTargetId = 43;
     private const string ResourceNotFound = "RESOURCE_NOT_FOUND";
     private static readonly DateTimeOffset Now = new(2026, 11, 20, 3, 30, 0, TimeSpan.Zero);
-    private static readonly Guid RootFolderPublicId = Guid.Parse("01977b60-28f3-7ab5-902d-cf0f5d6a1001");
     private static readonly Guid OtherUserPublicId = Guid.Parse("01977b5e-1700-7f20-bdd7-55d41f327845");
     private static readonly Guid MissingRolePublicId = Guid.Parse("01977b60-28f3-7ab5-902d-cf0f5d6a1002");
     private static readonly Guid OutOfSpaceRolePublicId = Guid.Parse("01977b60-28f3-7ab5-902d-cf0f5d6a1003");
@@ -44,7 +43,7 @@ public sealed class CreateMountUseCaseTests
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
-        var mount = harness.Writer.Registrations.Single().Mount;
+        var mount = harness.Writer.Registrations.Single();
         Assert.That(mount.Grants, Is.Empty);
         AssertCreatedMount(
             harness,
@@ -71,7 +70,7 @@ public sealed class CreateMountUseCaseTests
 
         // Assert
         Assert.That(result.IsSuccess, Is.True);
-        var mount = harness.Writer.Registrations.Single().Mount;
+        var mount = harness.Writer.Registrations.Single();
         var roleGrant = mount.Grants.Single(grant => grant.TargetType == MountGrantTargetType.Role);
         var userGrant = mount.Grants.Single(grant => grant.TargetType == MountGrantTargetType.User);
         Assert.Multiple(() =>
@@ -286,12 +285,10 @@ public sealed class CreateMountUseCaseTests
         Result<MountResultDto> result,
         IEnumerable<MountPermission> expectedPermissions)
     {
-        var registration = harness.Writer.Registrations.Single();
-        var mount = registration.Mount;
+        var mount = harness.Writer.Registrations.Single();
         var dto = result.Value.Mount;
         Assert.Multiple(() =>
         {
-            Assert.That(registration.CreatorUserId, Is.EqualTo(harness.Actor.UserId));
             Assert.That(mount.SpaceId, Is.EqualTo(SpaceId));
             Assert.That(mount.Name, Is.EqualTo("Design"));
             Assert.That(mount.Visibility, Is.EqualTo(MountVisibility.Private));
@@ -305,8 +302,6 @@ public sealed class CreateMountUseCaseTests
             Assert.That(dto.Name, Is.EqualTo(mount.Name));
             Assert.That(dto.Visibility, Is.EqualTo(mount.Visibility));
             Assert.That(dto.Status, Is.EqualTo(MountStatus.Active));
-            Assert.That(dto.RootFolderPublicId, Is.EqualTo(harness.Writer.RootFolderPublicId));
-            Assert.That(dto.UsedBytes, Is.Zero);
             Assert.That(dto.MyAccess.Permissions, Is.EquivalentTo(expectedPermissions));
             Assert.That(dto.MyAccess.CanManage, Is.True);
             Assert.That(dto.CreatedAt, Is.EqualTo(Now));
@@ -611,22 +606,20 @@ public sealed class CreateMountUseCaseTests
         FakePersistenceSession session,
         List<string> events) : IMountCreationWriter
     {
-        public List<(Mount Mount, long CreatorUserId)> Registrations { get; } = [];
-        public Guid RootFolderPublicId { get; } = CreateMountUseCaseTests.RootFolderPublicId;
+        public List<Mount> Registrations { get; } = [];
         public IError? Failure { get; set; }
         public bool WasInTransaction { get; private set; }
 
-        public Task<Result<Guid>> AddAsync(
+        public Task<Result> AddAsync(
             Mount mount,
-            long creatorUserId,
             CancellationToken cancellationToken = default)
         {
-            Registrations.Add((mount, creatorUserId));
+            Registrations.Add(mount);
             events.Add("register");
             WasInTransaction = session.IsTransactionActive;
             return Task.FromResult(Failure is { } failure
-                ? Result.Fail<Guid>(failure)
-                : Result.Ok(RootFolderPublicId));
+                ? Result.Fail(failure)
+                : Result.Ok());
         }
     }
 }

@@ -1,7 +1,6 @@
 using CloudSharp.Core.Abstractions.Persistence;
 using CloudSharp.Core.Common.Errors;
 using CloudSharp.Core.Common.Results;
-using CloudSharp.Core.Domain.Memberships;
 using CloudSharp.Core.Domain.Mounts;
 using CloudSharp.Core.Domain.Spaces;
 using CloudSharp.Core.Policies.Authorization;
@@ -13,16 +12,16 @@ namespace CloudSharp.Core.UseCases.Mounts.Details;
 public sealed class GetMountUseCase : IUseCase<GetMountQuery, MountResultDto>
 {
     private ISpaceAuthorizationReader AuthorizationReader { get; } = null!;
-    private IMountDetailsReader DetailsReader { get; } = null!;
+    private IMountReader MountReader { get; } = null!;
 
     public GetMountUseCase() { }
 
     public GetMountUseCase(
         ISpaceAuthorizationReader authorizationReader,
-        IMountDetailsReader detailsReader)
+        IMountReader mountReader)
     {
         AuthorizationReader = authorizationReader;
-        DetailsReader = detailsReader;
+        MountReader = mountReader;
     }
 
     public async Task<Result<MountResultDto>> ExecuteAsync(
@@ -37,7 +36,7 @@ public sealed class GetMountUseCase : IUseCase<GetMountQuery, MountResultDto>
             return validation.ToFailureResult<MountResultDto>();
         }
 
-        if (AuthorizationReader is null || DetailsReader is null)
+        if (AuthorizationReader is null || MountReader is null)
         {
             return Result.Fail<MountResultDto>(CommonError.DependencyUnavailable());
         }
@@ -55,8 +54,8 @@ public sealed class GetMountUseCase : IUseCase<GetMountQuery, MountResultDto>
             new SpaceAuthorizationQuery(
                 query.Actor,
                 query.SpacePublicId,
-                Array.Empty<SpacePermission>(),
-                new[] { SpaceStatus.Active, SpaceStatus.Archived },
+                [],
+                [SpaceStatus.Active, SpaceStatus.Archived],
                 allowSystemAdminBypass: false),
             snapshotResult.Value);
         if (authorization.IsFailed)
@@ -64,40 +63,35 @@ public sealed class GetMountUseCase : IUseCase<GetMountQuery, MountResultDto>
             return Result.Fail<MountResultDto>(authorization.Errors);
         }
 
-        var authorizationSnapshot = snapshotResult.Value!;
-        var detailsResult = await DetailsReader.ReadAsync(
-            authorizationSnapshot.Space.Id,
-            query.MountPublicId,
-            cancellationToken);
-        if (detailsResult.IsFailed)
+        var spaceSnapshot = snapshotResult.Value!;
+        var space = spaceSnapshot.Space;
+        var mountResult = await MountReader.ReadAsync(space.Id, query.MountPublicId, cancellationToken);
+        if (mountResult.IsFailed)
         {
-            return Result.Fail<MountResultDto>(detailsResult.Errors);
+            return Result.Fail<MountResultDto>(mountResult.Errors);
         }
 
-        var details = detailsResult.Value;
-        if (details is null || details.Mount.SpaceId != authorizationSnapshot.Space.Id)
+        var mount = mountResult.Value;
+        if (mount is null || mount.SpaceId != space.Id)
         {
             return Result.Fail<MountResultDto>(CommonError.ResourceNotFound());
         }
 
-        var mount = details.Mount;
-        var access = MountAccessEvaluator.Evaluate(authorizationSnapshot, query.Actor.UserId, mount);
+        var access = MountAccessEvaluator.Evaluate(spaceSnapshot, query.Actor.UserId, mount);
         if (!access.Permissions.Contains(MountPermission.FilesRead))
         {
             return Result.Fail<MountResultDto>(CommonError.ResourceNotFound());
         }
 
         var dto = new MountDto(
-            authorizationSnapshot.Space.PublicId,
+            space.PublicId,
             mount.PublicId,
             mount.Name,
             mount.Visibility,
             mount.Status,
-            details.RootFolderPublicId,
-            details.UsedBytes,
             new MountAccessDto(
                 access.Permissions,
-                access.IsManager && authorizationSnapshot.Space.Status == SpaceStatus.Active),
+                access.IsManager && space.Status == SpaceStatus.Active),
             mount.CreatedAt,
             mount.UpdatedAt,
             mount.ArchivedAt);

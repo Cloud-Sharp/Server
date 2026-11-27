@@ -15,6 +15,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options)
     public DbSet<SpaceMembershipEntity> SpaceMemberships => Set<SpaceMembershipEntity>();
     public DbSet<SpaceMembershipRoleEntity> SpaceMembershipRoles => Set<SpaceMembershipRoleEntity>();
     public DbSet<SpaceInviteEntity> SpaceInvites => Set<SpaceInviteEntity>();
+    public DbSet<MountEntity> Mounts => Set<MountEntity>();
+    public DbSet<MountRoleGrantEntity> MountRoleGrants => Set<MountRoleGrantEntity>();
+    public DbSet<MountUserGrantEntity> MountUserGrants => Set<MountUserGrantEntity>();
 
     /// <inheritdoc />
     protected override void OnModelCreating(ModelBuilder modelBuilder)

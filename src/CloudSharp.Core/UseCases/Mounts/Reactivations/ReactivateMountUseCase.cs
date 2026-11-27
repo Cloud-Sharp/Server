@@ -16,7 +16,7 @@ public sealed class ReactivateMountUseCase : IUseCase<ReactivateMountCommand, Mo
 
     public ReactivateMountUseCase(
         ISpaceAuthorizationReader authorizationReader,
-        IMountDetailsReader detailsReader,
+        IMountReader mountReader,
         IMountMutationWriter writer,
         IUnitOfWork unitOfWork,
         ITransactionExecutor transactionExecutor,
@@ -24,7 +24,7 @@ public sealed class ReactivateMountUseCase : IUseCase<ReactivateMountCommand, Mo
     {
         MutationWorkflow = new MountMutationWorkflow(
             authorizationReader,
-            detailsReader,
+            mountReader,
             writer,
             unitOfWork,
             transactionExecutor,

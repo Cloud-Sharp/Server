@@ -39,6 +39,8 @@ internal sealed class EfCoreUnitOfWork(AppDbContext dbContext) : IUnitOfWork
             => CommonError.PreconditionFailed(),
         DbConstraintViolationError constraintError when IsMembershipRoleWriteConflict(constraintError)
             => CommonError.PreconditionFailed(),
+        DbConstraintViolationError constraintError when IsMountGrantWriteConflict(constraintError)
+            => CommonError.PreconditionFailed(),
         _ => error,
     };
 
@@ -60,5 +62,29 @@ internal sealed class EfCoreUnitOfWork(AppDbContext dbContext) : IUnitOfWork
             entry.State == EntityState.Added
             && entry.Entity is SpaceMembershipRoleEntity link
             && updatedMemberships.Contains((link.MembershipId, link.SpaceId)));
+    }
+
+    private bool IsMountGrantWriteConflict(DbConstraintViolationError error)
+    {
+        var isRoleConflict = error is { Kind: DbConstraintKind.Unique, ConstraintName: "pk_mount_role_grants" }
+            or { Kind: DbConstraintKind.ForeignKey, ConstraintName: "fk_mount_role_grants_mount" };
+        var isUserConflict = error is { Kind: DbConstraintKind.Unique, ConstraintName: "pk_mount_user_grants" }
+            or { Kind: DbConstraintKind.ForeignKey, ConstraintName: "fk_mount_user_grants_mount" };
+        if (!isRoleConflict && !isUserConflict)
+        {
+            return false;
+        }
+
+        var updatedMountIds = dbContext.ChangeTracker.Entries<MountEntity>()
+            .Where(entry => entry.State == EntityState.Modified && entry.Property(mount => mount.Version).IsModified)
+            .Select(entry => entry.Entity.Id)
+            .ToHashSet();
+
+        return error.OriginalException.Entries.Any(entry =>
+            entry.State == EntityState.Added
+            && ((isRoleConflict && entry.Entity is MountRoleGrantEntity roleGrant
+                    && updatedMountIds.Contains(roleGrant.MountId))
+                || (isUserConflict && entry.Entity is MountUserGrantEntity userGrant
+                    && updatedMountIds.Contains(userGrant.MountId))));
     }
 }
